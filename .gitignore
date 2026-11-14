@@ -1,0 +1,18 @@
+# Flutter / Android
+.dart_tool/
+.packages
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+android/.gradle/
+android/local.properties
+*.iml
+.idea/
+
+# 产物
+out/
+*.apk
+*.aab
+
+# 系统
+.DS_Store
