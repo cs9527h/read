@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 
 import 'package:read/src/bookshelf/bookshelf_page.dart';
+import 'package:read/src/services/library_store.dart';
 import 'package:read/src/theme.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await LibraryStore.instance.init();
   runApp(const ReadApp());
 }
 

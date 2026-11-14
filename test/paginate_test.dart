@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:read/src/reader/reader_page.dart';
+import 'package:read/src/services/paginator.dart';
 
 void main() {
   test('分页结果覆盖全文且不为空', () {

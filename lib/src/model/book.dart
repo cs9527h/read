@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart';
 
 /// 一本书的最小模型。
-/// 注意：当前为内存模型，持久化与格式解析在后续阶段接入。
 class Book {
   Book({
     required this.id,
@@ -9,6 +8,8 @@ class Book {
     required this.author,
     required this.content,
     this.format = 'TXT',
+    this.sourcePath,
+    this.lastReadAt,
   });
 
   final String id;
@@ -17,6 +18,32 @@ class Book {
   final String content;
   final String format;
 
-  /// 阅读进度：页索引（0 起）。同步功能落地后改为带 rev 的实体。
-  ValueNotifier<int> progress = ValueNotifier<int>(0);
+  /// 导入文件的绝对路径（内置样章为 null）。
+  final String? sourcePath;
+  final DateTime? lastReadAt;
+
+  /// 阅读进度：章节索引与页索引。
+  final ValueNotifier<int> chapterIndex = ValueNotifier<int>(0);
+  final ValueNotifier<int> pageIndex = ValueNotifier<int>(0);
+
+  Map<String, dynamic> toMeta() => <String, dynamic>{
+        'id': id,
+        'title': title,
+        'author': author,
+        'format': format,
+        'sourcePath': sourcePath,
+        'lastReadAt': lastReadAt?.millisecondsSinceEpoch,
+      };
+
+  static Book fromMeta(Map<String, dynamic> m, String content) => Book(
+        id: m['id'] as String,
+        title: m['title'] as String,
+        author: (m['author'] as String?) ?? '未知作者',
+        format: (m['format'] as String?) ?? 'TXT',
+        sourcePath: m['sourcePath'] as String?,
+        lastReadAt: m['lastReadAt'] == null
+            ? null
+            : DateTime.fromMillisecondsSinceEpoch(m['lastReadAt'] as int),
+        content: content,
+      );
 }
