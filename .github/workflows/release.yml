@@ -41,6 +41,12 @@ jobs:
             cp /tmp/scaffold/.metadata ./.metadata || true
           fi
 
+      - name: 应用黑白羽毛图标
+        run: bash tools/android/apply_icons.sh
+
+      - name: 配置固定预览签名
+        run: python3 tools/android/setup_signing.py
+
       - name: 规避 url_launcher_android 的 lint 解析崩溃
         run: |
           cat >> android/build.gradle.kts <<'GRADLE'

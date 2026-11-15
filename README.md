@@ -34,9 +34,10 @@
 
 ## 版本与发布
 
-当前预览版：**v0.3.0 preview**（`version: 0.3.0+3`，新版三栏 UI）。打 `v*` 标签会触发 `.github/workflows/release.yml`，自动构建两个 APK 并附到 GitHub Release，同时上传 `APK_SHA256.txt`。
+当前预览版：**v0.3.1 preview**（`version: 0.3.1+4`，新版三栏 UI + 固定预览签名）。打 `v*` 标签会触发 `.github/workflows/release.yml`，自动构建两个 APK 并附到 GitHub Release，同时上传 `APK_SHA256.txt`。
 
-CI 使用内部测试签名，不是正式发布签名；正式覆盖升级前必须换成固定的 keystore。
+CI 使用仓库内固定的预览密钥（`tools/android/read-preview.jks.b64`，口令见 `tools/android/setup_signing.py`），因此预览版之间可以覆盖升级。
+它仍然是**公开的测试密钥**，任何人拿到仓库都能签出同签名包，不能用于正式分发；正式发布前必须换成私有不入库的 keystore。
 
 ## 构建
 
