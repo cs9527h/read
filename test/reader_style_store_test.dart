@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:read/src/services/reader_style_store.dart';
 import 'package:read/src/services/paginator.dart';
 
@@ -77,4 +78,25 @@ void main() {
     expect(scaled.map((slice) => slice.textOf(content)).join(), content);
     expect(scaled.length, greaterThan(standard.length));
   });
+  test('global and per-book settings persist separately', () async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    final store = ReaderStyleStore.instance;
+    await store.saveGlobal(const ReaderStyle(fontSize: 21, backgroundIndex: 3));
+    final inherited = await store.load('book-one', const ReaderStyle());
+    expect(inherited.bookSpecific, isFalse);
+    expect(inherited.style.fontSize, 21);
+
+    await store.saveForBook('book-one', const ReaderStyle(fontSize: 28));
+    final custom = await store.load('book-one', const ReaderStyle());
+    final other = await store.load('book-two', const ReaderStyle());
+    expect(custom.bookSpecific, isTrue);
+    expect(custom.style.fontSize, 28);
+    expect(other.style.fontSize, 21);
+
+    await store.clearForBook('book-one');
+    final restored = await store.load('book-one', const ReaderStyle());
+    expect(restored.bookSpecific, isFalse);
+    expect(restored.style.fontSize, 21);
+  });
+
 }
