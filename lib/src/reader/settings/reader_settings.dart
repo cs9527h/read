@@ -48,6 +48,7 @@ const Map<String, Object?> kReaderDefaults = <String, Object?>{
   'headerCenter': '',
   'headerRight': '{time}',
   'headerFontSize': 11.0,
+  'headerFontFamily': null,
   'headerColor': null,
   'headerOpacity': 0.55,
   'footerShow': true,
@@ -55,6 +56,7 @@ const Map<String, Object?> kReaderDefaults = <String, Object?>{
   'footerCenter': '',
   'footerRight': '{page}/{pages} · {percent}',
   'footerFontSize': 11.0,
+  'footerFontFamily': null,
   'footerColor': null,
   'footerOpacity': 0.55,
   'footerProgressBar': false,
@@ -141,6 +143,7 @@ Map<String, Object?> validatedReaderSettingsMap(Map<String, dynamic> input) {
       };
       const pathKeys = <String>{
         'fontFamily', 'titleFontFamily', 'bgImagePath',
+        'headerFontFamily', 'footerFontFamily',
       };
       if (colorKeys.contains(key) &&
           value is int && value >= 0 && value <= 0xFFFFFFFF) {
@@ -260,6 +263,7 @@ class ReaderSettings {
   String get headerCenter => _raw['headerCenter'] as String;
   String get headerRight => _raw['headerRight'] as String;
   double get headerFontSize => (_raw['headerFontSize'] as num).toDouble();
+  String? get headerFontFamily => _raw['headerFontFamily'] as String?;
   int? get headerColor => _raw['headerColor'] as int?;
   double get headerOpacity => (_raw['headerOpacity'] as num).toDouble();
   bool get footerShow => _raw['footerShow'] == true;
@@ -267,6 +271,7 @@ class ReaderSettings {
   String get footerCenter => _raw['footerCenter'] as String;
   String get footerRight => _raw['footerRight'] as String;
   double get footerFontSize => (_raw['footerFontSize'] as num).toDouble();
+  String? get footerFontFamily => _raw['footerFontFamily'] as String?;
   int? get footerColor => _raw['footerColor'] as int?;
   double get footerOpacity => (_raw['footerOpacity'] as num).toDouble();
   bool get footerProgressBar => _raw['footerProgressBar'] == true;
