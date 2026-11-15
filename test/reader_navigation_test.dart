@@ -22,15 +22,18 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('第一章 起点', skipOffstage: false), findsWidgets);
 
+    // Center tap reveals the contextual toolbar, without permanent chrome.
+    await tester.tapAt(tester.getCenter(find.byType(PageView)));
+    await tester.pumpAndSettle();
     // With a tall screen, chapter one fits on a page.
-    final next = find.byTooltip('下一页（下一章）');
+    final next = find.byTooltip('下一页');
     expect(next, findsOneWidget);
     await tester.tap(next);
     await tester.pumpAndSettle();
     expect(book.chapterIndex.value, 1);
     expect(find.text('第二章 终点', skipOffstage: false), findsWidgets);
 
-    await tester.tap(find.byTooltip('上一页（上一章）'));
+    await tester.tap(find.byTooltip('上一页'));
     await tester.pumpAndSettle();
     expect(book.chapterIndex.value, 0);
     expect(book.charOffset.value, greaterThanOrEqualTo(0));
