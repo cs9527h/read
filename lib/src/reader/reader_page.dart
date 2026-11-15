@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:read/src/model/book.dart';
 import 'package:read/src/services/chapter_splitter.dart';
 import 'package:read/src/services/book_search.dart';
+import 'package:read/src/services/bookmark_store.dart';
 import 'package:read/src/services/paginator.dart';
 import 'package:read/src/services/library_store.dart';
 import 'package:read/src/theme.dart';
@@ -25,6 +26,7 @@ class _ReaderPageState extends State<ReaderPage> {
   List<PageSlice> _pageSlices = const <PageSlice>[];
   String? _measureKey;
   PageController? _controller;
+  List<int> _bookmarks = const <int>[];
 
   double _fontSize = 18;
   double _lineHeight = 1.7;
@@ -43,6 +45,7 @@ class _ReaderPageState extends State<ReaderPage> {
     _fontSize = store.fontSize;
     _lineHeight = store.lineHeight;
     _bgIndex = kEink ? 0 : store.backgroundIndex;
+    _loadBookmarks();
   }
 
   @override
@@ -68,6 +71,11 @@ class _ReaderPageState extends State<ReaderPage> {
     final _Palette palette = _palette;
     final Chapter chapter = _chapters[_chapterIndex];
     final String chapterText = chapter.slice(widget.book.content);
+    final int bookmarkOffset = chapter.start +
+        (_pageSlices.isNotEmpty && _pageIndex < _pageSlices.length
+            ? _pageSlices[_pageIndex].start
+            : widget.book.charOffset.value.clamp(0, chapter.length));
+    final bool bookmarked = _bookmarks.contains(bookmarkOffset);
     return Scaffold(
       backgroundColor: palette.background,
       appBar: AppBar(
@@ -85,6 +93,19 @@ class _ReaderPageState extends State<ReaderPage> {
           overflow: TextOverflow.ellipsis,
         ),
         actions: <Widget>[
+          IconButton(
+            tooltip: bookmarked ? '移除本页书签' : '添加本页书签',
+            icon: Icon(
+              bookmarked ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
+              color: palette.foreground,
+            ),
+            onPressed: _toggleCurrentBookmark,
+          ),
+          IconButton(
+            tooltip: '查看书签',
+            icon: Icon(Icons.collections_bookmark_outlined, color: palette.foreground),
+            onPressed: _showBookmarks,
+          ),
           IconButton(
             tooltip: '书内搜索',
             icon: Icon(Icons.search, color: palette.foreground),
@@ -207,6 +228,99 @@ class _ReaderPageState extends State<ReaderPage> {
       });
       LibraryStore.instance.saveProgress(widget.book);
     });
+  }
+
+  Future<void> _loadBookmarks() async {
+    final saved = await BookmarkStore.load(widget.book.id);
+    if (mounted) setState(() => _bookmarks = saved);
+  }
+
+  Future<void> _toggleCurrentBookmark() async {
+    if (_pageSlices.isEmpty || _pageIndex >= _pageSlices.length) return;
+    final int absolute = _chapters[_chapterIndex].start +
+        _pageSlices[_pageIndex].start;
+    try {
+      final saved = await BookmarkStore.toggle(widget.book.id, absolute);
+      if (!mounted) return;
+      setState(() => _bookmarks = saved);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(saved.contains(absolute) ? '已添加书签' : '已移除书签'),
+        duration: const Duration(seconds: 1),
+      ));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('书签保存失败，请重试')),
+      );
+    }
+  }
+
+  Future<void> _showBookmarks() async {
+    final int? position = await showModalBottomSheet<int>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: !kEink,
+      builder: (BuildContext ctx) => SafeArea(
+        child: SizedBox(
+          height: MediaQuery.sizeOf(ctx).height * 0.65,
+          child: Column(
+            children: <Widget>[
+              const ListTile(
+                title: Text('我的书签',
+                    style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
+                subtitle: Text('按书籍中的位置排列'),
+              ),
+              Expanded(
+                child: _bookmarks.isEmpty
+                    ? const Center(child: Text('还没有书签，阅读时点右上角即可添加'))
+                    : ListView.builder(
+                        itemCount: _bookmarks.length,
+                        itemBuilder: (BuildContext context, int index) {
+                          final int offset = _bookmarks[index];
+                          final String source = widget.book.content;
+                          final int end = (offset + 45).clamp(0, source.length);
+                          final preview = source.substring(offset.clamp(0, source.length), end)
+                              .replaceAll(RegExp(r'[\r\n]+'), ' ')
+                              .trim();
+                          return ListTile(
+                            leading: const Icon(Icons.bookmark_rounded),
+                            title: Text(preview.isEmpty ? '书签位置' : preview,
+                                maxLines: 2, overflow: TextOverflow.ellipsis),
+                            subtitle: Text('位置 ${offset + 1}'),
+                            onTap: () => Navigator.pop(ctx, offset),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (!mounted || position == null) return;
+    _jumpToAbsoluteOffset(position);
+  }
+
+  void _jumpToAbsoluteOffset(int absoluteOffset) {
+    int chapterIndex = _chapters.length - 1;
+    for (int i = 0; i < _chapters.length; i++) {
+      if (absoluteOffset < _chapters[i].end) {
+        chapterIndex = i;
+        break;
+      }
+    }
+    final chapter = _chapters[chapterIndex];
+    setState(() {
+      _chapterIndex = chapterIndex;
+      _pageIndex = 0;
+      _pageSlices = const <PageSlice>[];
+      _measureKey = null;
+      widget.book.chapterIndex.value = chapterIndex;
+      widget.book.pageIndex.value = 0;
+      widget.book.charOffset.value =
+          (absoluteOffset - chapter.start).clamp(0, chapter.length);
+    });
+    LibraryStore.instance.saveProgress(widget.book);
   }
 
   Future<void> _searchInBook() async {
