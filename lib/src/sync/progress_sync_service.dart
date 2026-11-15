@@ -107,7 +107,17 @@ class ProgressSyncService {
       // local character anchor yet, but can safely receive cloud progress.
       booksByHash.putIfAbsent(digest, () => <Book>[]).add(book);
       final position = _snapshot(book, digest, device);
-      if (position == null) continue;
+      if (position == null) {
+        // New imports without a reading position can receive cloud progress.
+        // But older page-only bookmarks must not be overwritten as "unread".
+        if (book.lastReadAt != null ||
+            book.chapterIndex.value > 0 ||
+            book.pageIndex.value > 0) {
+          throw FormatException('《' + book.title +
+              '》还使用旧版页码进度。请先打开此书并翻页一次，生成准确字符位置后重试同步');
+        }
+        continue;
+      }
       if (local.containsKey(digest) &&
           !local[digest]!.samePosition(position)) {
         throw FormatException('《' + book.title + '》存在内容相同但进度不同的本地副本，请先统一');
