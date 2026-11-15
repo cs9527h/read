@@ -152,23 +152,23 @@ class ProgressSyncService {
         continue;
       }
 
-      // No common ancestor means both devices may have independently edited
-      // their position. Never select a winner using untrusted wall clocks.
-      final localChanged = last == null || !here.samePosition(last);
-      final cloudChanged = last == null || !there.samePosition(last);
+      final decision = ProgressMerger.compareToBaseline(
+        local: here, remote: there, baseline: last,
+      );
+      final isConflict = decision == ProgressDecision.conflict;
 
       ProgressChoice choice;
-      if (localChanged && cloudChanged) {
+      if (isConflict) {
         conflicts++;
-        final decision = await resolveConflict(
+        final selection = await resolveConflict(
           ProgressSyncConflict(booksByHash[hash]!.first.title, here, there),
         );
-        if (decision == null) throw const ProgressSyncCancelled();
-        choice = decision;
-      } else if (localChanged) {
-        choice = ProgressChoice.local;
+        if (selection == null) throw const ProgressSyncCancelled();
+        choice = selection;
       } else {
-        choice = ProgressChoice.cloud;
+        choice = decision == ProgressDecision.local
+            ? ProgressChoice.local
+            : ProgressChoice.cloud;
       }
 
       if (choice == ProgressChoice.local) {
@@ -183,7 +183,7 @@ class ProgressSyncService {
         uploads++;
       } else {
         // Manual cloud selection is itself a new durable revision.
-        merged[hash] = (localChanged && cloudChanged)
+        merged[hash] = isConflict
             ? there.withRevision(
                 (there.revision > (last?.revision ?? 0)
                         ? there.revision
@@ -194,7 +194,7 @@ class ProgressSyncService {
               )
             : there;
         toApply[hash] = merged[hash]!;
-        if (localChanged && cloudChanged) uploads++;
+        if (isConflict) uploads++;
       }
     }
 
