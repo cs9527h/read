@@ -808,12 +808,17 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
                 _update(<String, Object?>{'autoTurnSeconds': v.round()}),
           ),
         _section('音量键', secondary),
-        _switch('音量键翻页（当前版本不可用）', false, (bool v) {}),
-        Text(
-          '音量键需要 Android 原生通道；当前 APK 的 Android 壳由 CI 生成，尚未接入，'
-          '因此这一项没有做成开关，避免出现“能点但无效”的假功能。',
-          style: TextStyle(fontSize: 11, color: secondary),
-        ),
+        if (Platform.isAndroid) ...<Widget>[
+          _switch('音量键翻页', _settings.volumeKeys,
+              (bool v) => _update(<String, Object?>{'volumeKeys': v})),
+          Text(
+            '只在阅读界面接管音量键。音量加减对应上/下一页，'
+            '关闭阅读器后恢复系统原本的音量键功能。',
+            style: TextStyle(fontSize: 11, color: secondary),
+          ),
+        ] else
+          Text('当前平台不支持硬件音量键翻页',
+              style: TextStyle(fontSize: 11, color: secondary)),
       ],
     );
   }
@@ -1005,8 +1010,13 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
       padding: const EdgeInsets.fromLTRB(18, 14, 18, 32),
       children: <Widget>[
         _section('亮度', secondary),
-        _slider(
-          '应用内亮度',
+        if (Platform.isAndroid)
+          _switch('跟随系统屏幕亮度', _settings.followSystemBrightness,
+              (bool value) =>
+                  _update(<String, Object?>{'followSystemBrightness': value})),
+        if (!Platform.isAndroid || !_settings.followSystemBrightness)
+          _slider(
+          Platform.isAndroid ? '阅读窗口亮度' : '应用内亮度',
           _settings.brightness,
           0.2,
           1.0,
@@ -1015,7 +1025,9 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
           onChanged: (double v) => _update(<String, Object?>{'brightness': v}),
         ),
         Text(
-          '这是叠加在页面上的调暗遮罩，不改系统亮度；系统亮度控制需要原生权限。',
+          Platform.isAndroid
+              ? '仅调整 Read 阅读窗口，不修改系统全局亮度，也不需要修改系统设置权限。'
+              : '当前平台通过阅读页面遮罩降低视觉亮度。',
           style: TextStyle(fontSize: 11, color: secondary),
         ),
         _section('辅助线', secondary),
