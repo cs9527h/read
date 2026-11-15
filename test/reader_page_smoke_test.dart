@@ -37,4 +37,35 @@ void main() {
     expect(find.byIcon(Icons.search_rounded), findsOneWidget);
     expect(find.byIcon(Icons.tune_rounded), findsOneWidget);
   });
+  testWidgets('全书进度拖动使用真实字符位置而不是章节序号', (tester) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    await ReaderSettingsStore.instance.init();
+    await UserFontStore.instance.init();
+    final book = Book(
+      id: 'seek-absolute',
+      title: '长度差异',
+      author: '本地',
+      content: '第一章 长篇\n' +
+          List<String>.filled(450, '这是一段很长的正文。').join() +
+          '\n第二章 短篇\n结尾',
+    );
+    await tester.pumpWidget(MaterialApp(home: ReaderPage(book: book)));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tapAt(const Offset(400, 300));
+    await tester.pump(const Duration(milliseconds: 300));
+    final slider = find.byType(Slider);
+    expect(slider, findsOneWidget);
+    final bounds = tester.getRect(slider);
+    await tester.dragFrom(
+      Offset(bounds.left + 16, bounds.center.dy),
+      Offset(bounds.width * 0.42, 0),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(book.chapterIndex.value, 0);
+    expect(book.charOffset.value, greaterThan(100),
+        reason: '全书中段仍处于长第一章，不能跳回第一章开头');
+  });
+
 }
