@@ -28,6 +28,39 @@ void main() {
     expect(display.sourceOffset(mapped), 5);
   });
 
+  test('重复章节标题只显示一次且原文锚点保持正确', () {
+    final s = settings();
+    const source = '第一章 风起\r\n风来了。\n第二段。';
+    final result = ReaderEngine.paginate(
+      chapterText: source,
+      chapterTitle: '第一章 风起',
+      settings: s,
+      width: 330,
+      height: 600,
+      textScale: 1.0,
+    );
+    expect(result.showTitle, isTrue);
+    expect(result.display.text.contains('第一章 风起'), isFalse);
+    final bodyIndex = result.display.text.indexOf('风来了');
+    expect(bodyIndex, greaterThanOrEqualTo(0));
+    expect(result.display.sourceOffset(bodyIndex), source.indexOf('风来了'));
+    expect(result.pages.first.sourceStart, 0);
+    expect(result.pages.last.sourceEnd, source.length);
+  });
+
+  test('整本一章不出现人工全文标题', () {
+    final result = ReaderEngine.paginate(
+      chapterText: '没有识别到章节时仍能正常读书。',
+      chapterTitle: '全文',
+      settings: settings(),
+      width: 330,
+      height: 600,
+      textScale: 1.0,
+    );
+    expect(result.showTitle, isFalse);
+    expect(result.display.text.contains('没有识别到章节'), isTrue);
+  });
+
   test('CRLF 原文不会被当成两个空行，偏移仍然正确', () {
     final ReaderSettings s = settings();
     final DisplayChapter display =
