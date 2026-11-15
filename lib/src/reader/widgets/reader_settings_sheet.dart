@@ -71,12 +71,12 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
     final Color foreground = Color(_settings.textColor ?? theme.foreground);
     final Color secondary = Color(theme.secondary);
 
-    return Container(
+    return Material(
+      color: background,
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+      clipBehavior: Clip.antiAlias,
+      child: SizedBox(
       height: MediaQuery.sizeOf(context).height * 0.9,
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
-      ),
       child: Column(
         children: <Widget>[
           const SizedBox(height: 8),
@@ -125,8 +125,24 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
                   showSelectedIcon: false,
                   style: ButtonStyle(
                     visualDensity: VisualDensity.compact,
-                    textStyle: const WidgetStatePropertyAll<TextStyle>(
-                      TextStyle(fontSize: 12),
+                    backgroundColor: WidgetStateProperty.resolveWith<Color>(
+                      (Set<WidgetState> states) => states
+                              .contains(WidgetState.selected)
+                          ? foreground
+                          : Colors.transparent,
+                    ),
+                    foregroundColor: WidgetStateProperty.resolveWith<Color>(
+                      (Set<WidgetState> states) => states
+                              .contains(WidgetState.selected)
+                          ? background
+                          : foreground,
+                    ),
+                    textStyle: WidgetStatePropertyAll<TextStyle>(
+                      TextStyle(
+                        fontSize: 12,
+                        fontFamily:
+                            Theme.of(context).textTheme.bodySmall?.fontFamily,
+                      ),
                     ),
                   ),
                   segments: const <ButtonSegment<ReaderScope>>[
@@ -200,6 +216,7 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
             ),
           ),
         ],
+      ),
       ),
     );
   }
