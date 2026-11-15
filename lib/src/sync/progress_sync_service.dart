@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'dart:typed_data';
 import 'package:crypto/crypto.dart' show sha256;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -8,7 +9,9 @@ import '../model/book.dart';
 import '../services/chapter_splitter.dart';
 import '../services/library_store.dart';
 import 'encrypted_sync_envelope.dart';
+import 'progress_history.dart';
 import 'progress_models.dart';
+import 'remote_store.dart';
 import 'webdav_encrypted_object.dart';
 
 class ProgressSyncCredentials {
@@ -47,12 +50,19 @@ class ProgressSyncReport {
     required this.downloaded,
     required this.unmatched,
     required this.conflicts,
+    this.downloadedHashes = const <String>{},
   });
   final int scanned;
   final int uploaded;
   final int downloaded;
   final int unmatched;
   final int conflicts;
+  final Set<String> downloadedHashes;
+}
+
+abstract class ProgressTransport {
+  Future<RemoteSnapshot?> read();
+  Future<void> write(Uint8List bytes, {String? expectedEtag});
 }
 
 /// Metadata-only sync with encrypted conditional WebDAV writes.
@@ -71,16 +81,49 @@ class ProgressSyncService {
   Future<ProgressSyncReport> sync(
     ProgressSyncCredentials credentials, {
     required ProgressConflictResolver resolveConflict,
+    Book? onlyBook,
   }) async {
-    final transport = WebDavEncryptedObject(
+    final client = WebDavEncryptedObject(
       fileUrl: credentials.fileUrl,
       username: credentials.username,
       password: credentials.webdavPassword,
     );
+    return _sync(
+      _WebDavProgressTransport(client),
+      credentials.encryptionPassword,
+      credentials.fileUrl.toString(),
+      resolveConflict,
+      onlyBook,
+    );
+  }
+
+  Future<ProgressSyncReport> syncStore(
+    RemoteObjectStore store,
+    String encryptionPassword, {
+    required String targetId,
+    required ProgressConflictResolver resolveConflict,
+    Book? onlyBook,
+  }) async {
+    return _sync(
+      _ObjectStoreProgressTransport(store),
+      encryptionPassword,
+      targetId,
+      resolveConflict,
+      onlyBook,
+    );
+  }
+
+  Future<ProgressSyncReport> _sync(
+    ProgressTransport transport,
+    String encryptionPassword,
+    String targetId,
+    ProgressConflictResolver resolveConflict,
+    Book? onlyBook,
+  ) async {
     final preferences = await SharedPreferences.getInstance();
     final device = await _getOrMakeDeviceId(preferences);
     final baselineKey =
-        _baselinePrefix + sha256.convert(utf8.encode(credentials.fileUrl.toString())).toString();
+        _baselinePrefix + sha256.convert(utf8.encode(targetId)).toString();
 
     ProgressManifest baseline;
     final savedBaseline = preferences.getString(baselineKey);
@@ -98,11 +141,12 @@ class ProgressSyncService {
     final local = <String, ProgressRecord>{};
 
     for (final book in List<Book>.of(library.books)) {
+      if (onlyBook != null && book.id != onlyBook.id) continue;
       final path = book.sourcePath;
       if (path == null) continue; // sample book / no actual source file
       final file = File(path);
       if (!await file.exists()) continue;
-      final digest = (await sha256.bind(file.openRead()).first).toString();
+      final digest = await library.ensureContentHash(book);
       // Include unread books as matching targets: they may have no usable
       // local character anchor yet, but can safely receive cloud progress.
       booksByHash.putIfAbsent(digest, () => <Book>[]).add(book);
@@ -132,9 +176,16 @@ class ProgressSyncService {
     } else {
       final plaintext = await EncryptedSyncEnvelope.decrypt(
         remoteSnapshot.bytes,
-        credentials.encryptionPassword,
+        encryptionPassword,
       );
       remote = ProgressManifest.decode(plaintext);
+      await ProgressHistoryStore.instance.recordManifest(
+        remote,
+        <String, String>{
+          for (final entry in booksByHash.entries)
+            if (entry.value.isNotEmpty) entry.key: entry.value.first.title,
+        },
+      );
     }
 
     final merged = <String, ProgressRecord>{...remote.entries};
@@ -233,7 +284,7 @@ class ProgressSyncService {
     if (hasCloudChanges) {
       final encrypted = await EncryptedSyncEnvelope.encrypt(
         ProgressManifest(merged).encode(),
-        credentials.encryptionPassword,
+        encryptionPassword,
       );
       // If-Match/If-None-Match refuses concurrent updates. No local progress
       // is modified before this conditional cloud commit succeeds.
@@ -243,10 +294,12 @@ class ProgressSyncService {
     // A new, validated cloud version is now available. Apply downloaded
     // positions only to existing local copies matched by exact source hash.
     int downloaded = 0;
+    final downloadedHashes = <String>{};
     for (final pair in toApply.entries) {
       for (final book in booksByHash[pair.key] ?? const <Book>[]) {
         await _apply(book, pair.value);
         downloaded++;
+        downloadedHashes.add(pair.key);
       }
     }
     final succeeded = await preferences.setString(
@@ -265,6 +318,7 @@ class ProgressSyncService {
       downloaded: downloaded,
       unmatched: unmatched,
       conflicts: conflicts,
+      downloadedHashes: downloadedHashes,
     );
   }
 
@@ -370,5 +424,42 @@ class ProgressSyncService {
       }
     }
     return true;
+  }
+}
+
+
+class _WebDavProgressTransport implements ProgressTransport {
+  _WebDavProgressTransport(this.client);
+  final WebDavEncryptedObject client;
+
+  @override
+  Future<RemoteSnapshot?> read() async {
+    final snapshot = await client.read();
+    if (snapshot == null) return null;
+    return RemoteSnapshot(bytes: snapshot.bytes, etag: snapshot.etag);
+  }
+
+  @override
+  Future<void> write(Uint8List bytes, {String? expectedEtag}) async {
+    try {
+      await client.write(bytes, expectedEtag: expectedEtag);
+    } on WebDavConflictException catch (error) {
+      throw RemoteConflictException(error.message);
+    } on WebDavSyncException catch (error) {
+      throw RemoteStoreException(error.message);
+    }
+  }
+}
+
+class _ObjectStoreProgressTransport implements ProgressTransport {
+  _ObjectStoreProgressTransport(this.store);
+  final RemoteObjectStore store;
+
+  @override
+  Future<RemoteSnapshot?> read() => store.read('progress.enc');
+
+  @override
+  Future<void> write(Uint8List bytes, {String? expectedEtag}) async {
+    await store.write(bytes, 'progress.enc', expectedEtag: expectedEtag);
   }
 }

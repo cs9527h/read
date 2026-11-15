@@ -6,7 +6,8 @@ import 'package:read/src/profile/reading_history_page.dart';
 import 'package:read/src/profile/storage_page.dart';
 import 'package:read/src/services/library_store.dart';
 import 'package:read/src/services/reading_stats_store.dart';
-import 'package:read/src/sync/progress_sync_page.dart';
+import 'package:read/src/sync/sync_page.dart';
+import 'package:read/src/sync/sync_config.dart';
 import 'package:read/src/theme.dart';
 import 'package:read/src/version.dart';
 
@@ -75,9 +76,11 @@ class ProfilePage extends StatelessWidget {
                     _Row(
                       icon: Icons.sync_rounded,
                       title: '同步',
-                      subtitle: 'WebDAV 阅读进度',
+                      subtitle: SyncConfig.instance.lastSyncAt.isEmpty
+                          ? '全量同步 / 备份 / 历史'
+                          : '上次同步 ${SyncConfig.instance.lastSyncStatus}',
                       onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute<void>(builder: (_) => const ProgressSyncPage()),
+                        MaterialPageRoute<void>(builder: (_) => const SyncPage()),
                       ),
                     ),
                   ],

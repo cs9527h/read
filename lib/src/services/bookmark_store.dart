@@ -34,6 +34,14 @@ class BookmarkStore {
     return sorted;
   }
 
+  /// Replaces the full bookmark set after a validated sync merge.
+  static Future<void> replaceAll(String bookId, List<int> offsets) async {
+    final prefs = await SharedPreferences.getInstance();
+    final safe = offsets.where((int x) => x >= 0).toSet().toList()..sort();
+    final success = await prefs.setString('$_prefix$bookId', jsonEncode(safe));
+    if (!success) throw StateError('书签同步写入失败');
+  }
+
   static Future<void> clearForDeletedBook(String bookId) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('$_prefix$bookId');

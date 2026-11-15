@@ -11,6 +11,9 @@ class Book {
     this.sourcePath,
     this.lastReadAt,
     this.chapterCount = 0,
+    this.contentHash,
+    this.fileName,
+    this.fileSize = 0,
   });
 
   final String id;
@@ -25,6 +28,12 @@ class Book {
 
   /// 章节总数缓存（由阅读页写入，用于书架显示粗略进度）。
   int chapterCount;
+
+  /// SHA-256 of the original imported bytes. This is the cross-device
+  /// identity used by sync; local numeric ids are intentionally device-local.
+  String? contentHash;
+  String? fileName;
+  int fileSize;
 
   /// 阅读进度：章节索引与页索引。
   final ValueNotifier<int> chapterIndex = ValueNotifier<int>(0);
@@ -41,6 +50,9 @@ class Book {
         'sourcePath': sourcePath,
         'lastReadAt': lastReadAt?.millisecondsSinceEpoch,
         'chapterCount': chapterCount,
+        'contentHash': contentHash,
+        'fileName': fileName,
+        'fileSize': fileSize,
       };
 
   static Book fromMeta(Map<String, dynamic> m, String content) => Book(
@@ -54,5 +66,8 @@ class Book {
             : DateTime.fromMillisecondsSinceEpoch(m['lastReadAt'] as int),
         content: content,
         chapterCount: (m['chapterCount'] as int?) ?? 0,
+        contentHash: m['contentHash'] as String?,
+        fileName: m['fileName'] as String?,
+        fileSize: (m['fileSize'] as num?)?.toInt() ?? 0,
       );
 }

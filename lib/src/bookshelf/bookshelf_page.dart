@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:read/src/model/book.dart';
+import 'package:read/src/bookshelf/book_detail_page.dart';
 import 'package:read/src/reader/pdf_reader_page.dart';
 import 'package:read/src/reader/reader_page.dart';
 import 'package:read/src/services/library_store.dart';
@@ -19,6 +20,8 @@ class _BookshelfPageState extends State<BookshelfPage> {
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocus = FocusNode();
   String _searchTerm = '';
+  bool _grid = true;
+  String _filter = 'all';
 
   @override
   void dispose() {
@@ -36,10 +39,25 @@ class _BookshelfPageState extends State<BookshelfPage> {
         final LibraryStore store = LibraryStore.instance;
         final String term = _searchTerm.trim().toLowerCase();
         final List<Book> visibleBooks = store.books.where((Book book) {
-          return term.isEmpty ||
+          final bool matchesSearch = term.isEmpty ||
               book.title.toLowerCase().contains(term) ||
               book.author.toLowerCase().contains(term);
+          if (!matchesSearch) return false;
+          final bool finished = ReadingStatsStore.instance.isFinished(book.id);
+          return switch (_filter) {
+            'reading' => book.lastReadAt != null && !finished,
+            'finished' => finished,
+            'unread' => book.lastReadAt == null,
+            _ => true,
+          };
         }).toList(growable: false);
+        final List<Book> continueCandidates = store.books
+            .where((Book b) =>
+                b.lastReadAt != null &&
+                !ReadingStatsStore.instance.isFinished(b.id))
+            .toList(growable: false);
+        final Book? continueBook =
+            continueCandidates.isEmpty ? null : continueCandidates.first;
         final int total = store.books.length;
 
         return Scaffold(
@@ -64,6 +82,14 @@ class _BookshelfPageState extends State<BookshelfPage> {
                       const SizedBox(width: 2),
                       Icon(Icons.keyboard_arrow_down_rounded, size: 22, color: palette.ink),
                       const Spacer(),
+                      IconButton(
+                        tooltip: _grid ? '切换列表' : '切换网格',
+                        onPressed: () => setState(() => _grid = !_grid),
+                        icon: Icon(
+                          _grid ? Icons.view_list_rounded : Icons.grid_view_rounded,
+                          color: palette.icon,
+                        ),
+                      ),
                       IconButton(
                         tooltip: '刷新书架',
                         onPressed: () async {
@@ -128,6 +154,40 @@ class _BookshelfPageState extends State<BookshelfPage> {
                     ),
                   ),
                 ),
+                SizedBox(
+                  height: 34,
+                  child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+                    children: <Widget>[
+                      for (final entry in const <String, String>{
+                        'all': '全部',
+                        'reading': '在读',
+                        'finished': '读完',
+                        'unread': '未读',
+                      }.entries)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: ChoiceChip(
+                            label: Text(entry.value),
+                            selected: _filter == entry.key,
+                            onSelected: (_) => setState(() => _filter = entry.key),
+                            showCheckmark: false,
+                            visualDensity: VisualDensity.compact,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(kEink ? 0 : 16),
+                              side: BorderSide(color: palette.outline),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                if (continueBook != null && term.isEmpty && _filter == 'all')
+                  _ContinueCard(
+                    book: continueBook,
+                    onTap: () => _openReader(continueBook),
+                  ),
                 Expanded(
                   child: visibleBooks.isEmpty
                       ? _EmptyLibrary(
@@ -141,6 +201,25 @@ class _BookshelfPageState extends State<BookshelfPage> {
                                 : bounds.maxWidth >= 640
                                     ? 4
                                     : 3;
+                            if (!_grid) {
+                              return ListView.separated(
+                                padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                                physics: const BouncingScrollPhysics(),
+                                itemCount: visibleBooks.length,
+                                separatorBuilder: (_, __) => Divider(
+                                  height: 1,
+                                  color: palette.outline,
+                                ),
+                                itemBuilder: (BuildContext context, int index) {
+                                  final Book book = visibleBooks[index];
+                                  return _BookRow(
+                                    book: book,
+                                    onOpen: () => _openBook(book),
+                                    onMenu: () => _showBookMenu(store, book),
+                                  );
+                                },
+                              );
+                            }
                             return GridView.builder(
                               padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
                               physics: const BouncingScrollPhysics(),
@@ -221,6 +300,11 @@ class _BookshelfPageState extends State<BookshelfPage> {
             ),
             const Divider(height: 1),
             ListTile(
+              leading: const Icon(Icons.info_outline_rounded),
+              title: const Text('书籍详情'),
+              onTap: () => Navigator.pop(sheetContext, 'detail'),
+            ),
+            ListTile(
               leading: const Icon(Icons.menu_book_outlined),
               title: const Text('开始阅读'),
               onTap: () => Navigator.pop(sheetContext, 'open'),
@@ -236,11 +320,21 @@ class _BookshelfPageState extends State<BookshelfPage> {
       ),
     );
     if (!mounted) return;
-    if (action == 'open') await _openBook(book);
+    if (action == 'detail') await _openBook(book);
+    if (action == 'open') await _openReader(book);
     if (action == 'delete') await _confirmDelete(store, book);
   }
 
   Future<void> _openBook(Book book) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (BuildContext context) => BookDetailPage(book: book),
+      ),
+    );
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _openReader(Book book) async {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (BuildContext context) => book.format.toUpperCase() == 'PDF'
@@ -250,6 +344,7 @@ class _BookshelfPageState extends State<BookshelfPage> {
     );
     if (!mounted) return;
     await LibraryStore.instance.touch(book);
+    setState(() {});
   }
 
   Future<void> _importBook() async {
@@ -471,6 +566,159 @@ class _EmptyLibrary extends StatelessWidget {
                 ),
               ),
             ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+
+class _ContinueCard extends StatelessWidget {
+  const _ContinueCard({required this.book, required this.onTap});
+  final Book book;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ReadPalette.of(context);
+    final int chapters = book.chapterCount;
+    final double ratio = chapters > 0
+        ? ((book.chapterIndex.value + 1) / chapters).clamp(0.0, 1.0)
+        : 0.0;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(kEink ? 0 : 12),
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: palette.surface,
+            border: Border.all(color: palette.outline),
+            borderRadius: BorderRadius.circular(kEink ? 0 : 12),
+          ),
+          child: Row(
+            children: <Widget>[
+              Container(
+                width: 38,
+                height: 54,
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: palette.background,
+                  border: Border.all(color: palette.outline),
+                  borderRadius: BorderRadius.circular(kEink ? 0 : 4),
+                ),
+                child: Text(
+                  book.title,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 9, height: 1.25, color: palette.ink),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text('继续阅读',
+                        style: TextStyle(fontSize: 11, color: palette.muted)),
+                    const SizedBox(height: 3),
+                    Text(book.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: palette.ink)),
+                    const SizedBox(height: 4),
+                    Text(
+                      chapters > 0
+                          ? '第 ${book.chapterIndex.value + 1}/$chapters 章 · ${(ratio * 100).toStringAsFixed(0)}%'
+                          : '第 ${book.chapterIndex.value + 1} 章',
+                      style: TextStyle(fontSize: 11, color: palette.muted),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.arrow_forward_rounded, size: 19, color: palette.ink),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BookRow extends StatelessWidget {
+  const _BookRow({
+    required this.book,
+    required this.onOpen,
+    required this.onMenu,
+  });
+
+  final Book book;
+  final VoidCallback onOpen;
+  final VoidCallback onMenu;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ReadPalette.of(context);
+    final bool finished = ReadingStatsStore.instance.isFinished(book.id);
+    return InkWell(
+      onTap: onOpen,
+      onLongPress: onMenu,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Row(
+          children: <Widget>[
+            Container(
+              width: 42,
+              height: 60,
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: palette.surface,
+                border: Border.all(color: palette.outline),
+                borderRadius: BorderRadius.circular(kEink ? 0 : 4),
+              ),
+              child: Text(
+                book.title,
+                maxLines: 4,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 9, height: 1.25, color: palette.ink),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(book.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 15, fontWeight: FontWeight.w600, color: palette.ink)),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${book.author} · ${book.format.toUpperCase()}'
+                    '${finished ? ' · 已读完' : book.lastReadAt == null ? ' · 未读' : ''}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 12, color: palette.muted),
+                  ),
+                ],
+              ),
+            ),
+            if (book.chapterCount > 0)
+              Text(
+                '${((book.chapterIndex.value + 1) / book.chapterCount * 100).clamp(0, 100).toStringAsFixed(0)}%',
+                style: TextStyle(fontSize: 11, color: palette.muted),
+              ),
+            IconButton(
+              tooltip: '更多',
+              icon: Icon(Icons.more_horiz_rounded, size: 18, color: palette.muted),
+              onPressed: onMenu,
+            ),
           ],
         ),
       ),

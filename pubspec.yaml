@@ -1,7 +1,7 @@
 name: read
 description: 极简全平台电子书阅读器（阅读功能完整 + 多端同步）
 publish_to: 'none'
-version: 0.4.0+5
+version: 0.5.0+6
 
 environment:
   sdk: ">=3.3.0 <4.0.0"
@@ -23,6 +23,9 @@ dependencies:
   path_provider: ^2.1.4
   shared_preferences: ^2.3.2
   charset_converter: ^2.1.1
+  flutter_secure_storage: ^10.3.4
+  connectivity_plus: ^7.3.1
+  flutter_tts: ^4.2.5
 
 dev_dependencies:
   flutter_test:
