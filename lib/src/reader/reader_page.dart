@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 
@@ -12,6 +13,7 @@ import 'package:read/src/services/library_store.dart';
 import 'package:read/src/services/reader_style_store.dart';
 import 'package:read/src/services/reader_text_formatter.dart';
 import 'package:read/src/services/reader_font_store.dart';
+import 'package:read/src/services/reader_background_store.dart';
 import 'package:read/src/services/reading_stats_store.dart';
 import 'package:read/src/theme.dart';
 
@@ -122,6 +124,9 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
 
   _Palette get _palette {
     if (kEink) return const _Palette(Colors.white, Colors.black);
+    if (_style.backgroundImage.isNotEmpty) {
+      return const _Palette(Colors.black, Colors.white);
+    }
     switch (_style.backgroundIndex) {
       case 1:
         return const _Palette(Color(0xFFF5EFE1), Color(0xFF41382B));
@@ -281,7 +286,22 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
           ),
         ),
       ) : null,
-      body: SafeArea(child: LayoutBuilder(
+      body: DecoratedBox(
+        decoration: BoxDecoration(
+          color: palette.background,
+          image: !kEink && _style.backgroundImage.isNotEmpty
+              ? DecorationImage(
+                  image: FileImage(File(_style.backgroundImage)),
+                  fit: BoxFit.cover,
+                  colorFilter: ColorFilter.mode(
+                    Colors.black.withValues(alpha: _style.backgroundDim),
+                    BlendMode.darken,
+                  ),
+                  onError: (error, stackTrace) {},
+                )
+              : null,
+        ),
+        child: SafeArea(child: LayoutBuilder(
         builder: (BuildContext context, BoxConstraints constraints) {
           _maybeMeasure(constraints.biggest, chapter);
           if (_pageSlices.isEmpty) {
@@ -369,6 +389,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
           );
         },
       )),
+      ),
     );
   }
 
@@ -814,6 +835,11 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     try {
       var selection = await ReaderStyleStore.instance.load(widget.book.id, _style);
       if (!mounted) return;
+      if (selection.style.backgroundImage.isNotEmpty &&
+          !await ReaderBackgroundStore.instance.isAppOwned(selection.style.backgroundImage)) {
+        selection = ReaderStyleSelection(
+          selection.style.copyWith(backgroundImage: ''), selection.bookSpecific);
+      }
       if (selection.style.fontFamily.isNotEmpty) {
         final loaded = await ReaderFontStore.instance.load(selection.style.fontFamily);
         if (!mounted) return;
@@ -1081,6 +1107,39 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                               () => _updateStyle(_style.copyWith(backgroundIndex: i))),
                       ],
                     ),
+                  ],
+                  if (!kEink) ...<Widget>[
+                    section('背景图片'),
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.image_outlined),
+                      title: Text(_style.backgroundImage.isEmpty
+                          ? '导入背景图片' : '更换背景图片'),
+                      subtitle: const Text('JPG / PNG / WebP，保存到应用私有目录'),
+                      trailing: const Icon(Icons.add_rounded),
+                      onTap: () async {
+                        try {
+                          final path = await ReaderBackgroundStore.instance.importFromPicker();
+                          if (!mounted || !ctx.mounted || path == null) return;
+                          refresh(() => _updateStyle(_style.copyWith(
+                            backgroundImage: path, backgroundDim: 0.5)));
+                        } catch (error) {
+                          if (!ctx.mounted) return;
+                          ScaffoldMessenger.of(ctx).showSnackBar(
+                            SnackBar(content: Text('背景导入失败：$error')),
+                          );
+                        }
+                      },
+                    ),
+                    if (_style.backgroundImage.isNotEmpty) ...<Widget>[
+                      TextButton.icon(
+                        onPressed: () => change(_style.copyWith(backgroundImage: '')),
+                        icon: const Icon(Icons.close_rounded),
+                        label: const Text('移除自定义背景'),
+                      ),
+                      _styleSlider('图片暗度', _style.backgroundDim, 0, 0.8, 16,
+                        (v) => change(_style.copyWith(backgroundDim: v))),
+                    ],
                   ],
                   section('显示内容'),
                   SwitchListTile.adaptive(
