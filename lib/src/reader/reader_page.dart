@@ -1623,47 +1623,46 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
             onPressed: _searchInBook,
           ),
           IconButton(
-            tooltip: '添加书签',
-            icon: Icon(
-              _bookmarks.contains(_currentAbsoluteOffset)
-                  ? Icons.bookmark_rounded
-                  : Icons.bookmark_border_rounded,
-              size: 21,
-              color: foreground,
-            ),
-            onPressed: _toggleBookmark,
-          ),
-          if (_positionHistory.isNotEmpty)
-            IconButton(
-              tooltip: '返回上一个位置',
-              icon: Icon(Icons.undo_rounded, size: 19, color: foreground),
-              onPressed: _goBackPosition,
-            ),
-          IconButton(
-            tooltip: '朗读',
-            icon: Icon(
-              _speaking ? Icons.stop_circle_outlined : Icons.headphones_outlined,
-              size: 21,
-              color: foreground,
-            ),
-            onPressed: _openTtsSheet,
-          ),
-          if (SyncConfig.instance.showReaderSyncButton)
-            IconButton(
-              tooltip: '同步阅读进度',
-              icon: Icon(
-                AutoSyncService.instance.config.lastProgressAt.isEmpty
-                    ? Icons.cloud_sync_outlined
-                    : Icons.cloud_done_outlined,
-                size: 21,
-                color: foreground,
-              ),
-              onPressed: _openSyncMenu,
-            ),
-          IconButton(
             tooltip: '阅读设置',
             icon: Icon(Icons.tune_rounded, size: 21, color: foreground),
             onPressed: _openSettings,
+          ),
+          PopupMenuButton<String>(
+            tooltip: '更多阅读操作',
+            icon: Icon(Icons.more_horiz_rounded, color: foreground),
+            onSelected: (String action) {
+              switch (action) {
+                case 'bookmark':
+                  _toggleBookmark();
+                case 'history':
+                  _goBackPosition();
+                case 'tts':
+                  _openTtsSheet();
+                case 'sync':
+                  _openSyncMenu();
+              }
+            },
+            itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+              PopupMenuItem<String>(
+                value: 'bookmark',
+                child: Text(_bookmarks.contains(_currentAbsoluteOffset)
+                    ? '取消书签' : '添加书签'),
+              ),
+              if (_positionHistory.isNotEmpty)
+                const PopupMenuItem<String>(
+                  value: 'history',
+                  child: Text('返回上一个位置'),
+                ),
+              const PopupMenuItem<String>(
+                value: 'tts',
+                child: Text('朗读'),
+              ),
+              if (SyncConfig.instance.showReaderSyncButton)
+                const PopupMenuItem<String>(
+                  value: 'sync',
+                  child: Text('同步阅读进度'),
+                ),
+            ],
           ),
         ],
       ),
