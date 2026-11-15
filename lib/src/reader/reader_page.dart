@@ -51,6 +51,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   bool _showChrome = false;
   bool _styleLoaded = false;
   Timer? _autoTurnTimer;
+  int? _scrubAbsoluteOffset;
 
   @override
   void initState() {
@@ -276,12 +277,21 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
               Expanded(
                 child: Slider(
                   min: 0,
-                  max: (_pageSlices.length - 1).clamp(1, 1000000).toDouble(),
-                  value: _pageIndex.clamp(0, (_pageSlices.length - 1).clamp(1, 1000000)).toDouble(),
-                  onChanged: _pageSlices.length <= 1 ? null : (value) {
-                    if (_controller?.hasClients ?? false) {
-                      _controller!.jumpToPage(value.round());
-                    }
+                  max: widget.book.content.length.clamp(1, 1000000000).toDouble(),
+                  value: (_scrubAbsoluteOffset ?? _absoluteReadingOffset())
+                      .clamp(0, widget.book.content.length.clamp(1, 1000000000))
+                      .toDouble(),
+                  label: widget.book.content.isEmpty
+                      ? '0%'
+                      : (((_scrubAbsoluteOffset ?? _absoluteReadingOffset()) /
+                          widget.book.content.length) * 100)
+                          .clamp(0, 100).toStringAsFixed(1) + '%',
+                  onChanged: widget.book.content.isEmpty ? null : (value) {
+                    setState(() => _scrubAbsoluteOffset = value.round());
+                  },
+                  onChangeEnd: widget.book.content.isEmpty ? null : (value) {
+                    setState(() => _scrubAbsoluteOffset = null);
+                    _jumpToAbsoluteOffset(value.round());
                   },
                 ),
               ),
