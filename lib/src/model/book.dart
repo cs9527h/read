@@ -9,6 +9,7 @@ class Book {
     required this.content,
     this.format = 'TXT',
     this.sourcePath,
+    this.coverPath,
     this.lastReadAt,
     this.chapterCount = 0,
   });
@@ -21,6 +22,8 @@ class Book {
 
   /// 导入文件的绝对路径（内置样章为 null）。
   final String? sourcePath;
+  /// An optional, validated cover copied into app-owned storage.
+  final String? coverPath;
   final DateTime? lastReadAt;
 
   /// 章节总数缓存（由阅读页写入，用于书架显示粗略进度）。
@@ -39,6 +42,7 @@ class Book {
         'author': author,
         'format': format,
         'sourcePath': sourcePath,
+        'coverPath': coverPath,
         'lastReadAt': lastReadAt?.millisecondsSinceEpoch,
         'chapterCount': chapterCount,
       };
@@ -49,6 +53,7 @@ class Book {
         author: (m['author'] as String?) ?? '未知作者',
         format: (m['format'] as String?) ?? 'TXT',
         sourcePath: m['sourcePath'] as String?,
+        coverPath: m['coverPath'] as String?,
         lastReadAt: m['lastReadAt'] == null
             ? null
             : DateTime.fromMillisecondsSinceEpoch(m['lastReadAt'] as int),
