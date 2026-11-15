@@ -165,16 +165,25 @@ class LibraryStore extends ChangeNotifier {
   /// 导入 TXT：把内容复制到应用目录，元数据写入本地存储。
   Future<Book?> importBook() async {
     final FilePickerResult? result = await FilePicker.platform.pickFiles(
-      type: FileType.any,
+      type: FileType.custom,
+      allowedExtensions: const <String>[
+        'txt', 'epub', 'pdf', 'md', 'markdown', 'html', 'htm',
+      ],
+      withData: false,
     );
     if (result == null || result.files.isEmpty) return null;
     final PlatformFile picked = result.files.first;
     final String? path = picked.path;
-    if (path == null) return null;
+    if (path == null || path.isEmpty) {
+      throw const FormatException('系统未返回可读取的本地文件路径。请先将电子书保存到手机本地文件夹后重新选择。');
+    }
 
     final String ext = picked.name.split('.').last.toLowerCase();
     if (ext == 'pdf') {
       final File source = File(path);
+      if (!await source.exists()) {
+        throw const FormatException('所选 PDF 文件无法读取，请确认文件已下载到本地');
+      }
       await PdfFormat.verifyHeader(source);
       final Directory base = await getApplicationDocumentsDirectory();
       final Directory dir = Directory(base.path + '/books');
@@ -197,6 +206,9 @@ class LibraryStore extends ChangeNotifier {
         '当前支持 TXT、EPUB（文字版）、PDF、Markdown、HTML，其余格式开发中');
     }
     final File source = File(path);
+    if (!await source.exists()) {
+      throw const FormatException('所选文件无法读取，请确认文件已下载到本地');
+    }
     final int fileSize = await source.length();
     if (fileSize > FormatEngine.maxSourceBytes) {
       throw const FormatException(
