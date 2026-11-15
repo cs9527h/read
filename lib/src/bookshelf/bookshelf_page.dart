@@ -366,9 +366,12 @@ class _BookCell extends StatelessWidget {
     if (ReadingStatsStore.instance.isFinished(book.id)) return '已读完';
     final int chapters = book.chapterCount;
     if (chapters <= 0) return '第 ${book.chapterIndex.value + 1} 章';
-    final double ratio =
-        ((book.chapterIndex.value + 1) / chapters).clamp(0.0, 1.0).toDouble();
-    return '${(ratio * 100).toStringAsFixed(2)}%';
+    // A chapter number alone cannot determine a precise percentage. In
+    // particular, the old formula said "100%" at the start of the last
+    // chapter. Show a truthful chapter count until a durable absolute
+    // source offset is available to the bookshelf.
+    final current = (book.chapterIndex.value + 1).clamp(1, chapters);
+    return '第 $current / $chapters 章';
   }
 }
 
