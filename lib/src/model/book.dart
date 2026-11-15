@@ -26,6 +26,9 @@ class Book {
   final ValueNotifier<int> chapterIndex = ValueNotifier<int>(0);
   final ValueNotifier<int> pageIndex = ValueNotifier<int>(0);
 
+  /// Layout-independent progress within the current chapter; -1 = legacy page-only.
+  final ValueNotifier<int> charOffset = ValueNotifier<int>(-1);
+
   Map<String, dynamic> toMeta() => <String, dynamic>{
         'id': id,
         'title': title,
