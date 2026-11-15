@@ -10,11 +10,13 @@ import 'package:path/path.dart' as p;
 import 'package:xml/xml.dart';
 
 class ImportedDocument {
-  const ImportedDocument(this.text, this.format, {this.title, this.author});
+  const ImportedDocument(this.text, this.format, {this.title, this.author, this.coverBytes});
   final String text;
   final String format;
   final String? title;
   final String? author;
+  /// Optional embedded EPUB cover, accepted only for bounded raster images.
+  final Uint8List? coverBytes;
 }
 
 /// Text-mode EPUB, Markdown and HTML import. Does not execute remote HTML.
@@ -194,6 +196,37 @@ class FormatEngine {
         manifest[id] = _resolve(p.posix.dirname(opfPath), href);
       }
     }
+    // EPUB3 uses properties="cover-image"; EPUB2 commonly uses
+    // <meta name="cover" content="item-id">. Only bounded local raster bytes
+    // are accepted: never execute/resolve remote SVG or URLs.
+    String? coverId;
+    for (final meta in opf.findAllElements('meta')) {
+      if (meta.getAttribute('name') == 'cover') {
+        coverId = meta.getAttribute('content');
+        break;
+      }
+    }
+    Uint8List? coverBytes;
+    for (final item in opf.findAllElements('item')) {
+      final type = item.getAttribute('media-type') ?? '';
+      final properties = (item.getAttribute('properties') ?? '').split(' ');
+      final cover = properties.contains('cover-image') ||
+          (coverId != null && item.getAttribute('id') == coverId);
+      if (!cover || !<String>['image/jpeg', 'image/png', 'image/webp']
+          .contains(type)) continue;
+      final href = item.getAttribute('href');
+      if (href == null) continue;
+      final imagePath = _resolve(p.posix.dirname(opfPath), href);
+      final file = entries[imagePath];
+      if (file == null || file.size <= 0 || file.size > 3 * 1024 * 1024) {
+        continue;
+      }
+      final bytes = file.readBytes();
+      if (bytes != null && bytes.isNotEmpty && bytes.length <= 3 * 1024 * 1024) {
+        coverBytes = Uint8List.fromList(bytes);
+        break;
+      }
+    }
     final sections = <String>[];
     for (final spine in opf.findAllElements('itemref')) {
       final path = manifest[spine.getAttribute('idref')];
@@ -214,6 +247,7 @@ class FormatEngine {
       sections.join('\n\n'), 'EPUB',
       title: titles.isEmpty ? null : titles.first.innerText.trim(),
       author: authors.isEmpty ? null : authors.first.innerText.trim(),
+      coverBytes: coverBytes,
     );
   }
 }
