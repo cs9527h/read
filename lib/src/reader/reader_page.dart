@@ -4,6 +4,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 
 import 'package:read/src/model/book.dart';
 import 'package:read/src/reader/engine/reader_engine.dart';
@@ -12,12 +13,18 @@ import 'package:read/src/reader/settings/reader_settings_store.dart';
 import 'package:read/src/reader/settings/reader_theme.dart';
 import 'package:read/src/reader/settings/user_font_store.dart';
 import 'package:read/src/reader/widgets/reader_settings_sheet.dart';
+import 'package:read/src/theme.dart';
 import 'package:read/src/services/book_search.dart';
 import 'package:read/src/services/bookmark_store.dart';
 import 'package:read/src/services/chapter_rule_store.dart';
 import 'package:read/src/services/chapter_splitter.dart';
+import 'package:read/src/services/highlight_store.dart';
 import 'package:read/src/services/library_store.dart';
 import 'package:read/src/services/reading_stats_store.dart';
+import 'package:read/src/sync/auto_sync_service.dart';
+import 'package:read/src/sync/progress_models.dart';
+import 'package:read/src/sync/progress_sync_service.dart';
+import 'package:read/src/sync/sync_config.dart';
 
 /// 阅读页：真实排版分页、翻页、菜单、书签、目录与全部阅读设置都从这里生效。
 class ReaderPage extends StatefulWidget {
@@ -41,7 +48,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   PaginatedChapter? _pagination;
   PageController? _pageController;
   ScrollController? _scrollController;
-  List<int> _bookmarks = const <int>[];
+  List<int> _bookmarks = <int>[];
+  List<HighlightRecord> _highlights = <HighlightRecord>[];
 
   bool _menuVisible = false;
   bool _loading = true;
@@ -58,6 +66,13 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   int _sessionChars = 0;
   int _lastSavedOffset = 0;
   bool _isReadingActive = true;
+
+  final FlutterTts _tts = FlutterTts();
+  bool _speaking = false;
+  bool _ttsContinuous = false;
+  bool _ttsPaused = false;
+  double _ttsSpeed = 0.5;
+  final List<int> _positionHistory = <int>[];
 
   @override
   void initState() {
@@ -78,6 +93,122 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
       _flushStats();
     });
     _startAutoTurn();
+    _initTts();
+    unawaited(AutoSyncService.instance.onBookOpened(widget.book).then(_afterOpenSync));
+  }
+
+  void _initTts() {
+    _tts.setCompletionHandler(() {
+      if (!mounted) return;
+      setState(() {
+        _speaking = false;
+        _ttsPaused = false;
+      });
+      if (_ttsContinuous && _isReadingActive) {
+        _turnPage(1);
+        Future<void>.delayed(const Duration(milliseconds: 350), () {
+          if (mounted && _ttsContinuous) unawaited(_speakCurrent());
+        });
+      }
+    });
+    _tts.setCancelHandler(() {
+      if (mounted) setState(() => _speaking = false);
+    });
+    _tts.setErrorHandler((dynamic message) {
+      if (mounted) {
+        setState(() => _speaking = false);
+        _ttsContinuous = false;
+      }
+    });
+  }
+
+  void _afterOpenSync(ProgressSyncReport? report) {
+    if (!mounted || report == null) return;
+    final hash = widget.book.contentHash;
+    if (hash == null || !report.downloadedHashes.contains(hash)) return;
+    if (SyncConfig.instance.autoJumpProgress) _reloadAtSyncedPosition();
+  }
+
+  Future<void> _manualProgressSync() async {
+    if (!SyncConfig.instance.configured) {
+      _showToast('请先在“我的 → 同步”配置云存储');
+      return;
+    }
+    try {
+      final report = await AutoSyncService.instance.runProgress(
+        widget.book,
+        resolver: _resolveProgressConflict,
+      );
+      if (!mounted) return;
+      if (report == null) {
+        _showToast('同步未执行');
+        return;
+      }
+      final hash = widget.book.contentHash;
+      if (hash != null && report.downloadedHashes.contains(hash)) {
+        _reloadAtSyncedPosition();
+        _showToast('已采用云端阅读进度');
+      } else {
+        _showToast('阅读进度已同步');
+      }
+    } catch (error) {
+      if (mounted) _showToast('同步失败：$error');
+    }
+  }
+
+  Future<ProgressChoice?> _resolveProgressConflict(ProgressSyncConflict conflict) async {
+    if (!SyncConfig.instance.promptCloudProgress) {
+      return SyncConfig.instance.conflictPolicy == 'cloud'
+          ? ProgressChoice.cloud
+          : ProgressChoice.local;
+    }
+    return showDialog<ProgressChoice>(
+      context: context,
+      builder: (BuildContext ctx) => AlertDialog(
+        title: Text('《${conflict.title}》进度冲突'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text('本机位置：字符 ${conflict.local.offset}'),
+            const SizedBox(height: 6),
+            Text('云端位置：字符 ${conflict.remote.offset}'),
+            const SizedBox(height: 6),
+            Text('云端设备：${conflict.remote.device.substring(0, 6)}…'),
+            const SizedBox(height: 10),
+            const Text('选择后会作为一个新的同步版本上传，不会静默覆盖。'),
+          ],
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, ProgressChoice.local),
+            child: const Text('保留本机'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, ProgressChoice.cloud),
+            child: const Text('采用云端'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _reloadAtSyncedPosition() {
+    final chapter = widget.book.chapterIndex.value;
+    if (chapter < 0 || chapter >= _chapters.length) return;
+    setState(() {
+      _chapterIndex = chapter;
+      _pageIndex = 0;
+      _anchorOffset = widget.book.charOffset.value;
+      _layoutKey = '';
+      _pagination = null;
+    });
+  }
+
+  void _showToast(String text) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(text)));
   }
 
   @override
@@ -89,6 +220,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     _clockTimer?.cancel();
     _statsTimer?.cancel();
     _flushStats();
+    AutoSyncService.instance.onBookClosed();
+    unawaited(_tts.stop());
     _pageController?.dispose();
     _scrollController?.dispose();
     _restoreSystemUi();
@@ -148,7 +281,15 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
 
   Future<void> _initBookmarks() async {
     final List<int> saved = await BookmarkStore.load(widget.book.id);
-    if (mounted) setState(() => _bookmarks = saved);
+    final highlights = await HighlightStore.load(widget.book.id);
+    if (mounted) {
+      setState(() {
+        _bookmarks
+          ..clear()
+          ..addAll(saved);
+        _highlights = highlights;
+      });
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -320,6 +461,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     widget.book.pageIndex.value = _renderPageIndex(column);
     widget.book.charOffset.value = offset;
     LibraryStore.instance.saveProgress(widget.book);
+    AutoSyncService.instance.scheduleProgress(widget.book);
     if (_chapters.isNotEmpty) {
       final double percent =
           (_chapterIndex + (column / math.max(1, p.pages.length))) /
@@ -421,6 +563,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
 
   Future<void> _gotoChapter(int index, {bool atEnd = false}) async {
     if (index < 0 || index >= _chapters.length) return;
+    _rememberPosition();
     final Chapter chapter = _chapters[index];
     setState(() {
       _chapterIndex = index;
@@ -436,7 +579,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     await LibraryStore.instance.saveProgress(widget.book);
   }
 
-  void _jumpToAbsolute(int absoluteOffset) {
+  void _jumpToAbsolute(int absoluteOffset, {bool remember = true}) {
+    if (remember) _rememberPosition();
     int chapterIndex = _chapters.length - 1;
     for (int i = 0; i < _chapters.length; i++) {
       if (absoluteOffset < _chapters[i].end) {
@@ -838,6 +982,264 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     return TextSpan(children: spans);
   }
 
+  Widget _selectablePage(
+    PaginatedChapter chapter,
+    EnginePage page,
+    TextStyle style,
+  ) {
+    final displayText = page.textOf(chapter.display);
+    return SelectableText.rich(
+      _highlightedSpan(chapter, page, style),
+      textAlign: ReaderEngine.textAlignOf(_settings.align),
+      contextMenuBuilder: (BuildContext ctx, EditableTextState editableState) {
+        final selection = editableState.textEditingValue.selection;
+        final canUse = selection.isValid && !selection.isCollapsed;
+        return AdaptiveTextSelectionToolbar(
+          anchors: editableState.contextMenuAnchors,
+          children: <Widget>[
+            TextSelectionToolbarTextButton(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              onPressed: () => editableState.copySelection(
+                SelectionChangedCause.toolbar,
+              ),
+              child: const Text('复制'),
+            ),
+            if (canUse) ...<Widget>[
+              TextSelectionToolbarTextButton(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+                onPressed: () {
+                  editableState.hideToolbar();
+                  unawaited(_saveSelectionHighlight(
+                    chapter,
+                    page,
+                    selection,
+                    note: '',
+                  ));
+                },
+                child: const Text('高亮'),
+              ),
+              TextSelectionToolbarTextButton(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+                onPressed: () async {
+                  editableState.hideToolbar();
+                  final note = await _askNote(displayText, selection, page);
+                  if (note == null || !mounted) return;
+                  await _saveSelectionHighlight(
+                    chapter,
+                    page,
+                    selection,
+                    note: note,
+                  );
+                },
+                child: const Text('笔记'),
+              ),
+            ],
+            if (_highlights.isNotEmpty)
+              TextSelectionToolbarTextButton(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+                onPressed: () {
+                  editableState.hideToolbar();
+                  _manageHighlights();
+                },
+                child: const Text('高亮记录'),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  TextSpan _highlightedSpan(
+    PaginatedChapter chapter,
+    EnginePage page,
+    TextStyle style,
+  ) {
+    final text = page.textOf(chapter.display);
+    if (text.isEmpty) return TextSpan(text: text, style: style);
+    final chapterStart = _chapters[_chapterIndex].start;
+    final chapterLength = _chapters[_chapterIndex].length;
+    final starts = <int>[0, text.length];
+    final ends = <int>[0, text.length];
+    final backgrounds = <Color?>[null, null];
+    for (final highlight in _highlights) {
+      final sourceStart = (highlight.start - chapterStart).clamp(0, chapterLength);
+      final sourceEnd = (highlight.end - chapterStart).clamp(0, chapterLength);
+      if (sourceEnd <= sourceStart) continue;
+      final displayStart = chapter.display.displayOffset(sourceStart);
+      final displayEnd = chapter.display.displayOffset(sourceEnd);
+      final localStart = (displayStart - page.displayStart).clamp(0, text.length);
+      final localEnd = (displayEnd - page.displayStart).clamp(0, text.length);
+      if (localEnd <= localStart) continue;
+      starts.add(localStart);
+      starts.add(localEnd);
+      ends.add(localStart);
+      ends.add(localEnd);
+      backgrounds.add(Color(highlight.color));
+      backgrounds.add(null);
+    }
+    final sorted = starts.toSet().toList()..sort();
+    final spans = <InlineSpan>[];
+    for (var i = 0; i < sorted.length - 1; i++) {
+      final start = sorted[i];
+      final end = sorted[i + 1];
+      if (end <= start) continue;
+      Color? background;
+      for (var h = 0; h < starts.length; h++) {
+        if (h >= ends.length || backgrounds[h] == null) continue;
+        if (start >= starts[h] && end <= ends[h]) {
+          background = backgrounds[h];
+          break;
+        }
+      }
+      final regex = _boldRegex();
+      bool bold = false;
+      if (regex != null) {
+        final lineStart = text.lastIndexOf('\n', start > 0 ? start - 1 : 0);
+        final lineEnd = text.indexOf('\n', end);
+        final line = text.substring(
+          lineStart < 0 ? 0 : lineStart + 1,
+          lineEnd < 0 ? text.length : lineEnd,
+        );
+        bold = line.trim().isNotEmpty && regex.hasMatch(line);
+      }
+      spans.add(TextSpan(
+        text: text.substring(start, end),
+        style: style.copyWith(
+          fontWeight: bold ? FontWeight.w700 : null,
+          backgroundColor: background?.withValues(alpha: 0.42),
+        ),
+      ));
+    }
+    return TextSpan(children: spans);
+  }
+
+  RegExp? _boldRegex() {
+    final pattern = _settings.boldPattern.trim();
+    if (pattern.isEmpty) return null;
+    try {
+      return RegExp(pattern);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<String?> _askNote(
+    String displayText,
+    TextSelection selection,
+    EnginePage page,
+  ) async {
+    final selected = selection.isValid
+        ? displayText.substring(
+            selection.start.clamp(0, displayText.length),
+            selection.end.clamp(0, displayText.length),
+          )
+        : '';
+    final controller = TextEditingController();
+    final note = await showDialog<String>(
+      context: context,
+      builder: (BuildContext ctx) => AlertDialog(
+        title: const Text('添加笔记'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              selected.length > 160 ? '${selected.substring(0, 160)}…' : selected,
+              style: const TextStyle(fontSize: 12, height: 1.5),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              maxLines: 4,
+              decoration: const InputDecoration(
+                hintText: '写下想法（可留空，仅高亮）',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: <Widget>[
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    return note;
+  }
+
+  Future<void> _saveSelectionHighlight(
+    PaginatedChapter chapter,
+    EnginePage page,
+    TextSelection selection, {
+    required String note,
+  }) async {
+    if (!selection.isValid || selection.isCollapsed) return;
+    final text = page.textOf(chapter.display);
+    final localStart = selection.start.clamp(0, text.length);
+    final localEnd = selection.end.clamp(0, text.length);
+    if (localEnd <= localStart) return;
+    final chapterStart = _chapters[_chapterIndex].start;
+    final sourceStart = chapter.display.sourceOffset(page.displayStart + localStart);
+    final sourceEnd = chapter.display.sourceOffset(page.displayEnd - (text.length - localEnd));
+    final record = HighlightRecord(
+      start: chapterStart + sourceStart,
+      end: chapterStart + math.max(sourceStart + 1, sourceEnd),
+      color: 0xFFFFE082,
+      note: note,
+      createdAt: DateTime.now().millisecondsSinceEpoch,
+    );
+    final values = await HighlightStore.add(widget.book.id, record);
+    if (mounted) {
+      setState(() => _highlights = values);
+      _showToast(note.isEmpty ? '已高亮' : '已保存笔记');
+    }
+  }
+
+  Future<void> _manageHighlights() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (BuildContext ctx) => StatefulBuilder(
+        builder: (BuildContext ctx, StateSetter setSheetState) => ListView(
+          shrinkWrap: true,
+          children: <Widget>[
+            ListTile(
+              title: Text('高亮与笔记（${_highlights.length}）'),
+              subtitle: const Text('按原文字符锚点保存，换字号后仍能定位'),
+            ),
+            for (final highlight in _highlights)
+              ListTile(
+                leading: const Icon(Icons.format_quote_rounded),
+                title: Text(
+                  highlight.note.isEmpty ? '高亮' : highlight.note,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                subtitle: Text(
+                  '字符 ${highlight.start}–${highlight.end}',
+                  style: const TextStyle(fontSize: 11),
+                ),
+                trailing: IconButton(
+                  icon: const Icon(Icons.delete_outline_rounded, size: 20),
+                  onPressed: () async {
+                    await HighlightStore.remove(widget.book.id, highlight);
+                    final values = await HighlightStore.load(widget.book.id);
+                    if (mounted) setState(() => _highlights = values);
+                    setSheetState(() {});
+                  },
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _scaledText(Widget child) {
     if ((_settings.textScaleX - 1).abs() < 0.001) return child;
     return Transform.scale(
@@ -857,12 +1259,9 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
       color: foreground,
       textScale: _textScale,
     );
-    final Widget body = _scaledText(SelectionArea(
-      child: Text.rich(
-        _pageSpan(page.textOf(p.display), style),
-        textAlign: ReaderEngine.textAlignOf(_settings.align),
-      ),
-    ));
+    final Widget body = _scaledText(
+      _selectablePage(p, page, style),
+    );
     children.add(
       Expanded(
         child: Align(
@@ -898,12 +1297,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
             alignment: _settings.bottomAlign
                 ? Alignment.bottomLeft
                 : Alignment.topLeft,
-            child: _scaledText(SelectionArea(
-              child: Text.rich(
-                _pageSpan(page.textOf(p.display), style),
-                textAlign: ReaderEngine.textAlignOf(_settings.align),
-              ),
-            )),
+            child: _scaledText(_selectablePage(p, page, style)),
           ),
         ),
       );
@@ -1182,6 +1576,33 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
             ),
             onPressed: _toggleBookmark,
           ),
+          if (_positionHistory.isNotEmpty)
+            IconButton(
+              tooltip: '返回上一个位置',
+              icon: Icon(Icons.undo_rounded, size: 19, color: foreground),
+              onPressed: _goBackPosition,
+            ),
+          IconButton(
+            tooltip: '朗读',
+            icon: Icon(
+              _speaking ? Icons.stop_circle_outlined : Icons.headphones_outlined,
+              size: 21,
+              color: foreground,
+            ),
+            onPressed: _openTtsSheet,
+          ),
+          if (SyncConfig.instance.showReaderSyncButton)
+            IconButton(
+              tooltip: '同步阅读进度',
+              icon: Icon(
+                AutoSyncService.instance.config.lastProgressAt.isEmpty
+                    ? Icons.cloud_sync_outlined
+                    : Icons.cloud_done_outlined,
+                size: 21,
+                color: foreground,
+              ),
+              onPressed: _openSyncMenu,
+            ),
           IconButton(
             tooltip: '阅读设置',
             icon: Icon(Icons.tune_rounded, size: 21, color: foreground),
@@ -1276,45 +1697,239 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     );
   }
 
+  void _rememberPosition() {
+    if (_chapters.isEmpty || _pagination == null) return;
+    final current = _currentAbsoluteOffset;
+    if (_positionHistory.isNotEmpty && _positionHistory.last == current) return;
+    _positionHistory.add(current);
+    if (_positionHistory.length > 20) _positionHistory.removeAt(0);
+  }
+
+  Future<void> _goBackPosition() async {
+    if (_positionHistory.isEmpty) return;
+    final target = _positionHistory.removeLast();
+    _jumpToAbsolute(target, remember: false);
+    _showToast('已返回上一个阅读位置');
+  }
+
+  Future<void> _openSyncMenu() async {
+    setState(() => _menuVisible = false);
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (BuildContext ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            ListTile(
+              leading: const Icon(Icons.sync_rounded),
+              title: const Text('仅同步当前书进度'),
+              subtitle: const Text('轻量通道，不上传整个书库'),
+              onTap: () => Navigator.pop(ctx, 'progress'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.cloud_sync_outlined),
+              title: const Text('完整同步'),
+              subtitle: Text(SyncConfig.instance.syncFiles
+                  ? '元数据、书签、笔记、设置与可选图书文件'
+                  : '元数据、书签、笔记与设置（不含图书文件）'),
+              onTap: () => Navigator.pop(ctx, 'full'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.history_rounded),
+              title: const Text('同步历史'),
+              subtitle: Text(
+                SyncConfig.instance.lastSyncAt.isEmpty
+                    ? '尚未同步'
+                    : '上次 ${SyncConfig.instance.lastSyncStatus}',
+              ),
+              onTap: () => Navigator.pop(ctx, 'history'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || action == null) return;
+    if (action == 'progress') {
+      await _manualProgressSync();
+    } else if (action == 'full') {
+      if (!SyncConfig.instance.configured) {
+        _showToast('请先在“我的 → 同步”配置云存储');
+        return;
+      }
+      _showToast('正在完整同步…');
+      try {
+        final report = await AutoSyncService.instance.runFull(
+          downloadMissing: SyncConfig.instance.syncFiles,
+        );
+        if (mounted) _showToast(report?.message ?? '没有需要同步的变化');
+      } catch (error) {
+        if (mounted) _showToast('完整同步失败：$error');
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // 朗读（本页 / 连续）
+  // ---------------------------------------------------------------------------
+
+  Future<void> _openTtsSheet() async {
+    setState(() => _menuVisible = false);
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (BuildContext ctx) => StatefulBuilder(
+        builder: (BuildContext ctx, StateSetter setSheetState) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                ListTile(
+                  leading: const Icon(Icons.record_voice_over_outlined),
+                  title: const Text('朗读本页'),
+                  subtitle: const Text('使用系统 TTS 引擎，不读取书外内容'),
+                  onTap: () => Navigator.pop(ctx, 'page'),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.play_circle_outline_rounded),
+                  title: const Text('连续朗读'),
+                  subtitle: const Text('读完后自动翻页，直到章节结尾'),
+                  onTap: () => Navigator.pop(ctx, 'continuous'),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                  child: Row(
+                    children: <Widget>[
+                      const Text('语速'),
+                      Expanded(
+                        child: Slider(
+                          value: _ttsSpeed,
+                          min: 0.25,
+                          max: 1.0,
+                          divisions: 15,
+                          onChanged: (double value) {
+                            _ttsSpeed = value;
+                            setSheetState(() {});
+                          },
+                        ),
+                      ),
+                      Text(_ttsSpeed.toStringAsFixed(2),
+                          style: const TextStyle(fontSize: 12)),
+                    ],
+                  ),
+                ),
+                if (_speaking || _ttsPaused)
+                  ListTile(
+                    leading: Icon(_ttsPaused
+                        ? Icons.play_circle_outline_rounded
+                        : Icons.pause_circle_outline_rounded),
+                    title: Text(_ttsPaused ? '继续朗读' : '暂停朗读'),
+                    onTap: () => Navigator.pop(ctx, _ttsPaused ? 'resume' : 'pause'),
+                  ),
+                if (_speaking || _ttsPaused)
+                  ListTile(
+                    leading: const Icon(Icons.stop_circle_outlined),
+                    title: const Text('停止朗读'),
+                    onTap: () => Navigator.pop(ctx, 'stop'),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    if (!mounted || action == null) return;
+    switch (action) {
+      case 'page':
+        _ttsContinuous = false;
+        await _speakCurrent();
+      case 'continuous':
+        _ttsContinuous = true;
+        await _speakCurrent();
+      case 'pause':
+        await _tts.pause();
+        if (mounted) {
+          setState(() {
+            _speaking = false;
+            _ttsPaused = true;
+          });
+        }
+      case 'resume':
+        _ttsPaused = false;
+        await _speakCurrent();
+      case 'stop':
+        _ttsContinuous = false;
+        _ttsPaused = false;
+        await _tts.stop();
+        if (mounted) setState(() => _speaking = false);
+    }
+  }
+
+  String _currentPageText() {
+    final pagination = _pagination;
+    if (pagination == null || pagination.pages.isEmpty) {
+      final chapter = _chapters[_chapterIndex];
+      final start = (widget.book.charOffset.value >= 0
+              ? widget.book.charOffset.value
+              : 0)
+          .clamp(0, chapter.length);
+      final end = math.min(chapter.length, start + 1800);
+      return chapter.slice(widget.book.content).substring(start, end).trim();
+    }
+    final page = pagination.pages[_pageIndex.clamp(0, pagination.pages.length - 1)];
+    final chapter = _chapters[_chapterIndex];
+    final start = page.sourceStart.clamp(0, chapter.length);
+    final end = page.sourceEnd.clamp(start, chapter.length);
+    return chapter.slice(widget.book.content).substring(start, end).trim();
+  }
+
+  Future<void> _speakCurrent() async {
+    final text = _currentPageText();
+    if (text.isEmpty) {
+      _showToast('当前页没有可朗读的文字');
+      return;
+    }
+    try {
+      await _tts.stop();
+      await _tts.setLanguage('zh-CN');
+      await _tts.setSpeechRate(_ttsSpeed);
+      await _tts.speak(text);
+      if (mounted) {
+        setState(() {
+          _speaking = true;
+          _ttsPaused = false;
+        });
+      }
+    } catch (error) {
+      _ttsContinuous = false;
+      if (mounted) {
+        setState(() => _speaking = false);
+        _showToast('系统 TTS 不可用：$error');
+      }
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // 章节调整 / 书签 / 搜索
   // ---------------------------------------------------------------------------
 
   Future<void> _showChapters() async {
-    final int? selected = await showModalBottomSheet<int>(
+    final String? query = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (BuildContext ctx) => DraggableScrollableSheet(
-        expand: false,
-        initialChildSize: 0.72,
-        builder: (BuildContext ctx, ScrollController scroll) => ListView.builder(
-          controller: scroll,
-          itemCount: _chapters.length + 1,
-          itemBuilder: (BuildContext c, int index) {
-            if (index == _chapters.length) {
-              return ListTile(
-                leading: const Icon(Icons.tune_rounded),
-                title: const Text('章节识别规则'),
-                subtitle: const Text('自动 / 整本一章 / 自定义正则'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _showChapterRules();
-                },
-              );
-            }
-            return ListTile(
-              selected: index == _chapterIndex,
-              title: Text(_chapters[index].title,
-                  maxLines: 1, overflow: TextOverflow.ellipsis),
-              onTap: () => Navigator.pop(ctx, index),
-            );
-          },
-        ),
+      builder: (BuildContext ctx) => _ChapterSheet(
+        chapters: _chapters,
+        currentIndex: _chapterIndex,
       ),
     );
-    if (selected != null && selected != _chapterIndex) {
-      await _gotoChapter(selected);
+    if (!mounted || query == null) return;
+    final int? selected = int.tryParse(query);
+    if (selected != null && selected >= 0 && selected < _chapters.length) {
+      if (selected != _chapterIndex) await _gotoChapter(selected);
+    } else if (query == 'rules') {
+      await _showChapterRules();
     }
   }
 
@@ -1554,7 +2169,152 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
       ),
     );
     if (!mounted || hit == null) return;
+    final int origin = _currentAbsoluteOffset;
     _jumpToAbsolute(hit.start);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text('已跳到“${hit.snippet}”'),
+          action: SnackBarAction(
+            label: '返回原位置',
+            onPressed: () => _jumpToAbsolute(origin),
+          ),
+        ),
+      );
+  }
+}
+
+class _ChapterSheet extends StatefulWidget {
+  const _ChapterSheet({required this.chapters, required this.currentIndex});
+  final List<Chapter> chapters;
+  final int currentIndex;
+
+  @override
+  State<_ChapterSheet> createState() => _ChapterSheetState();
+}
+
+class _ChapterSheetState extends State<_ChapterSheet> {
+  final TextEditingController _controller = TextEditingController();
+  final ScrollController _scroll = ScrollController();
+  String _query = '';
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scroll.hasClients) return;
+      final target = (widget.currentIndex * 56.0)
+          .clamp(0.0, _scroll.position.maxScrollExtent);
+      _scroll.jumpTo(target);
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ReadPalette.of(context);
+    final term = _query.trim().toLowerCase();
+    final indices = <int>[
+      for (var i = 0; i < widget.chapters.length; i++)
+        if (term.isEmpty || widget.chapters[i].title.toLowerCase().contains(term)) i,
+    ];
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.78,
+      builder: (BuildContext ctx, ScrollController dragScroll) => Column(
+        children: <Widget>[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Row(
+              children: <Widget>[
+                Text('目录', style: Theme.of(ctx).textTheme.titleMedium),
+                const SizedBox(width: 8),
+                Text('${widget.chapters.length} 章 · 当前第 ${widget.currentIndex + 1} 章',
+                    style: TextStyle(fontSize: 11, color: palette.muted)),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: TextField(
+              controller: _controller,
+              onChanged: (String value) => setState(() => _query = value),
+              decoration: InputDecoration(
+                hintText: '搜索章节标题',
+                prefixIcon: const Icon(Icons.search_rounded, size: 18),
+                isDense: true,
+                border: const OutlineInputBorder(),
+                suffixIcon: _query.isEmpty
+                    ? null
+                    : IconButton(
+                        icon: const Icon(Icons.close_rounded, size: 18),
+                        onPressed: () {
+                          _controller.clear();
+                          setState(() => _query = '');
+                        },
+                      ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: ListView.builder(
+              controller: _query.isEmpty ? _scroll : dragScroll,
+              itemCount: indices.length + 1,
+              itemBuilder: (BuildContext c, int listIndex) {
+                if (listIndex == indices.length) {
+                  return ListTile(
+                    leading: const Icon(Icons.tune_rounded),
+                    title: const Text('章节识别规则'),
+                    subtitle: const Text('自动 / 整本一章 / 自定义正则'),
+                    onTap: () => Navigator.pop(ctx, 'rules'),
+                  );
+                }
+                final index = indices[listIndex];
+                final chapter = widget.chapters[index];
+                final selected = index == widget.currentIndex;
+                return ListTile(
+                  selected: selected,
+                  selectedTileColor: palette.surface,
+                  leading: SizedBox(
+                    width: 34,
+                    child: Text(
+                      '${index + 1}',
+                      textAlign: TextAlign.right,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: selected ? palette.ink : palette.muted,
+                      ),
+                    ),
+                  ),
+                  title: Text(
+                    chapter.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                    ),
+                  ),
+                  trailing: selected
+                      ? Text('阅读中',
+                          style: TextStyle(fontSize: 10, color: palette.muted))
+                      : null,
+                  onTap: () => Navigator.pop(ctx, '$index'),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

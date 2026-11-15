@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
+
+import 'package:crypto/crypto.dart';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
@@ -196,6 +197,8 @@ class LibraryStore extends ChangeNotifier {
     if (ext == 'pdf') {
       final File source = File(readablePath);
       await PdfFormat.verifyHeader(source);
+      final String hash = await _hashFile(source);
+      final int fileSize = await source.length();
       final Directory base = await getApplicationDocumentsDirectory();
       final Directory dir = Directory(base.path + '/books');
       await dir.create(recursive: true);
@@ -204,8 +207,17 @@ class LibraryStore extends ChangeNotifier {
       final String title = picked.name.toLowerCase().endsWith('.pdf')
           ? picked.name.substring(0, picked.name.length - 4)
           : picked.name;
-      final Book book = Book(id: id, title: title, author: '本地 PDF',
-          format: 'PDF', content: '', sourcePath: copy.path);
+      final Book book = Book(
+        id: id,
+        title: title,
+        author: '本地 PDF',
+        format: 'PDF',
+        content: '',
+        sourcePath: copy.path,
+        contentHash: hash,
+        fileName: picked.name,
+        fileSize: fileSize,
+      );
       return await _commitImportedBook(book);
     }
     if (!FormatEngine.supported.contains(ext)) {
@@ -250,6 +262,9 @@ class LibraryStore extends ChangeNotifier {
       format: parsed.format,
       content: text,
       sourcePath: target.path,
+      contentHash: sha256.convert(bytes).toString(),
+      fileName: picked.name,
+      fileSize: fileSize,
     );
     return await _commitImportedBook(book);
     } finally {
@@ -355,6 +370,9 @@ class LibraryStore extends ChangeNotifier {
       sourcePath: book.sourcePath,
       lastReadAt: DateTime.now(),
       chapterCount: book.chapterCount,
+      contentHash: book.contentHash,
+      fileName: book.fileName,
+      fileSize: book.fileSize,
     );
     updated.chapterIndex.value = book.chapterIndex.value;
     updated.pageIndex.value = book.pageIndex.value;
@@ -366,6 +384,121 @@ class LibraryStore extends ChangeNotifier {
     _sortBooks();
     await _persistMeta();
     notifyListeners();
+  }
+
+  Future<String> _hashFile(File file) async {
+    final sink = _DigestSink();
+    final input = sha256.startChunkedConversion(sink);
+    await for (final chunk in file.openRead()) {
+      input.add(chunk);
+    }
+    input.close();
+    final value = sink.value;
+    if (value == null) throw StateError('文件哈希计算失败');
+    return value.toString();
+  }
+
+  /// Computes and caches the SHA-256 identity for older imported books.
+  Future<String> ensureContentHash(Book book) async {
+    final cached = book.contentHash;
+    if (cached != null && cached.length == 64) return cached;
+    final path = book.sourcePath;
+    if (path == null || !await File(path).exists()) {
+      throw StateError('书籍原文件不存在，无法计算同步标识');
+    }
+    final hash = await _hashFile(File(path));
+    book.contentHash = hash;
+    book.fileSize = await File(path).length();
+    await _persistMeta();
+    return hash;
+  }
+
+  Book? bookByHash(String hash) {
+    for (final book in books) {
+      if (book.contentHash == hash) return book;
+    }
+    return null;
+  }
+
+  /// Applies metadata from a remote device without touching the local file.
+  Future<void> applySyncedMetadata({
+    required String hash,
+    required String title,
+    required String author,
+    required int chapterCount,
+    required DateTime? lastReadAt,
+  }) async {
+    final index = books.indexWhere((Book b) => b.contentHash == hash);
+    if (index < 0) return;
+    final old = books[index];
+    final replacement = Book(
+      id: old.id,
+      title: title.trim().isEmpty ? old.title : title,
+      author: author.trim().isEmpty ? old.author : author,
+      content: old.content,
+      format: old.format,
+      sourcePath: old.sourcePath,
+      lastReadAt: lastReadAt ?? old.lastReadAt,
+      chapterCount: chapterCount,
+      contentHash: old.contentHash,
+      fileName: old.fileName,
+      fileSize: old.fileSize,
+    );
+    replacement.chapterIndex.value = old.chapterIndex.value;
+    replacement.pageIndex.value = old.pageIndex.value;
+    replacement.charOffset.value = old.charOffset.value;
+    books[index] = replacement;
+    _sortBooks();
+    await _persistMeta();
+    notifyListeners();
+  }
+
+  bool hasHash(String hash) => bookByHash(hash) != null;
+
+  /// Restores a book from a remote file. The caller has already verified the
+  /// SHA-256; the file is parsed and committed as a normal local book.
+  Future<Book> importSyncedFile({
+    required Uint8List bytes,
+    required String hash,
+    required String fileName,
+    required String title,
+    required String author,
+    required String format,
+    required int chapterCount,
+    required DateTime? lastReadAt,
+  }) async {
+    final existing = bookByHash(hash);
+    if (existing != null) return existing;
+    if (bytes.isEmpty) throw const FormatException('云端书籍文件为空');
+    final ext = fileName.split('.').last.toLowerCase();
+    if (!FormatEngine.supported.contains(ext)) {
+      throw FormatException('云端书籍格式不支持：$ext');
+    }
+    final Directory base = await getApplicationDocumentsDirectory();
+    final Directory dir = Directory('${base.path}/books');
+    await dir.create(recursive: true);
+    final id = DateTime.now().microsecondsSinceEpoch.toString();
+    final target = File('${dir.path}/$id.$ext');
+    await target.writeAsBytes(bytes, flush: true);
+    final parsed = await FormatEngine.importBytes(bytes, fileName);
+    if (sha256.convert(bytes).toString() != hash) {
+      await target.delete();
+      throw const FormatException('云端文件校验失败，未导入');
+    }
+    final book = Book(
+      id: id,
+      title: parsed.title?.isNotEmpty == true ? parsed.title! : title,
+      author: parsed.author?.isNotEmpty == true ? parsed.author! : author,
+      content: parsed.text,
+      format: parsed.format,
+      sourcePath: target.path,
+      lastReadAt: lastReadAt,
+      chapterCount: chapterCount,
+      contentHash: hash,
+      fileName: fileName,
+      fileSize: bytes.length,
+    );
+    return _commitImportedBook(book);
   }
 
   Future<void> _persistMeta() async {
@@ -380,4 +513,17 @@ class LibraryStore extends ChangeNotifier {
   /// Kept for backwards compatibility with import tests and older callers.
   static Future<String> decodeText(Uint8List bytes) =>
       FormatEngine.decodeText(bytes);
+}
+
+
+class _DigestSink implements Sink<Digest> {
+  Digest? value;
+
+  @override
+  void add(Digest data) {
+    value = data;
+  }
+
+  @override
+  void close() {}
 }

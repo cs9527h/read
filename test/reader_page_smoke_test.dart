@@ -28,7 +28,7 @@ void main() {
 
     // 正文已经进入真实分页：至少存在 PageView，且保存了首章位置。
     expect(find.byType(PageView), findsOneWidget);
-    expect(find.byType(SelectionArea), findsWidgets,
+    expect(find.byType(SelectableText), findsWidgets,
         reason: '正文应允许长按选择具体文字，而非只能复制整页');
     expect(book.chapterIndex.value, 0);
     expect(book.charOffset.value, greaterThanOrEqualTo(0));
