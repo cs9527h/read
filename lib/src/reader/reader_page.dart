@@ -20,7 +20,7 @@ class ReaderPage extends StatefulWidget {
   State<ReaderPage> createState() => _ReaderPageState();
 }
 
-class _ReaderPageState extends State<ReaderPage> {
+class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   late List<Chapter> _chapters;
   ChapterRule _chapterRule = const ChapterRule.automatic();
   late int _chapterIndex;
@@ -33,8 +33,9 @@ class _ReaderPageState extends State<ReaderPage> {
   PageController? _controller;
   List<int> _bookmarks = const <int>[];
 
-  late final DateTime _sessionStart;
-  late final int _sessionStartChar;
+  final Stopwatch _activeReading = Stopwatch();
+  late int _lastRecordedChar;
+  int _accountedReadingSeconds = 0;
 
   double _fontSize = 18;
   double _lineHeight = 1.7;
@@ -43,6 +44,8 @@ class _ReaderPageState extends State<ReaderPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _activeReading.start();
     _chapters = splitChapters(widget.book.content);
     _chapterIndex = widget.book.chapterIndex.value;
     _openingChapterIndex = widget.book.chapterIndex.value;
@@ -51,8 +54,7 @@ class _ReaderPageState extends State<ReaderPage> {
       _chapterIndex = 0;
     }
     _pageIndex = widget.book.pageIndex.value;
-    _sessionStart = DateTime.now();
-    _sessionStartChar = _absoluteChar(_openingChapterIndex, _openingCharOffset);
+    _lastRecordedChar = _absoluteChar(_openingChapterIndex, _openingCharOffset);
     widget.book.chapterCount = _chapters.length;
     final LibraryStore store = LibraryStore.instance;
     _fontSize = store.fontSize;
@@ -64,9 +66,22 @@ class _ReaderPageState extends State<ReaderPage> {
 
   @override
   void dispose() {
+    _activeReading.stop();
+    WidgetsBinding.instance.removeObserver(this);
     _recordSession();
     _controller?.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Background time should never inflate reading statistics.
+    if (state == AppLifecycleState.resumed) {
+      _activeReading.start();
+    } else {
+      _activeReading.stop();
+      _recordSession();
+    }
   }
 
   int _absoluteChar(int chapterIndex, int charOffset) {
@@ -74,15 +89,23 @@ class _ReaderPageState extends State<ReaderPage> {
     return _chapters[chapterIndex].start + (charOffset < 0 ? 0 : charOffset);
   }
 
-  /// 只在真实停留超过阈值时记账，避免打开就退出也产生“阅读时长”。
+  /// Checkpoint on background as well as close. A killed background process
+  /// should not lose an entire session, and a later dispose must not double
+  /// count seconds or pages already checkpointed.
   void _recordSession() {
-    final int seconds = DateTime.now().difference(_sessionStart).inSeconds;
-    if (seconds < 10) return;
-    final int currentChar = _absoluteChar(_chapterIndex, widget.book.charOffset.value);
-    final int chars = currentChar > _sessionStartChar ? currentChar - _sessionStartChar : 0;
+    final elapsed = _activeReading.elapsed.inSeconds;
+    final deltaSeconds = elapsed - _accountedReadingSeconds;
+    if (deltaSeconds < 10) return;
+    final currentChar =
+        _absoluteChar(_chapterIndex, widget.book.charOffset.value);
+    final chars = currentChar > _lastRecordedChar
+        ? currentChar - _lastRecordedChar
+        : 0;
+    _accountedReadingSeconds = elapsed;
+    _lastRecordedChar = currentChar;
     ReadingStatsStore.instance.record(
       bookId: widget.book.id,
-      seconds: seconds,
+      seconds: deltaSeconds,
       chars: chars,
     );
     LibraryStore.instance.noteChapterCount(widget.book, _chapters.length);
@@ -206,7 +229,18 @@ class _ReaderPageState extends State<ReaderPage> {
           return Column(
             children: <Widget>[
               Expanded(
-                child: PageView.builder(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onTapUp: (details) {
+                    final width = constraints.maxWidth;
+                    if (width <= 0) return;
+                    if (details.localPosition.dx < width * 0.28) {
+                      _turnPage(-1);
+                    } else if (details.localPosition.dx > width * 0.72) {
+                      _turnPage(1);
+                    }
+                  },
+                  child: PageView.builder(
                   controller: _controller,
                   itemCount: _pageSlices.length,
                   onPageChanged: (int index) {
@@ -216,7 +250,7 @@ class _ReaderPageState extends State<ReaderPage> {
                     if (index < _pageSlices.length) {
                       widget.book.charOffset.value = _pageSlices[index].start;
                     }
-                    LibraryStore.instance.saveProgress(widget.book);
+                    _persistProgress();
                     setState(() {});
                   },
                   itemBuilder: (BuildContext context, int index) => Padding(
@@ -235,22 +269,43 @@ class _ReaderPageState extends State<ReaderPage> {
                     ),
                   ),
                 ),
+                ),
               ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(24, 4, 24, 20),
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: <Widget>[
-                    Flexible(
-                      child: Text(
-                        chapter.title,
-                        style: TextStyle(fontSize: 12, color: palette.foreground.withValues(alpha: 0.65)),
-                        overflow: TextOverflow.ellipsis,
+                    IconButton(
+                      tooltip: '上一页（上一章）',
+                      icon: Icon(Icons.chevron_left_rounded, color: palette.foreground),
+                      onPressed: _chapterIndex == 0 && _pageIndex == 0
+                          ? null
+                          : () => _turnPage(-1),
+                    ),
+                    Expanded(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          Text(
+                            chapter.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 11, color: palette.foreground.withValues(alpha: 0.65)),
+                          ),
+                          Text(
+                            '${_pageIndex + 1} / ${_pageSlices.length}',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: palette.foreground),
+                          ),
+                        ],
                       ),
                     ),
-                    Text(
-                      '${_pageIndex + 1} / ${_pageSlices.length}',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: palette.foreground.withValues(alpha: 0.65)),
+                    IconButton(
+                      tooltip: '下一页（下一章）',
+                      icon: Icon(Icons.chevron_right_rounded, color: palette.foreground),
+                      onPressed: _chapterIndex == _chapters.length - 1 &&
+                              _pageIndex >= _pageSlices.length - 1
+                          ? null
+                          : () => _turnPage(1),
                     ),
                   ],
                 ),
@@ -290,7 +345,11 @@ class _ReaderPageState extends State<ReaderPage> {
           targetPage = i;
         }
       }
-      if (!mounted) return;
+      // A rapid chapter change, font change, or rotation can supersede
+      // this layout calculation. Never apply stale page slices to the new
+      // chapter, or the stored character anchor may jump unexpectedly.
+      if (!mounted || _measureKey != key ||
+          !identical(_chapters[_chapterIndex], chapter)) return;
       setState(() {
         _pageSlices = slices;
         _pageIndex = targetPage.clamp(0, slices.length - 1);
@@ -300,8 +359,57 @@ class _ReaderPageState extends State<ReaderPage> {
         widget.book.pageIndex.value = _pageIndex;
         widget.book.charOffset.value = slices[_pageIndex].start;
       });
-      LibraryStore.instance.saveProgress(widget.book);
+      _persistProgress();
     });
+  }
+
+  bool _progressErrorShown = false;
+
+  Future<void> _persistProgress() async {
+    try {
+      await LibraryStore.instance.saveProgress(widget.book);
+      _progressErrorShown = false;
+    } catch (_) {
+      if (!mounted || _progressErrorShown) return;
+      _progressErrorShown = true;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('阅读位置保存失败，请确认设备存储空间后重试'),
+        ),
+      );
+    }
+  }
+
+  /// Unlike PageView, this navigates past chapter edges.
+  void _turnPage(int direction) {
+    if (direction == 0 || _pageSlices.isEmpty || _controller == null) return;
+    final target = _pageIndex + direction;
+    if (target >= 0 && target < _pageSlices.length) {
+      if (kEink) {
+        _controller!.jumpToPage(target);
+      } else {
+        _controller!.animateToPage(
+          target,
+          duration: const Duration(milliseconds: 150),
+          curve: Curves.easeOutCubic,
+        );
+      }
+      return;
+    }
+    final nextChapter = _chapterIndex + direction;
+    if (nextChapter < 0 || nextChapter >= _chapters.length) return;
+    setState(() {
+      _chapterIndex = nextChapter;
+      _pageIndex = 0;
+      _pageSlices = const <PageSlice>[];
+      _measureKey = null;
+      widget.book.chapterIndex.value = nextChapter;
+      widget.book.pageIndex.value = 0;
+      widget.book.charOffset.value = direction < 0
+          ? _chapters[nextChapter].length
+          : 0;
+    });
+    _persistProgress();
   }
 
   int _absoluteReadingOffset() {
@@ -338,7 +446,7 @@ class _ReaderPageState extends State<ReaderPage> {
       widget.book.charOffset.value =
           (absolute - selected.start).clamp(0, selected.length);
     });
-    LibraryStore.instance.saveProgress(widget.book);
+    _persistProgress();
   }
 
   Future<void> _loadChapterRule() async {
@@ -580,7 +688,7 @@ class _ReaderPageState extends State<ReaderPage> {
       widget.book.charOffset.value =
           (absoluteOffset - chapter.start).clamp(0, chapter.length);
     });
-    LibraryStore.instance.saveProgress(widget.book);
+    _persistProgress();
   }
 
   Future<void> _searchInBook() async {
@@ -600,7 +708,7 @@ class _ReaderPageState extends State<ReaderPage> {
       _pageSlices = const <PageSlice>[];
       _measureKey = null;
     });
-    await LibraryStore.instance.saveProgress(widget.book);
+    await _persistProgress();
   }
 
   Future<void> _showChapters() async {
@@ -631,7 +739,7 @@ class _ReaderPageState extends State<ReaderPage> {
         _pageSlices = const <PageSlice>[];
         _measureKey = null;
       });
-      await LibraryStore.instance.saveProgress(widget.book);
+      await _persistProgress();
     }
   }
 

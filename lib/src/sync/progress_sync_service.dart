@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../model/book.dart';
 import '../services/chapter_splitter.dart';
+import '../services/chapter_rule_store.dart';
 import '../services/library_store.dart';
 import 'encrypted_sync_envelope.dart';
 import 'progress_models.dart';
@@ -106,7 +107,7 @@ class ProgressSyncService {
       // Include unread books as matching targets: they may have no usable
       // local character anchor yet, but can safely receive cloud progress.
       booksByHash.putIfAbsent(digest, () => <Book>[]).add(book);
-      final position = _snapshot(book, digest, device);
+      final position = await _snapshot(book, digest, device);
       if (position == null) {
         // New imports without a reading position can receive cloud progress.
         // But older page-only bookmarks must not be overwritten as "unread".
@@ -282,7 +283,7 @@ class ProgressSyncService {
     return value;
   }
 
-  ProgressRecord? _snapshot(Book book, String digest, String device) {
+  Future<ProgressRecord?> _snapshot(Book book, String digest, String device) async {
     final format = book.format.toUpperCase();
     final now = DateTime.now().millisecondsSinceEpoch;
     if (format == 'PDF') {
@@ -296,7 +297,10 @@ class ProgressSyncService {
     if (book.charOffset.value < 0) return null; // legacy page-only position
     if (!<String>['TXT', 'EPUB', 'MD', 'MARKDOWN', 'HTML', 'HTM']
         .contains(format)) return null;
-    final chapters = splitChapters(book.content);
+    final chapters = splitChapters(
+      book.content,
+      rule: await ChapterRuleStore.load(book.id),
+    );
     final index = book.chapterIndex.value.clamp(0, chapters.length - 1);
     final current = chapters[index];
     final absolute = current.start +

@@ -121,7 +121,40 @@ List<Chapter> splitChapters(
   }
 
   if (headings.length < 2) {
-    return <Chapter>[Chapter('全文', 0, text.length)];
+    if (rule.mode != ChapterRuleMode.automatic || text.length <= 100000) {
+      return <Chapter>[Chapter('全文', 0, text.length)];
+    }
+    // A long TXT without recognizable headings must not force TextPainter to
+    // synchronously paginate millions of characters on a single screen.
+    // These are virtual reading segments, not rewritten user book chapters.
+    final parts = <Chapter>[];
+    int start = 0;
+    while (start < text.length) {
+      int end = (start + 100000).clamp(0, text.length);
+      if (end < text.length) {
+        // Prefer a line boundary near the 100k mark without scanning the book.
+        // Only scan a short window; searching from zero for every 100k
+        // segment would make very long newline-free TXT files quadratic.
+        final limit = (end - 2048).clamp(start + 1, end);
+        for (int at = end - 1; at >= limit; at--) {
+          if (text.codeUnitAt(at) == 10) {
+            end = at + 1;
+            break;
+          }
+        }
+        // Never split the UTF-16 surrogate pair of an emoji.
+        if (end < text.length && end > start &&
+            text.codeUnitAt(end - 1) >= 0xD800 &&
+            text.codeUnitAt(end - 1) <= 0xDBFF &&
+            text.codeUnitAt(end) >= 0xDC00 &&
+            text.codeUnitAt(end) <= 0xDFFF) {
+          end--;
+        }
+      }
+      parts.add(Chapter('全文 · 第 ${parts.length + 1} 段', start, end - start));
+      start = end;
+    }
+    return parts;
   }
 
   final List<Chapter> chapters = <Chapter>[];

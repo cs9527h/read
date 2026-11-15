@@ -28,6 +28,10 @@ class LibraryStore extends ChangeNotifier {
   final List<Book> books = <Book>[];
   SharedPreferences? _prefs;
 
+  // Serialize page-turn writes so an earlier async save cannot overwrite a
+  // newer chapter/character anchor when the reader is flipped rapidly.
+  Future<void> _progressWrites = Future<void>.value();
+
   double _fontSize = 18;
   double _lineHeight = 1.7;
   int _backgroundIndex = 0;
@@ -42,26 +46,42 @@ class LibraryStore extends ChangeNotifier {
     _lineHeight = _prefs!.getDouble(_lineKey) ?? 1.7;
     _backgroundIndex = _prefs!.getInt(_bgKey) ?? 0;
 
-    books.clear();
+    // Rebuild the index transactionally. A failed reload must not destroy
+    // the current in-memory bookshelf or its progress notifiers.
+    final loaded = <Book>[];
+    var recoveredCovers = false;
     final String? raw = _prefs!.getString(_metaKey);
     if (raw != null) {
       try {
         final List<dynamic> list = jsonDecode(raw) as List<dynamic>;
-        for (final dynamic item in list) {
-          final Book? book = await _loadBook(item as Map<String, dynamic>);
+        for (final item in list) {
+          final metadata = item as Map<String, dynamic>;
+          final priorCover = metadata['coverPath'];
+          final Book? book = await _loadBook(metadata);
           if (book != null) {
+            if (priorCover != book.coverPath && book.coverPath != null) {
+              recoveredCovers = true;
+            }
             _restoreProgress(book);
-            books.add(book);
+            loaded.add(book);
           }
         }
       } catch (error) {
-        // A damaged index must not silently be overwritten with sample data.
-        throw StateError('书架索引读取失败。原书籍文件未删除；请备份后修复。$error');
+        throw StateError('书架索引读取失败；现有书架和原始文件均保留。$error');
       }
     }
 
+    books
+      ..clear()
+      ..addAll(loaded);
     _sortBooks();
     notifyListeners();
+    if (recoveredCovers) {
+      // Failure to persist a derived cover should not block opening books.
+      try {
+        await _persistMeta();
+      } catch (_) {}
+    }
   }
 
   void _sortBooks() {
@@ -92,6 +112,20 @@ class LibraryStore extends ChangeNotifier {
         final ImportedDocument parsed =
             await FormatEngine.importBytes(bytes, path);
         content = parsed.text;
+        // Upgrade books imported before cover extraction existed. This keeps
+        // their original IDs, progress, bookmarks and original EPUB bytes.
+        if (parsed.coverBytes != null &&
+            (meta['coverPath'] == null ||
+                !await File(meta['coverPath'] as String).exists()) &&
+            path.toLowerCase().endsWith('.epub')) {
+          try {
+            final cover = File('${file.parent.path}/$id.cover');
+            await cover.writeAsBytes(parsed.coverBytes!, flush: true);
+            meta['coverPath'] = cover.path;
+          } catch (_) {
+            // A damaged image or full disk must not make the book unreadable.
+          }
+        }
       }
     }
     if (content.isEmpty) {
@@ -113,10 +147,17 @@ class LibraryStore extends ChangeNotifier {
   Future<void> saveProgress(Book book) async {
     final SharedPreferences? p = _prefs;
     if (p == null) return;
-    await p.setString(
-      '$_progressPrefix${book.id}',
-      '${book.chapterIndex.value}:${book.pageIndex.value}:${book.charOffset.value}',
-    );
+    final key = '$_progressPrefix${book.id}';
+    final snapshot =
+        '${book.chapterIndex.value}:${book.pageIndex.value}:${book.charOffset.value}';
+    // Recover the queue from prior I/O failures so future turns still save.
+    final task = _progressWrites.catchError((Object _) {}).then((_) async {
+      if (!await p.setString(key, snapshot)) {
+        throw StateError('阅读进度保存失败');
+      }
+    });
+    _progressWrites = task;
+    await task;
   }
 
   /// Apply validated remote progress without altering the imported file.
@@ -164,17 +205,68 @@ class LibraryStore extends ChangeNotifier {
 
   /// 导入 TXT：把内容复制到应用目录，元数据写入本地存储。
   Future<Book?> importBook() async {
-    final FilePickerResult? result = await FilePicker.platform.pickFiles(
-      type: FileType.any,
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const <String>['txt', 'epub', 'pdf', 'md', 'markdown', 'html', 'htm'],
+      withData: false,
+      withReadStream: true,
     );
     if (result == null || result.files.isEmpty) return null;
-    final PlatformFile picked = result.files.first;
-    final String? path = picked.path;
-    if (path == null) return null;
+    final picked = result.files.first;
+    final candidate = picked.path;
+    File? staged;
+    if (candidate == null || candidate.isEmpty || !await File(candidate).exists()) {
+      // SAF and some document providers offer a stream without a filesystem
+      // path. Copy that stream into a bounded app-owned temporary file.
+      staged = await _stageDocumentStream(picked);
+    }
+    try {
+      return await _importPickedFile(picked, staged?.path ?? candidate!);
+    } finally {
+      if (staged != null && await staged.exists()) {
+        await staged.delete();
+      }
+    }
+  }
 
+  Future<File> _stageDocumentStream(PlatformFile picked) async {
+    final stream = picked.readStream;
+    if (stream == null) {
+      throw const FormatException(
+        '文件提供者无法提供可读取的数据，请先将电子书下载到本地后重试',
+      );
+    }
+    final ext = picked.name.split('.').last.toLowerCase();
+    final cap = ext == 'pdf' ? 256 * 1024 * 1024 : FormatEngine.maxSourceBytes;
+    final dir = await getTemporaryDirectory();
+    final file = File('${dir.path}/read-import-${DateTime.now().microsecondsSinceEpoch}.tmp');
+    final sink = file.openWrite();
+    var total = 0;
+    try {
+      await for (final chunk in stream) {
+        total += chunk.length;
+        if (total > cap) {
+          throw const FormatException('电子书文件过大，已中止临时导入以保护内存和存储空间');
+        }
+        sink.add(chunk);
+      }
+      await sink.flush();
+      await sink.close();
+      return file;
+    } catch (_) {
+      await sink.close();
+      if (await file.exists()) await file.delete();
+      rethrow;
+    }
+  }
+
+  Future<Book?> _importPickedFile(PlatformFile picked, String path) async {
     final String ext = picked.name.split('.').last.toLowerCase();
     if (ext == 'pdf') {
       final File source = File(path);
+      if (!await source.exists()) {
+        throw const FormatException('无法读取所选 PDF 文件，请先将文件下载到本地。');
+      }
       await PdfFormat.verifyHeader(source);
       final Directory base = await getApplicationDocumentsDirectory();
       final Directory dir = Directory(base.path + '/books');
@@ -188,7 +280,13 @@ class LibraryStore extends ChangeNotifier {
           format: 'PDF', content: '', sourcePath: copy.path);
       books.add(book);
       _sortBooks();
-      await _persistMeta();
+      try {
+        await _persistMeta();
+      } catch (_) {
+        books.remove(book);
+        if (await copy.exists()) await copy.delete();
+        rethrow;
+      }
       notifyListeners();
       return book;
     }
@@ -197,6 +295,9 @@ class LibraryStore extends ChangeNotifier {
         '当前支持 TXT、EPUB（文字版）、PDF、Markdown、HTML，其余格式开发中');
     }
     final File source = File(path);
+    if (!await source.exists()) {
+      throw const FormatException('无法读取所选文件，请先将文件下载到本地。');
+    }
     final int fileSize = await source.length();
     if (fileSize > FormatEngine.maxSourceBytes) {
       throw const FormatException(
@@ -221,6 +322,16 @@ class LibraryStore extends ChangeNotifier {
     // Preserve the original file, including EPUB structure, for future
     // richer layout support and content-addressed cloud sync.
     await target.writeAsBytes(bytes, flush: true);
+    File? coverFile;
+    try {
+      if (parsed.coverBytes != null) {
+        coverFile = File('${booksDir.path}/$id.cover');
+        await coverFile.writeAsBytes(parsed.coverBytes!, flush: true);
+      }
+    } catch (_) {
+      // Cover is optional: a bad image must never prevent book import.
+      coverFile = null;
+    }
 
     final String name = picked.name.substring(
       0, picked.name.lastIndexOf('.') > 0
@@ -234,28 +345,48 @@ class LibraryStore extends ChangeNotifier {
       format: parsed.format,
       content: text,
       sourcePath: target.path,
+      coverPath: coverFile?.path,
     );
     books.add(book);
     _sortBooks();
-    await _persistMeta();
+    try {
+      await _persistMeta();
+    } catch (_) {
+      books.remove(book);
+      if (await target.exists()) await target.delete();
+      if (coverFile != null && await coverFile.exists()) await coverFile.delete();
+      rethrow;
+    }
     notifyListeners();
     return book;
   }
 
   Future<void> deleteBook(Book book) async {
+    final originalBooks = List<Book>.of(books);
     books.remove(book);
+    try {
+      // Commit the new index before deleting the only local book copy.
+      // A failed write leaves the existing book and file recoverable.
+      await _persistMeta();
+    } catch (_) {
+      books
+        ..clear()
+        ..addAll(originalBooks);
+      rethrow;
+    }
+    notifyListeners();
     final String? path = book.sourcePath;
     if (path != null) {
-      final File file = File(path);
-      if (await file.exists()) {
-        await file.delete();
-      }
+      final file = File(path);
+      if (await file.exists()) await file.delete();
+    }
+    if (book.coverPath != null) {
+      final file = File(book.coverPath!);
+      if (await file.exists()) await file.delete();
     }
     await _prefs?.remove('$_progressPrefix${book.id}');
     await BookmarkStore.clearForDeletedBook(book.id);
     await ChapterRuleStore.clearForDeletedBook(book.id);
-    await _persistMeta();
-    notifyListeners();
   }
 
   /// 缓存章节总数（书架显示进度用）。不触发通知，避免在路由退出时重建界面。
@@ -273,6 +404,7 @@ class LibraryStore extends ChangeNotifier {
       content: book.content,
       format: book.format,
       sourcePath: book.sourcePath,
+      coverPath: book.coverPath,
       lastReadAt: DateTime.now(),
       chapterCount: book.chapterCount,
     );
@@ -292,7 +424,9 @@ class LibraryStore extends ChangeNotifier {
     final SharedPreferences? p = _prefs;
     if (p == null) return;
     final String raw = jsonEncode(books.map((Book b) => b.toMeta()).toList());
-    await p.setString(_metaKey, raw);
+    if (!await p.setString(_metaKey, raw)) {
+      throw StateError('书架索引保存失败，未完成操作');
+    }
   }
 
   /// Kept for backwards compatibility with import tests and older callers.
