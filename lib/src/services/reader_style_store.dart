@@ -28,6 +28,8 @@ class ReaderStyle {
     this.autoTurnSeconds = 8,
     this.customForegroundArgb = 0,
     this.customBackgroundArgb = 0,
+    this.headerTemplate = '{book}',
+    this.footerTemplate = '{chapter} · {page}/{pages} · {progress}%',
   });
 
   final double fontSize;
@@ -57,6 +59,8 @@ class ReaderStyle {
   /// Zero uses the selected built-in theme color.
   final int customForegroundArgb;
   final int customBackgroundArgb;
+  final String headerTemplate;
+  final String footerTemplate;
 
   FontWeight get fontWeight => FontWeight.values[fontWeightIndex];
   TextAlign get textAlign => switch (textAlignIndex) {
@@ -96,6 +100,8 @@ class ReaderStyle {
     int? autoTurnSeconds,
     int? customForegroundArgb,
     int? customBackgroundArgb,
+    String? headerTemplate,
+    String? footerTemplate,
   }) =>
       ReaderStyle(
         fontSize: fontSize ?? this.fontSize,
@@ -118,6 +124,8 @@ class ReaderStyle {
         autoTurnSeconds: autoTurnSeconds ?? this.autoTurnSeconds,
         customForegroundArgb: customForegroundArgb ?? this.customForegroundArgb,
         customBackgroundArgb: customBackgroundArgb ?? this.customBackgroundArgb,
+        headerTemplate: headerTemplate ?? this.headerTemplate,
+        footerTemplate: footerTemplate ?? this.footerTemplate,
       );
 
   Map<String, Object> toJson() => <String, Object>{
@@ -142,6 +150,8 @@ class ReaderStyle {
         'autoTurnSeconds': autoTurnSeconds,
         'customForegroundArgb': customForegroundArgb,
         'customBackgroundArgb': customBackgroundArgb,
+        'headerTemplate': headerTemplate,
+        'footerTemplate': footerTemplate,
       };
 
   static ReaderStyle fromJson(Object? source, {ReaderStyle fallback = const ReaderStyle()}) {
@@ -182,6 +192,10 @@ class ReaderStyle {
       autoTurnSeconds: integer('autoTurnSeconds', fallback.autoTurnSeconds, 2, 60),
       customForegroundArgb: integer('customForegroundArgb', fallback.customForegroundArgb, 0, 0xFFFFFFFF),
       customBackgroundArgb: integer('customBackgroundArgb', fallback.customBackgroundArgb, 0, 0xFFFFFFFF),
+      headerTemplate: m['headerTemplate'] is String && (m['headerTemplate'] as String).length <= 200
+          ? m['headerTemplate'] as String : fallback.headerTemplate,
+      footerTemplate: m['footerTemplate'] is String && (m['footerTemplate'] as String).length <= 200
+          ? m['footerTemplate'] as String : fallback.footerTemplate,
     );
   }
 
