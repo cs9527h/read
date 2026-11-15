@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import 'package:read/src/model/book.dart';
@@ -65,9 +67,23 @@ class _BookshelfPageState extends State<BookshelfPage> {
                       Icon(Icons.keyboard_arrow_down_rounded, size: 22, color: palette.ink),
                       const Spacer(),
                       IconButton(
+                        tooltip: '导入书籍',
+                        onPressed: _importBook,
+                        icon: Icon(Icons.add_rounded, color: palette.icon),
+                      ),
+                      IconButton(
                         tooltip: '刷新书架',
                         onPressed: () async {
-                          await LibraryStore.instance.init();
+                          try {
+                            await LibraryStore.instance.init();
+                          } catch (_) {
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('书架刷新失败；现有书籍未清空，请检查文件或存储空间'),
+                              ),
+                            );
+                          }
                         },
                         icon: Icon(Icons.refresh_rounded, color: palette.icon),
                       ),
@@ -257,7 +273,15 @@ class _BookshelfPageState extends State<BookshelfPage> {
       final Book? book = await LibraryStore.instance.importBook();
       if (!mounted || book == null) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('已导入《${book.title}》')),
+        SnackBar(
+          content: Text('已导入《${book.title}》'),
+          action: SnackBarAction(
+            label: '立即阅读',
+            onPressed: () {
+              if (mounted) _openBook(book);
+            },
+          ),
+        ),
       );
     } on FormatException catch (error) {
       if (!mounted) return;
@@ -301,17 +325,14 @@ class _BookCell extends StatelessWidget {
   Widget build(BuildContext context) {
     final ReadPalette palette = ReadPalette.of(context);
     final String progress = _progressLabel(book);
-    final bool read = book.lastReadAt != null;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        Expanded(
-          child: GestureDetector(
-            onTap: onOpen,
-            onLongPress: onMenu,
-            child: _Cover(book: book),
-          ),
-        ),
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onOpen,
+      onLongPress: onMenu,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Expanded(child: _Cover(book: book)),
         const SizedBox(height: 8),
         Text(
           book.title,
@@ -335,8 +356,6 @@ class _BookCell extends StatelessWidget {
                 style: TextStyle(fontSize: 11, color: palette.muted),
               ),
             ),
-            if (read)
-              Icon(Icons.cloud_done_outlined, size: 13, color: palette.muted),
             InkWell(
               onTap: onMenu,
               child: Padding(
@@ -346,7 +365,8 @@ class _BookCell extends StatelessWidget {
             ),
           ],
         ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -355,9 +375,12 @@ class _BookCell extends StatelessWidget {
     if (ReadingStatsStore.instance.isFinished(book.id)) return '已读完';
     final int chapters = book.chapterCount;
     if (chapters <= 0) return '第 ${book.chapterIndex.value + 1} 章';
-    final double ratio =
-        ((book.chapterIndex.value + 1) / chapters).clamp(0.0, 1.0).toDouble();
-    return '${(ratio * 100).toStringAsFixed(2)}%';
+    // A chapter number alone cannot determine a precise percentage. In
+    // particular, the old formula said "100%" at the start of the last
+    // chapter. Show a truthful chapter count until a durable absolute
+    // source offset is available to the bookshelf.
+    final current = (book.chapterIndex.value + 1).clamp(1, chapters);
+    return '第 $current / $chapters 章';
   }
 }
 
@@ -369,6 +392,24 @@ class _Cover extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Use the book's own embedded cover when available; keep a calm
+    // monochrome fallback for TXT, damaged images and E-Ink.
+    if (!kEink && book.coverPath != null) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(6),
+        child: Image.file(
+          File(book.coverPath!),
+          width: double.infinity,
+          height: double.infinity,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) => _fallback(context),
+        ),
+      );
+    }
+    return _fallback(context);
+  }
+
+  Widget _fallback(BuildContext context) {
     final int hash = book.title.runes.fold<int>(0, (int a, int b) => a + b);
     final List<double> shades = <double>[0.10, 0.18, 0.26, 0.34, 0.44];
     final double shade = shades[hash % shades.length];

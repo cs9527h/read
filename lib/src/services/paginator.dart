@@ -31,15 +31,21 @@ List<PageSlice> paginateSlices(
   String text,
   TextStyle style,
   double maxWidth,
-  double maxHeight,
-) {
+  double maxHeight, {
+  TextScaler textScaler = TextScaler.noScaling,
+  String Function(String source, int start, int end)? formatPage,
+  TextSpan Function(String source, int start, int end, TextStyle style)? richPage,
+}) {
   if (!maxWidth.isFinite || !maxHeight.isFinite ||
       maxWidth <= 0 || maxHeight <= 0) {
     throw ArgumentError('分页区域必须有正的宽高');
   }
   if (text.isEmpty) return <PageSlice>[const PageSlice(0, 0)];
 
-  final painter = TextPainter(textDirection: TextDirection.ltr);
+  final painter = TextPainter(
+    textDirection: TextDirection.ltr,
+    textScaler: textScaler,
+  );
   bool fits(int start, int count) {
     // TextPainter must never receive half a UTF-16 surrogate pair, even
     // temporarily during the binary/exponential measurement probes.
@@ -52,10 +58,12 @@ List<PageSlice> paginateSlices(
       safeCount--;
     }
     if (safeCount <= 0) return false;
-    painter.text = TextSpan(
-      text: text.substring(start, start + safeCount),
-      style: style,
-    );
+    painter.text = richPage?.call(text, start, start + safeCount, style) ??
+        TextSpan(
+          text: formatPage?.call(text, start, start + safeCount) ??
+              text.substring(start, start + safeCount),
+          style: style,
+        );
     painter.layout(maxWidth: maxWidth);
     return painter.height <= maxHeight + 0.5;
   }
