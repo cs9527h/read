@@ -46,6 +46,15 @@ class _BookshelfPageState extends State<BookshelfPage> {
 
         return Scaffold(
           backgroundColor: palette.background,
+          floatingActionButton: visibleBooks.isNotEmpty
+              ? FloatingActionButton.small(
+                  tooltip: '导入本地电子书',
+                  onPressed: _importBook,
+                  backgroundColor: palette.ink,
+                  foregroundColor: palette.surface,
+                  child: const Icon(Icons.add_rounded),
+                )
+              : null,
           body: SafeArea(
             bottom: false,
             child: Column(
