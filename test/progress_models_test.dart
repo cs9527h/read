@@ -74,4 +74,50 @@ void main() {
     expect(chosen.revision, 7);
     expect(chosen.updatedAt, 999);
   });
+  test('three-way merge protects truly concurrent progress changes', () {
+    final baseline = entry(100, 1, 'phone');
+    final movedLocally = entry(200, 1, 'phone');
+    final movedRemotely = entry(300, 2, 'pc');
+    expect(
+      ProgressMerger.compareToBaseline(
+        local: movedLocally,
+        remote: movedRemotely,
+        baseline: baseline,
+      ),
+      ProgressDecision.conflict,
+    );
+    expect(
+      ProgressMerger.compareToBaseline(
+        local: baseline,
+        remote: movedRemotely,
+        baseline: baseline,
+      ),
+      ProgressDecision.cloud,
+    );
+    expect(
+      ProgressMerger.compareToBaseline(
+        local: movedLocally,
+        remote: baseline,
+        baseline: baseline,
+      ),
+      ProgressDecision.local,
+    );
+    expect(
+      ProgressMerger.compareToBaseline(
+        local: movedLocally,
+        remote: movedRemotely,
+        baseline: null,
+      ),
+      ProgressDecision.conflict,
+    );
+    expect(
+      ProgressMerger.compareToBaseline(
+        local: movedLocally,
+        remote: movedLocally,
+        baseline: null,
+      ),
+      ProgressDecision.cloud,
+    );
+  });
+
 }
