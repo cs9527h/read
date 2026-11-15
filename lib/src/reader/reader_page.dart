@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'package:read/src/model/book.dart';
@@ -7,6 +9,7 @@ import 'package:read/src/services/book_search.dart';
 import 'package:read/src/services/bookmark_store.dart';
 import 'package:read/src/services/paginator.dart';
 import 'package:read/src/services/library_store.dart';
+import 'package:read/src/services/reader_style_store.dart';
 import 'package:read/src/services/reading_stats_store.dart';
 import 'package:read/src/theme.dart';
 
@@ -37,9 +40,9 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   late int _lastRecordedChar;
   int _accountedReadingSeconds = 0;
 
-  double _fontSize = 18;
-  double _lineHeight = 1.7;
-  int _bgIndex = 0;
+  ReaderStyle _style = const ReaderStyle();
+  bool _bookSpecificStyle = false;
+  bool _showChrome = false;
 
   @override
   void initState() {
@@ -57,9 +60,12 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     _lastRecordedChar = _absoluteChar(_openingChapterIndex, _openingCharOffset);
     widget.book.chapterCount = _chapters.length;
     final LibraryStore store = LibraryStore.instance;
-    _fontSize = store.fontSize;
-    _lineHeight = store.lineHeight;
-    _bgIndex = kEink ? 0 : store.backgroundIndex;
+    _style = ReaderStyle(
+      fontSize: store.fontSize,
+      lineHeight: store.lineHeight,
+      backgroundIndex: kEink ? 0 : store.backgroundIndex,
+    );
+    unawaited(_loadStyle());
     _loadBookmarks();
     _loadChapterRule();
   }
@@ -113,11 +119,17 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
 
   _Palette get _palette {
     if (kEink) return const _Palette(Colors.white, Colors.black);
-    switch (_bgIndex) {
+    switch (_style.backgroundIndex) {
       case 1:
         return const _Palette(Color(0xFFF5EFE1), Color(0xFF41382B));
       case 2:
-        return const _Palette(Color(0xFF121212), Color(0xFFBDBDBD));
+        return const _Palette(Color(0xFF121212), Color(0xFFDBDBDB));
+      case 3:
+        return const _Palette(Color(0xFFE9E9E9), Color(0xFF252525));
+      case 4:
+        return const _Palette(Color(0xFFEAF0E5), Color(0xFF2D3A30));
+      case 5:
+        return const _Palette(Colors.black, Colors.white);
       default:
         return const _Palette(Color(0xFFFCFCF8), Color(0xFF24332F));
     }
@@ -135,7 +147,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     final bool bookmarked = _bookmarks.contains(bookmarkOffset);
     return Scaffold(
       backgroundColor: palette.background,
-      appBar: AppBar(
+      appBar: (_showChrome || _style.showHeader) ? AppBar(
         backgroundColor: palette.background,
         elevation: 0,
         surfaceTintColor: Colors.transparent,
@@ -220,7 +232,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
           ),
         ],
       ),
-      body: LayoutBuilder(
+      body: SafeArea(child: LayoutBuilder(
         builder: (BuildContext context, BoxConstraints constraints) {
           _maybeMeasure(constraints.biggest, chapter);
           if (_pageSlices.isEmpty) {
@@ -234,10 +246,12 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                   onTapUp: (details) {
                     final width = constraints.maxWidth;
                     if (width <= 0) return;
-                    if (details.localPosition.dx < width * 0.28) {
+                    if (details.localPosition.dx < width * _style.tapZone) {
                       _turnPage(-1);
-                    } else if (details.localPosition.dx > width * 0.72) {
+                    } else if (details.localPosition.dx > width * (1 - _style.tapZone)) {
                       _turnPage(1);
+                    } else {
+                      setState(() => _showChrome = !_showChrome);
                     }
                   },
                   child: PageView.builder(
@@ -255,84 +269,80 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                   },
                   itemBuilder: (BuildContext context, int index) => Padding(
                     padding: EdgeInsets.symmetric(
-                      horizontal: constraints.maxWidth > 720 ? 64 : 24,
-                      vertical: 12,
+                      horizontal: _style.horizontalMargin,
+                      vertical: _style.verticalMargin,
                     ),
                     child: Text(
                       _pageSlices[index].textOf(chapterText),
-                      style: TextStyle(
-                        fontSize: _fontSize,
-                        height: _lineHeight,
-                        color: palette.foreground,
-                        letterSpacing: 0.15,
-                      ),
+                      textAlign: _style.textAlign,
+                      style: _style.textStyle(color: palette.foreground),
                     ),
                   ),
                 ),
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-                child: Row(
-                  children: <Widget>[
-                    IconButton(
-                      tooltip: '上一页（上一章）',
-                      icon: Icon(Icons.chevron_left_rounded, color: palette.foreground),
-                      onPressed: _chapterIndex == 0 && _pageIndex == 0
-                          ? null
-                          : () => _turnPage(-1),
-                    ),
-                    Expanded(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: <Widget>[
-                          Text(
+              if (_style.showFooter)
+                SizedBox(
+                  height: 38,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 18),
+                    child: Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: Text(
                             chapter.title,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(fontSize: 11, color: palette.foreground.withValues(alpha: 0.65)),
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: palette.foreground.withValues(alpha: 0.62),
+                            ),
                           ),
-                          Text(
-                            '${_pageIndex + 1} / ${_pageSlices.length}',
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: palette.foreground),
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          (_pageIndex + 1).toString() + ' / ' +
+                              _pageSlices.length.toString() + ' · ' +
+                              (widget.book.content.isEmpty ? '0.0' :
+                                (_absoluteReadingOffset() * 100 /
+                                    widget.book.content.length).clamp(0, 100).toStringAsFixed(1)) + '%',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: palette.foreground.withValues(alpha: 0.72),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                    IconButton(
-                      tooltip: '下一页（下一章）',
-                      icon: Icon(Icons.chevron_right_rounded, color: palette.foreground),
-                      onPressed: _chapterIndex == _chapters.length - 1 &&
-                              _pageIndex >= _pageSlices.length - 1
-                          ? null
-                          : () => _turnPage(1),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
             ],
           );
         },
-      ),
+      )),
     );
   }
 
   void _maybeMeasure(Size size, Chapter chapter) {
-    final String key =
-        '${size.width}x${size.height}-$_fontSize-$_lineHeight-$_chapterIndex';
+    // The page renderer and measurement must use identical text geometry.
+    // System text scaling also changes page breaks on accessibility devices.
+    final scaler = MediaQuery.textScalerOf(context);
+    final String key = size.toString() + '/' + _style.layoutKey +
+        '/' + scaler.scale(_style.fontSize).toString() + '/' + _chapterIndex.toString();
     if (key == _measureKey) return;
     _measureKey = key;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      final double width = size.width - (size.width > 720 ? 128 : 48);
-      final double height = size.height - 56;
+      if (!mounted || _measureKey != key) return;
+      final double width = size.width - _style.horizontalMargin * 2;
+      final double height = size.height - _style.verticalMargin * 2 -
+          (_style.showFooter ? 38 : 0);
       if (width <= 0 || height <= 0) return;
       final String chapterText = chapter.slice(widget.book.content);
       final List<PageSlice> slices = paginateSlices(
         chapterText,
-        TextStyle(fontSize: _fontSize, height: _lineHeight),
+        _style.textStyle(),
         width,
         height,
+        textScaler: scaler,
       );
       // An exact source range is more reliable than indexOf(pageText), which
       // becomes ambiguous when the same paragraph or whitespace repeats.
@@ -385,12 +395,12 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     if (direction == 0 || _pageSlices.isEmpty || _controller == null) return;
     final target = _pageIndex + direction;
     if (target >= 0 && target < _pageSlices.length) {
-      if (kEink) {
+      if (kEink || _style.turnDurationMs == 0) {
         _controller!.jumpToPage(target);
       } else {
         _controller!.animateToPage(
           target,
-          duration: const Duration(milliseconds: 150),
+          duration: Duration(milliseconds: _style.turnDurationMs),
           curve: Curves.easeOutCubic,
         );
       }
@@ -743,107 +753,217 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     }
   }
 
+
+  Future<void> _loadStyle() async {
+    final legacy = _style;
+    final selection = await ReaderStyleStore.instance.load(widget.book.id, legacy);
+    if (!mounted) return;
+    setState(() {
+      _style = kEink ? selection.style.copyWith(backgroundIndex: 0) : selection.style;
+      _bookSpecificStyle = selection.bookSpecific;
+      _pageSlices = const <PageSlice>[];
+      _measureKey = null;
+    });
+  }
+
+  void _updateStyle(ReaderStyle next) {
+    if (kEink) next = next.copyWith(backgroundIndex: 0, turnDurationMs: 0);
+    final oldLayout = _style.layoutKey;
+    setState(() {
+      _style = next;
+      if (oldLayout != next.layoutKey) {
+        _pageSlices = const <PageSlice>[];
+        _measureKey = null;
+      }
+    });
+    final future = _bookSpecificStyle
+        ? ReaderStyleStore.instance.saveForBook(widget.book.id, next)
+        : ReaderStyleStore.instance.saveGlobal(next);
+    unawaited(future.catchError((Object _) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('阅读样式保存失败，请检查设备空间')),
+      );
+    }));
+  }
+
+  Future<void> _setBookScope(bool enabled) async {
+    if (enabled == _bookSpecificStyle) return;
+    if (enabled) {
+      await ReaderStyleStore.instance.saveForBook(widget.book.id, _style);
+      if (mounted) setState(() => _bookSpecificStyle = true);
+    } else {
+      await ReaderStyleStore.instance.clearForBook(widget.book.id);
+      final store = LibraryStore.instance;
+      final global = await ReaderStyleStore.instance.loadGlobal(ReaderStyle(
+        fontSize: store.fontSize,
+        lineHeight: store.lineHeight,
+        backgroundIndex: store.backgroundIndex,
+      ));
+      if (!mounted) return;
+      setState(() {
+        _bookSpecificStyle = false;
+        _style = kEink ? global.copyWith(backgroundIndex: 0) : global;
+        _pageSlices = const <PageSlice>[];
+        _measureKey = null;
+      });
+    }
+  }
+
+  Widget _styleSlider(String label, double value, double min, double max,
+      int divisions, ValueChanged<double> onChanged, {int digits = 1}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 12, 4, 0),
+          child: Text(label + '  ' + value.toStringAsFixed(digits),
+              style: const TextStyle(fontSize: 13)),
+        ),
+        Slider(
+          min: min,
+          max: max,
+          divisions: divisions,
+          value: value.clamp(min, max),
+          label: value.toStringAsFixed(digits),
+          onChanged: onChanged,
+        ),
+      ],
+    );
+  }
+
   Future<void> _showSettings() async {
     await showModalBottomSheet<void>(
       context: context,
-      builder: (BuildContext ctx) => StatefulBuilder(
-        builder: (BuildContext c, void Function(void Function()) setSheet) => Padding(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      isScrollControlled: true,
+      showDragHandle: !kEink,
+      builder: (BuildContext sheetContext) => StatefulBuilder(
+        builder: (BuildContext ctx, StateSetter refresh) {
+          void change(ReaderStyle next) {
+            refresh(() => _updateStyle(next));
+          }
+          Widget section(String label) => Padding(
+            padding: const EdgeInsets.fromLTRB(4, 18, 4, 6),
+            child: Text(label, style: Theme.of(ctx).textTheme.titleMedium),
+          );
+          Widget option(String label, bool chosen, VoidCallback select) =>
+            ChoiceChip(
+              label: Text(label),
+              selected: chosen,
+              onSelected: (_) => refresh(select),
+            );
+          return SafeArea(
+            child: SizedBox(
+              height: MediaQuery.sizeOf(ctx).height * 0.80,
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
                 children: <Widget>[
-                  Text('字号 ${_fontSize.toStringAsFixed(0)}'),
-                  TextButton(
-                    onPressed: () {
-                      setSheet(() {});
-                      setState(() {
-                        _fontSize = 18;
-                        _pageSlices = const <PageSlice>[];
-                        _measureKey = null;
-                      });
-                      LibraryStore.instance.setFontSize(18);
-                    },
-                    child: const Text('重置'),
+                  Row(
+                    children: <Widget>[
+                      Expanded(child: Text('阅读排版',
+                          style: Theme.of(ctx).textTheme.titleLarge)),
+                      TextButton(
+                        onPressed: () => change(const ReaderStyle()),
+                        child: const Text('恢复默认'),
+                      ),
+                    ],
                   ),
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('仅本书使用此排版'),
+                    subtitle: Text(_bookSpecificStyle
+                      ? '本书独立设置，不影响其他书籍'
+                      : '使用全局设置，所有未单独配置的书籍共享'),
+                    value: _bookSpecificStyle,
+                    onChanged: (enabled) async {
+                      try {
+                        await _setBookScope(enabled);
+                        if (ctx.mounted) refresh(() {});
+                      } catch (_) {
+                        if (!ctx.mounted) return;
+                        ScaffoldMessenger.of(ctx).showSnackBar(
+                          const SnackBar(content: Text('排版范围更改失败')),
+                        );
+                      }
+                    },
+                  ),
+                  section('文字'),
+                  _styleSlider('字号', _style.fontSize, 12, 42, 30,
+                      (v) => change(_style.copyWith(fontSize: v)), digits: 0),
+                  _styleSlider('行高', _style.lineHeight, 1, 2.8, 18,
+                      (v) => change(_style.copyWith(lineHeight: v))),
+                  _styleSlider('字间距', _style.letterSpacing, -1, 5, 24,
+                      (v) => change(_style.copyWith(letterSpacing: v))),
+                  _styleSlider('字体粗细', _style.fontWeightIndex.toDouble(), 0, 8, 8,
+                      (v) => change(_style.copyWith(fontWeightIndex: v.round())),
+                      digits: 0),
+                  const SizedBox(height: 4),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: <Widget>[
+                      option('左对齐', _style.textAlignIndex == 0,
+                          () => _updateStyle(_style.copyWith(textAlignIndex: 0))),
+                      option('两端对齐', _style.textAlignIndex == 1,
+                          () => _updateStyle(_style.copyWith(textAlignIndex: 1))),
+                      option('居中', _style.textAlignIndex == 2,
+                          () => _updateStyle(_style.copyWith(textAlignIndex: 2))),
+                      option('右对齐', _style.textAlignIndex == 3,
+                          () => _updateStyle(_style.copyWith(textAlignIndex: 3))),
+                    ],
+                  ),
+                  section('页面留白'),
+                  _styleSlider('左右边距', _style.horizontalMargin, 8, 80, 36,
+                      (v) => change(_style.copyWith(horizontalMargin: v)), digits: 0),
+                  _styleSlider('上下边距', _style.verticalMargin, 4, 80, 38,
+                      (v) => change(_style.copyWith(verticalMargin: v)), digits: 0),
+                  if (!kEink) ...<Widget>[
+                    section('阅读主题'),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: <Widget>[
+                        for (int i = 0; i < 6; i++)
+                          option(const <String>['纸白', '米黄', '夜间', '浅灰', '护眼绿', '纯黑'][i],
+                              _style.backgroundIndex == i,
+                              () => _updateStyle(_style.copyWith(backgroundIndex: i))),
+                      ],
+                    ),
+                  ],
+                  section('显示内容'),
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('固定显示顶部书名'),
+                    value: _style.showHeader,
+                    onChanged: (v) => change(_style.copyWith(showHeader: v)),
+                  ),
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('显示章节、页数与全书百分比'),
+                    value: _style.showFooter,
+                    onChanged: (v) => change(_style.copyWith(showFooter: v)),
+                  ),
+                  section('翻页交互'),
+                  _styleSlider('点击翻页区域比例', _style.tapZone, 0.15, 0.42, 27,
+                      (v) => change(_style.copyWith(tapZone: v)), digits: 2),
+                  if (!kEink)
+                    _styleSlider('翻页动画（毫秒）', _style.turnDurationMs.toDouble(),
+                        0, 400, 20,
+                        (v) => change(_style.copyWith(turnDurationMs: v.round())),
+                        digits: 0),
+                  const SizedBox(height: 10),
+                  const Text('点击屏幕中部可收起或呼出顶部工具栏；左右边缘点击翻页。'
+                      '当前 EPUB 为文本提取模式，尚不支持完整 CSS 富文本还原。',
+                      style: TextStyle(fontSize: 12)),
                 ],
               ),
-              Slider(
-                min: 12,
-                max: 32,
-                divisions: 20,
-                value: _fontSize,
-                label: _fontSize.toStringAsFixed(0),
-                onChanged: (double v) {
-                  setSheet(() {});
-                  setState(() {
-                    _fontSize = v;
-                    _pageSlices = const <PageSlice>[];
-                    _measureKey = null;
-                  });
-                  LibraryStore.instance.setFontSize(v);
-                },
-              ),
-              Text('行距 ${_lineHeight.toStringAsFixed(1)}'),
-              Slider(
-                min: 1.2,
-                max: 2.2,
-                divisions: 10,
-                value: _lineHeight,
-                label: _lineHeight.toStringAsFixed(1),
-                onChanged: (double v) {
-                  setSheet(() {});
-                  setState(() {
-                    _lineHeight = v;
-                    _pageSlices = const <PageSlice>[];
-                    _measureKey = null;
-                  });
-                  LibraryStore.instance.setLineHeight(v);
-                },
-              ),
-              if (!kEink) ...<Widget>[
-                const Text('背景'),
-                const SizedBox(height: 8),
-                Row(
-                  children: <Widget>[
-                    _bgButton(setSheet, 0, '白'),
-                    _bgButton(setSheet, 1, '米黄'),
-                    _bgButton(setSheet, 2, '夜间'),
-                  ],
-                ),
-              ],
-            ],
-          ),
-        ),
+            ),
+          );
+        },
       ),
     );
   }
 
-  Widget _bgButton(void Function(void Function()) setSheet, int index, String label) {
-    final bool active = _bgIndex == index;
-    return Padding(
-      padding: const EdgeInsets.only(right: 12),
-      child: OutlinedButton(
-        onPressed: () {
-          setSheet(() {});
-          setState(() {
-            _bgIndex = index;
-          });
-          LibraryStore.instance.setBackgroundIndex(index);
-        },
-        child: Text(
-          active ? '· $label' : label,
-          style: TextStyle(
-            fontWeight: active ? FontWeight.bold : FontWeight.normal,
-            color: active ? Colors.black : null,
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 class _Palette {
