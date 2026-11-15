@@ -60,7 +60,7 @@ jobs:
           import re
           gradle = Path('android/app/build.gradle.kts')
           body = gradle.read_text(encoding='utf-8')
-          body, n = re.subn(r'applicationId\\s*=\\s*"app\\.readen\\.read"',
+          body, n = re.subn(r'applicationId\s*=\s*"app\.readen\.read"',
                             'applicationId = "app.readen.read.eink"', body, count=1)
           if n != 1:
               raise SystemExit('Expected Android applicationId not found; review Flutter template')
