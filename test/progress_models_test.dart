@@ -4,14 +4,14 @@ import 'package:read/src/sync/progress_models.dart';
 
 ProgressRecord entry(int offset, int revision, String device) =>
     ProgressRecord(
-      hash: 'a' * 64,
+      hash: List<String>.filled(64, 'a').join(),
       format: 'TXT',
       offset: offset,
       page: 0,
       revision: revision,
       device: device,
       updatedAt: 100,
-      textHash: 'b' * 64,
+      textHash: List<String>.filled(64, 'b').join(),
     );
 
 void main() {
