@@ -108,9 +108,10 @@ class LibraryStore extends ChangeNotifier {
     final String? raw = _prefs?.getString('$_progressPrefix${book.id}');
     if (raw == null) return;
     final List<String> parts = raw.split(':');
-    if (parts.length != 2) return;
+    if (parts.length != 2 && parts.length != 3) return;
     book.chapterIndex.value = int.tryParse(parts[0]) ?? 0;
     book.pageIndex.value = int.tryParse(parts[1]) ?? 0;
+    if (parts.length == 3) book.charOffset.value = int.tryParse(parts[2]) ?? -1;
   }
 
   Future<void> saveProgress(Book book) async {
@@ -118,7 +119,7 @@ class LibraryStore extends ChangeNotifier {
     if (p == null) return;
     await p.setString(
       '$_progressPrefix${book.id}',
-      '${book.chapterIndex.value}:${book.pageIndex.value}',
+      '${book.chapterIndex.value}:${book.pageIndex.value}:${book.charOffset.value}',
     );
   }
 
@@ -217,6 +218,7 @@ class LibraryStore extends ChangeNotifier {
     );
     updated.chapterIndex.value = book.chapterIndex.value;
     updated.pageIndex.value = book.pageIndex.value;
+    updated.charOffset.value = book.charOffset.value;
     final int index = books.indexWhere((Book b) => b.id == book.id);
     if (index >= 0) {
       books[index] = updated;
