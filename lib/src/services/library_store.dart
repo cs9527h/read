@@ -175,18 +175,62 @@ class LibraryStore extends ChangeNotifier {
 
   /// 导入 TXT：把内容复制到应用目录，元数据写入本地存储。
   Future<Book?> importBook() async {
-    final FilePickerResult? result = await FilePicker.platform.pickFiles(
+    final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: const <String>['txt', 'epub', 'pdf', 'md', 'markdown', 'html', 'htm'],
       withData: false,
+      withReadStream: true,
     );
     if (result == null || result.files.isEmpty) return null;
-    final PlatformFile picked = result.files.first;
-    final String? path = picked.path;
-    if (path == null || path.isEmpty) {
-      throw const FormatException('系统没有返回可读取的文件路径。请先将电子书下载到手机本地，再从文件管理器选择。');
+    final picked = result.files.first;
+    final candidate = picked.path;
+    File? staged;
+    if (candidate == null || candidate.isEmpty || !await File(candidate).exists()) {
+      // SAF and some document providers offer a stream without a filesystem
+      // path. Copy that stream into a bounded app-owned temporary file.
+      staged = await _stageDocumentStream(picked);
     }
+    try {
+      return await _importPickedFile(picked, staged?.path ?? candidate!);
+    } finally {
+      if (staged != null && await staged.exists()) {
+        await staged.delete();
+      }
+    }
+  }
 
+  Future<File> _stageDocumentStream(PlatformFile picked) async {
+    final stream = picked.readStream;
+    if (stream == null) {
+      throw const FormatException(
+        '文件提供者无法提供可读取的数据，请先将电子书下载到本地后重试',
+      );
+    }
+    final ext = picked.name.split('.').last.toLowerCase();
+    final cap = ext == 'pdf' ? 256 * 1024 * 1024 : FormatEngine.maxSourceBytes;
+    final dir = await getTemporaryDirectory();
+    final file = File('${dir.path}/read-import-${DateTime.now().microsecondsSinceEpoch}.tmp');
+    final sink = file.openWrite();
+    var total = 0;
+    try {
+      await for (final chunk in stream) {
+        total += chunk.length;
+        if (total > cap) {
+          throw const FormatException('电子书文件过大，已中止临时导入以保护内存和存储空间');
+        }
+        sink.add(chunk);
+      }
+      await sink.flush();
+      await sink.close();
+      return file;
+    } catch (_) {
+      await sink.close();
+      if (await file.exists()) await file.delete();
+      rethrow;
+    }
+  }
+
+  Future<Book?> _importPickedFile(PlatformFile picked, String path) async {
     final String ext = picked.name.split('.').last.toLowerCase();
     if (ext == 'pdf') {
       final File source = File(path);
