@@ -898,6 +898,70 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
   // 高级
   // ---------------------------------------------------------------------------
 
+  void _setQuickAction(String action, bool enabled) {
+    final selected = _settings.bottomActions.toList();
+    if (enabled) {
+      if (selected.contains(action)) return;
+      if (selected.length >= 3) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('底部最多显示三个快捷功能')),
+        );
+        return;
+      }
+      selected.add(action);
+    } else {
+      if (selected.length <= 1) return;
+      selected.remove(action);
+    }
+    _update(<String, Object?>{'bottomActions': selected.join(',')});
+  }
+
+  void _moveQuickAction(String action, int direction) {
+    final selected = _settings.bottomActions.toList();
+    final oldIndex = selected.indexOf(action);
+    final target = oldIndex + direction;
+    if (oldIndex < 0 || target < 0 || target >= selected.length) return;
+    selected.removeAt(oldIndex);
+    selected.insert(target, action);
+    _update(<String, Object?>{'bottomActions': selected.join(',')});
+  }
+
+  Widget _quickActionRow(String action) {
+    final selected = _settings.bottomActions;
+    final index = selected.indexOf(action);
+    final title = switch (action) {
+      'toc' => '目录',
+      'bookmark' => '书签',
+      'search' => '搜索',
+      _ => '设置',
+    };
+    return ListTile(
+      dense: true,
+      contentPadding: EdgeInsets.zero,
+      title: Text(title),
+      leading: Checkbox(
+        value: index >= 0,
+        onChanged: (checked) => _setQuickAction(action, checked ?? false),
+      ),
+      trailing: index < 0 ? null : Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          IconButton(
+            tooltip: '上移' + title,
+            onPressed: index == 0 ? null : () => _moveQuickAction(action, -1),
+            icon: const Icon(Icons.keyboard_arrow_up_rounded),
+          ),
+          IconButton(
+            tooltip: '下移' + title,
+            onPressed: index == selected.length - 1
+                ? null : () => _moveQuickAction(action, 1),
+            icon: const Icon(Icons.keyboard_arrow_down_rounded),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _advancedTab(Color secondary) {
     return ListView(
       padding: const EdgeInsets.fromLTRB(18, 14, 18, 32),
@@ -1040,6 +1104,11 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
         ),
         _switch('极简模式（关闭翻页动画）', _settings.minimalMode,
             (bool v) => _update(<String, Object?>{'minimalMode': v})),
+        _section('底部快捷功能', secondary),
+        Text('最多显示三个，可勾选并调整顺序。',
+            style: TextStyle(fontSize: 11, color: secondary)),
+        for (final action in const <String>['toc', 'bookmark', 'search', 'settings'])
+          _quickActionRow(action),
         _section('方案与配置', secondary),
         Row(
           children: <Widget>[
