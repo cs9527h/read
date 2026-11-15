@@ -67,6 +67,11 @@ class _BookshelfPageState extends State<BookshelfPage> {
                       Icon(Icons.keyboard_arrow_down_rounded, size: 22, color: palette.ink),
                       const Spacer(),
                       IconButton(
+                        tooltip: '导入书籍',
+                        onPressed: _importBook,
+                        icon: Icon(Icons.add_rounded, color: palette.icon),
+                      ),
+                      IconButton(
                         tooltip: '刷新书架',
                         onPressed: () async {
                           await LibraryStore.instance.init();
@@ -259,7 +264,15 @@ class _BookshelfPageState extends State<BookshelfPage> {
       final Book? book = await LibraryStore.instance.importBook();
       if (!mounted || book == null) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('已导入《${book.title}》')),
+        SnackBar(
+          content: Text('已导入《${book.title}》'),
+          action: SnackBarAction(
+            label: '立即阅读',
+            onPressed: () {
+              if (mounted) _openBook(book);
+            },
+          ),
+        ),
       );
     } on FormatException catch (error) {
       if (!mounted) return;
@@ -303,16 +316,14 @@ class _BookCell extends StatelessWidget {
   Widget build(BuildContext context) {
     final ReadPalette palette = ReadPalette.of(context);
     final String progress = _progressLabel(book);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        Expanded(
-          child: GestureDetector(
-            onTap: onOpen,
-            onLongPress: onMenu,
-            child: _Cover(book: book),
-          ),
-        ),
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onOpen,
+      onLongPress: onMenu,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Expanded(child: _Cover(book: book)),
         const SizedBox(height: 8),
         Text(
           book.title,
@@ -345,7 +356,8 @@ class _BookCell extends StatelessWidget {
             ),
           ],
         ),
-      ],
+        ],
+      ),
     );
   }
 
