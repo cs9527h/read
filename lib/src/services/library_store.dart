@@ -28,6 +28,10 @@ class LibraryStore extends ChangeNotifier {
   final List<Book> books = <Book>[];
   SharedPreferences? _prefs;
 
+  // Capture immutable progress snapshots and serialize writes to prevent
+  // older page turns racing a newer chapter/character position.
+  Future<void> _progressWrites = Future<void>.value();
+
   double _fontSize = 18;
   double _lineHeight = 1.7;
   int _backgroundIndex = 0;
@@ -42,7 +46,7 @@ class LibraryStore extends ChangeNotifier {
     _lineHeight = _prefs!.getDouble(_lineKey) ?? 1.7;
     _backgroundIndex = _prefs!.getInt(_bgKey) ?? 0;
 
-    books.clear();
+    final loadedBooks = <Book>[];
     final String? raw = _prefs!.getString(_metaKey);
     if (raw != null) {
       try {
@@ -51,7 +55,7 @@ class LibraryStore extends ChangeNotifier {
           final Book? book = await _loadBook(item as Map<String, dynamic>);
           if (book != null) {
             _restoreProgress(book);
-            books.add(book);
+            loadedBooks.add(book);
           }
         }
       } catch (error) {
@@ -60,6 +64,9 @@ class LibraryStore extends ChangeNotifier {
       }
     }
 
+    books
+      ..clear()
+      ..addAll(loadedBooks);
     _sortBooks();
     notifyListeners();
   }
@@ -111,12 +118,18 @@ class LibraryStore extends ChangeNotifier {
   }
 
   Future<void> saveProgress(Book book) async {
-    final SharedPreferences? p = _prefs;
-    if (p == null) return;
-    await p.setString(
-      '$_progressPrefix${book.id}',
-      '${book.chapterIndex.value}:${book.pageIndex.value}:${book.charOffset.value}',
-    );
+    final prefs = _prefs;
+    if (prefs == null) return;
+    final key = '$_progressPrefix${book.id}';
+    final snapshot =
+        '${book.chapterIndex.value}:${book.pageIndex.value}:${book.charOffset.value}';
+    final write = _progressWrites.catchError((Object _) {}).then((_) async {
+      if (!await prefs.setString(key, snapshot)) {
+        throw StateError('阅读进度写入失败');
+      }
+    });
+    _progressWrites = write;
+    await write;
   }
 
   /// Apply validated remote progress without altering the imported file.
