@@ -315,18 +315,26 @@ class LibraryStore extends ChangeNotifier {
   }
 
   Future<void> deleteBook(Book book) async {
-    books.remove(book);
-    final String? path = book.sourcePath;
+    final index = books.indexWhere((item) => item.id == book.id);
+    if (index < 0) return;
+    final removed = books.removeAt(index);
+    try {
+      // Commit the library change before deleting the only local copy.
+      // A failed write must restore the visible book and preserve its bytes.
+      await _persistMeta();
+    } catch (_) {
+      books.insert(index, removed);
+      notifyListeners();
+      rethrow;
+    }
+    final path = book.sourcePath;
     if (path != null) {
-      final File file = File(path);
-      if (await file.exists()) {
-        await file.delete();
-      }
+      final file = File(path);
+      if (await file.exists()) await file.delete();
     }
     await _prefs?.remove('$_progressPrefix${book.id}');
     await BookmarkStore.clearForDeletedBook(book.id);
     await ChapterRuleStore.clearForDeletedBook(book.id);
-    await _persistMeta();
     notifyListeners();
   }
 
@@ -364,7 +372,9 @@ class LibraryStore extends ChangeNotifier {
     final SharedPreferences? p = _prefs;
     if (p == null) return;
     final String raw = jsonEncode(books.map((Book b) => b.toMeta()).toList());
-    await p.setString(_metaKey, raw);
+    if (!await p.setString(_metaKey, raw)) {
+      throw StateError('书架索引保存失败，未继续修改本地文件');
+    }
   }
 
   /// Kept for backwards compatibility with import tests and older callers.
