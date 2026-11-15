@@ -6,6 +6,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../model/book.dart';
 import '../services/chapter_splitter.dart';
+import '../services/chapter_rule_store.dart';
+import '../services/reading_anchor.dart';
 import '../services/library_store.dart';
 import 'encrypted_sync_envelope.dart';
 import 'progress_models.dart';
@@ -106,7 +108,7 @@ class ProgressSyncService {
       // Include unread books as matching targets: they may have no usable
       // local character anchor yet, but can safely receive cloud progress.
       booksByHash.putIfAbsent(digest, () => <Book>[]).add(book);
-      final position = _snapshot(book, digest, device);
+      final position = await _snapshot(book, digest, device);
       if (position == null) {
         // New imports without a reading position can receive cloud progress.
         // But older page-only bookmarks must not be overwritten as "unread".
@@ -282,7 +284,7 @@ class ProgressSyncService {
     return value;
   }
 
-  ProgressRecord? _snapshot(Book book, String digest, String device) {
+  Future<ProgressRecord?> _snapshot(Book book, String digest, String device) async {
     final format = book.format.toUpperCase();
     final now = DateTime.now().millisecondsSinceEpoch;
     if (format == 'PDF') {
@@ -296,11 +298,13 @@ class ProgressSyncService {
     if (book.charOffset.value < 0) return null; // legacy page-only position
     if (!<String>['TXT', 'EPUB', 'MD', 'MARKDOWN', 'HTML', 'HTM']
         .contains(format)) return null;
-    final chapters = splitChapters(book.content);
-    final index = book.chapterIndex.value.clamp(0, chapters.length - 1);
-    final current = chapters[index];
-    final absolute = current.start +
-        book.charOffset.value.clamp(0, current.length);
+    final rule = await ChapterRuleStore.load(book.id);
+    final chapters = splitChapters(book.content, rule: rule);
+    final absolute = ReadingAnchor.fromChapter(
+      chapters: chapters,
+      chapterIndex: book.chapterIndex.value,
+      chapterOffset: book.charOffset.value,
+    ).absoluteOffset;
     return ProgressRecord(
       hash: digest, format: format, offset: absolute,
       page: 0, revision: 0, device: device, updatedAt: now,
@@ -340,20 +344,16 @@ class ProgressSyncService {
     if (remote.offset < 0 || remote.offset > book.content.length) {
       throw const FormatException('云端字符位置超出本地文件范围');
     }
-    final chapters = splitChapters(book.content);
-    int index = chapters.length - 1;
-    for (int i = 0; i < chapters.length; i++) {
-      if (remote.offset < chapters[i].end) {
-        index = i;
-        break;
-      }
-    }
-    final chapter = chapters[index];
+    final rule = await ChapterRuleStore.load(book.id);
+    final chapters = splitChapters(book.content, rule: rule);
+    final anchor = ReadingAnchor.fromAbsolute(
+      chapters: chapters, absoluteOffset: remote.offset,
+    );
     await library.applySyncedProgress(
       book,
-      chapterIndex: index,
+      chapterIndex: anchor.chapterIndex,
       pageIndex: 0,
-      charOffset: (remote.offset - chapter.start).clamp(0, chapter.length),
+      charOffset: anchor.chapterOffset,
     );
   }
 
