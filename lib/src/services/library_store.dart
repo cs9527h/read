@@ -248,6 +248,16 @@ class LibraryStore extends ChangeNotifier {
     // Preserve the original file, including EPUB structure, for future
     // richer layout support and content-addressed cloud sync.
     await target.writeAsBytes(bytes, flush: true);
+    File? coverFile;
+    try {
+      if (parsed.coverBytes != null) {
+        coverFile = File('${booksDir.path}/$id.cover');
+        await coverFile.writeAsBytes(parsed.coverBytes!, flush: true);
+      }
+    } catch (_) {
+      // Cover is optional: a bad image must never prevent book import.
+      coverFile = null;
+    }
 
     final String name = picked.name.substring(
       0, picked.name.lastIndexOf('.') > 0
@@ -261,6 +271,7 @@ class LibraryStore extends ChangeNotifier {
       format: parsed.format,
       content: text,
       sourcePath: target.path,
+      coverPath: coverFile?.path,
     );
     books.add(book);
     _sortBooks();
@@ -269,6 +280,7 @@ class LibraryStore extends ChangeNotifier {
     } catch (_) {
       books.remove(book);
       if (await target.exists()) await target.delete();
+      if (coverFile != null && await coverFile.exists()) await coverFile.delete();
       rethrow;
     }
     notifyListeners();
@@ -294,6 +306,10 @@ class LibraryStore extends ChangeNotifier {
       final file = File(path);
       if (await file.exists()) await file.delete();
     }
+    if (book.coverPath != null) {
+      final file = File(book.coverPath!);
+      if (await file.exists()) await file.delete();
+    }
     await _prefs?.remove('$_progressPrefix${book.id}');
     await BookmarkStore.clearForDeletedBook(book.id);
     await ChapterRuleStore.clearForDeletedBook(book.id);
@@ -314,6 +330,7 @@ class LibraryStore extends ChangeNotifier {
       content: book.content,
       format: book.format,
       sourcePath: book.sourcePath,
+      coverPath: book.coverPath,
       lastReadAt: DateTime.now(),
       chapterCount: book.chapterCount,
     );
