@@ -3,6 +3,7 @@ name: build-android
 on:
   push:
     branches: [ main ]
+  pull_request:
   workflow_dispatch:
 
 jobs:
@@ -38,7 +39,7 @@ jobs:
         run: flutter pub get
 
       - name: 静态检查
-        run: flutter analyze --no-fatal-infos || true
+        run: flutter analyze --no-fatal-infos
 
       - name: 单元测试
         run: flutter test
@@ -51,6 +52,21 @@ jobs:
           mkdir -p out
           cp build/app/outputs/flutter-apk/app-release.apk out/read-android.apk
           ls -lh out
+
+      - name: 设置墨水屏独立包名
+        run: |
+          python3 - <<'PYCODE'
+          from pathlib import Path
+          import re
+          gradle = Path('android/app/build.gradle.kts')
+          body = gradle.read_text(encoding='utf-8')
+          body, n = re.subn(r'applicationId\\s*=\\s*"app\\.readen\\.read"',
+                            'applicationId = "app.readen.read.eink"', body, count=1)
+          if n != 1:
+              raise SystemExit('Expected Android applicationId not found; review Flutter template')
+          gradle.write_text(body, encoding='utf-8')
+          print('E-ink applicationId set to app.readen.read.eink')
+          PYCODE
 
       - name: 构建墨水屏 APK
         run: flutter build apk --release --dart-define=EINK=true
