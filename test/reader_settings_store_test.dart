@@ -94,4 +94,40 @@ void main() {
       throwsA(isA<FormatException>()),
     );
   });
+  test('单本书设置跨 init 重启恢复且不污染其他书籍', () async {
+    final store = ReaderSettingsStore.instance;
+    await store.save(
+      'book-local',
+      store.resolve('book-local').patch(<String, Object?>{
+        'fontSize': 29.0,
+        'marginLeft': 35.0,
+        'titleFontSize': 26.0,
+      }),
+      ReaderScope.book,
+    );
+    expect(store.resolve('book-local').fontSize, 29.0);
+    await store.init(); // Simulates the next app launch on the same prefs.
+    expect(store.resolve('book-local').fontSize, 29.0);
+    expect(store.resolve('book-local').marginLeft, 35.0);
+    expect(store.resolve('book-local').titleFontSize, 26.0);
+    expect(store.resolve('another-book').fontSize, 18.0);
+    expect(store.hasOverride('book-local', ReaderScope.book), isTrue);
+  });
+
+  test('重新初始化必须清掉已经被外部删除的旧配置缓存', () async {
+    final store = ReaderSettingsStore.instance;
+    await store.save(
+      'book-stale',
+      store.resolve('book-stale').patch(<String, Object?>{
+        'fontSize': 31.0,
+      }),
+      ReaderScope.book,
+    );
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('read.reader.settings.book.book-stale');
+    await store.init();
+    expect(store.resolve('book-stale').fontSize, 18.0);
+    expect(store.hasOverride('book-stale', ReaderScope.book), isFalse);
+  });
+
 }
