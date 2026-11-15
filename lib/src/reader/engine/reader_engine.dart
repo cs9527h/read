@@ -294,8 +294,25 @@ class ReaderEngine {
       final double pageHeight = (pages.isEmpty && showTitle)
           ? math.max(1, height - titleHeight)
           : height;
-      int low = 1;
-      int high = display.text.length - start;
+      // Search around the expected page length. Measuring half of a
+      // multi-megabyte chapter for *every* page made long TXT books slow.
+      final int remaining = display.text.length - start;
+      int low = 0;
+      int probe = math.min(256, remaining);
+      int high = remaining;
+      while (true) {
+        if (fits(start, probe, pageHeight)) {
+          low = probe;
+          if (probe == remaining) {
+            high = probe;
+            break;
+          }
+          probe = math.min(remaining, probe * 2);
+        } else {
+          high = probe - 1;
+          break;
+        }
+      }
       while (low < high) {
         final int mid = (low + high + 1) ~/ 2;
         if (fits(start, mid, pageHeight)) {
@@ -304,7 +321,7 @@ class ReaderEngine {
           high = mid - 1;
         }
       }
-      int end = start + low;
+      int end = start + math.max(low, 1);
       if (end < display.text.length &&
           _isHighSurrogate(display.text.codeUnitAt(end - 1)) &&
           _isLowSurrogate(display.text.codeUnitAt(end))) {
