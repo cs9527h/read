@@ -32,12 +32,20 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
   late ReaderSettings _settings;
   late ReaderSettings _initial;
   ReaderScope _scope = ReaderScope.book;
+  late final TextEditingController _boldPatternController;
 
   @override
   void initState() {
     super.initState();
     _settings = _store.resolve(widget.bookId);
     _initial = _settings;
+    _boldPatternController = TextEditingController(text: _settings.boldPattern);
+  }
+
+  @override
+  void dispose() {
+    _boldPatternController.dispose();
+    super.dispose();
   }
 
   void _update(Map<String, Object?> patch) {
@@ -51,12 +59,16 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
     setState(() {
       _settings = _store.resolve(widget.bookId);
       _initial = _settings;
+      _boldPatternController.text = _settings.boldPattern;
     });
     widget.onRepaginate();
   }
 
   void _undo() {
-    setState(() => _settings = _initial);
+    setState(() {
+      _settings = _initial;
+      _boldPatternController.text = _settings.boldPattern;
+    });
     _store.save(widget.bookId, _settings, _scope);
     widget.onRepaginate();
   }
@@ -428,9 +440,7 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
         ),
         _section('行内强调', secondary),
         TextField(
-          controller: TextEditingController(text: _settings.boldPattern)
-            ..selection = TextSelection.collapsed(
-                offset: _settings.boldPattern.length),
+          controller: _boldPatternController,
           decoration: const InputDecoration(
             labelText: '加粗行匹配规则（正则，留空关闭）',
             hintText: r'^【.*】',
