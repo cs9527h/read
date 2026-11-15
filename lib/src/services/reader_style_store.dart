@@ -26,6 +26,8 @@ class ReaderStyle {
     this.backgroundImage = '',
     this.backgroundDim = 0.15,
     this.autoTurnSeconds = 8,
+    this.customForegroundArgb = 0,
+    this.customBackgroundArgb = 0,
   });
 
   final double fontSize;
@@ -52,6 +54,9 @@ class ReaderStyle {
   final String backgroundImage;
   final double backgroundDim;
   final int autoTurnSeconds;
+  /// Zero uses the selected built-in theme color.
+  final int customForegroundArgb;
+  final int customBackgroundArgb;
 
   FontWeight get fontWeight => FontWeight.values[fontWeightIndex];
   TextAlign get textAlign => switch (textAlignIndex) {
@@ -89,6 +94,8 @@ class ReaderStyle {
     String? backgroundImage,
     double? backgroundDim,
     int? autoTurnSeconds,
+    int? customForegroundArgb,
+    int? customBackgroundArgb,
   }) =>
       ReaderStyle(
         fontSize: fontSize ?? this.fontSize,
@@ -109,6 +116,8 @@ class ReaderStyle {
         backgroundImage: backgroundImage ?? this.backgroundImage,
         backgroundDim: backgroundDim ?? this.backgroundDim,
         autoTurnSeconds: autoTurnSeconds ?? this.autoTurnSeconds,
+        customForegroundArgb: customForegroundArgb ?? this.customForegroundArgb,
+        customBackgroundArgb: customBackgroundArgb ?? this.customBackgroundArgb,
       );
 
   Map<String, Object> toJson() => <String, Object>{
@@ -131,6 +140,8 @@ class ReaderStyle {
         'backgroundImage': backgroundImage,
         'backgroundDim': backgroundDim,
         'autoTurnSeconds': autoTurnSeconds,
+        'customForegroundArgb': customForegroundArgb,
+        'customBackgroundArgb': customBackgroundArgb,
       };
 
   static ReaderStyle fromJson(Object? source, {ReaderStyle fallback = const ReaderStyle()}) {
@@ -169,6 +180,8 @@ class ReaderStyle {
           ? m['backgroundImage'] as String : fallback.backgroundImage,
       backgroundDim: number('backgroundDim', fallback.backgroundDim, 0, 0.8),
       autoTurnSeconds: integer('autoTurnSeconds', fallback.autoTurnSeconds, 2, 60),
+      customForegroundArgb: integer('customForegroundArgb', fallback.customForegroundArgb, 0, 0xFFFFFFFF),
+      customBackgroundArgb: integer('customBackgroundArgb', fallback.customBackgroundArgb, 0, 0xFFFFFFFF),
     );
   }
 
