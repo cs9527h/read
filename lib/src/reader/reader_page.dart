@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 
 import 'package:read/src/model/book.dart';
 import 'package:read/src/reader/engine/reader_engine.dart';
+import 'package:read/src/reader/annotations/reader_annotation_spans.dart';
 import 'package:read/src/reader/platform/reader_device_bridge.dart';
 import 'package:read/src/reader/settings/reader_settings.dart';
 import 'package:read/src/reader/settings/reader_settings_store.dart';
@@ -14,6 +15,7 @@ import 'package:read/src/reader/settings/reader_theme.dart';
 import 'package:read/src/reader/settings/user_font_store.dart';
 import 'package:read/src/reader/widgets/reader_settings_sheet.dart';
 import 'package:read/src/services/book_search.dart';
+import 'package:read/src/services/reader_annotation_store.dart';
 import 'package:read/src/services/bookmark_store.dart';
 import 'package:read/src/services/chapter_rule_store.dart';
 import 'package:read/src/services/chapter_splitter.dart';
@@ -43,6 +45,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   PageController? _pageController;
   ScrollController? _scrollController;
   List<int> _bookmarks = const <int>[];
+  List<ReaderAnnotation> _annotations = const <ReaderAnnotation>[];
+  ({int start, int end})? _selectionRange;
 
   bool _menuVisible = false;
   bool _loading = true;
@@ -71,6 +75,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     UserFontStore.instance.addListener(_onStoreChanged);
     _initChapters();
     _initBookmarks();
+    _initAnnotations();
     _applySystemUi();
     _clockTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) setState(() {});
@@ -190,6 +195,22 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
       _loading = false;
     });
     LibraryStore.instance.noteChapterCount(widget.book, chapters.length);
+  }
+
+  Future<void> _initAnnotations() async {
+    try {
+      final saved = await ReaderAnnotationStore.instance.load(widget.book.id);
+      if (mounted) setState(() => _annotations = saved);
+    } catch (_) {
+      if (!mounted) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('批注记录读取失败，原始数据未被覆盖')),
+          );
+        }
+      });
+    }
   }
 
   Future<void> _initBookmarks() async {
@@ -865,26 +886,69 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     );
   }
 
-  TextSpan _pageSpan(String text, TextStyle style) {
-    final String pattern = _settings.boldPattern.trim();
-    if (pattern.isEmpty) return TextSpan(text: text, style: style);
-    RegExp regex;
-    try {
-      regex = RegExp(pattern);
-    } catch (_) {
-      return TextSpan(text: text, style: style);
-    }
-    final List<String> lines = text.split('\n');
-    final List<InlineSpan> spans = <InlineSpan>[];
-    for (int i = 0; i < lines.length; i++) {
-      final bool bold = lines[i].trim().isNotEmpty && regex.hasMatch(lines[i]);
-      spans.add(TextSpan(
-        text: lines[i],
-        style: bold ? style.copyWith(fontWeight: FontWeight.w700) : style,
-      ));
-      if (i != lines.length - 1) spans.add(TextSpan(text: '\n', style: style));
-    }
-    return TextSpan(children: spans);
+  Widget _selectableBody(
+      PaginatedChapter pagination, EnginePage page, TextStyle style) {
+    final display = pagination.display;
+    final chapter = _chapters[_chapterIndex];
+    final body = ReaderAnnotationSpans.render(
+      text: page.textOf(display),
+      bodyStyle: style,
+      display: display,
+      displayStart: page.displayStart,
+      chapterStart: chapter.start,
+      annotations: _annotations,
+      boldPattern: _settings.boldPattern,
+    );
+    return SelectableText.rich(
+      body,
+      textAlign: ReaderEngine.textAlignOf(_settings.align),
+      onSelectionChanged: (TextSelection selection,
+          SelectionChangedCause? cause) {
+        if (selection.isCollapsed) {
+          _selectionRange = null;
+          return;
+        }
+        final startDisplay = (page.displayStart + selection.start)
+            .clamp(page.displayStart, page.displayEnd);
+        final endDisplay = (page.displayStart + selection.end)
+            .clamp(page.displayStart, page.displayEnd);
+        final absoluteStart =
+            chapter.start + display.sourceOffset(startDisplay);
+        final absoluteEnd =
+            chapter.start + display.sourceOffset(endDisplay);
+        if (absoluteEnd <= absoluteStart) {
+          _selectionRange = null;
+        } else {
+          _selectionRange = (
+            start: absoluteStart,
+            end: absoluteEnd,
+          );
+        }
+      },
+      contextMenuBuilder: (BuildContext ctx, EditableTextState state) {
+        final items = <ContextMenuButtonItem>[
+          ...state.contextMenuButtonItems,
+          ContextMenuButtonItem(
+            label: '划线',
+            onPressed: () {
+              state.hideToolbar();
+              unawaited(_annotateSelection(withNote: false));
+            },
+          ),
+          ContextMenuButtonItem(
+            label: '笔记',
+            onPressed: () {
+              state.hideToolbar();
+              unawaited(_annotateSelection(withNote: true));
+            },
+          ),
+        ];
+        return AdaptiveTextSelectionToolbar.buttonItems(
+          anchors: state.contextMenuAnchors,
+          buttonItems: items,
+        );
+      },
+    );
   }
 
   Widget _scaledText(Widget child) {
@@ -906,12 +970,9 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
       color: foreground,
       textScale: _textScale,
     );
-    final Widget body = _scaledText(SelectionArea(
-      child: Text.rich(
-        _pageSpan(page.textOf(p.display), style),
-        textAlign: ReaderEngine.textAlignOf(_settings.align),
-      ),
-    ));
+    final Widget body = _scaledText(
+      _selectableBody(p, page, style),
+    );
     children.add(
       Expanded(
         child: Align(
@@ -947,12 +1008,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
             alignment: _settings.bottomAlign
                 ? Alignment.bottomLeft
                 : Alignment.topLeft,
-            child: _scaledText(SelectionArea(
-              child: Text.rich(
-                _pageSpan(page.textOf(p.display), style),
-                textAlign: ReaderEngine.textAlignOf(_settings.align),
-              ),
-            )),
+            child: _scaledText(_selectableBody(p, page, style)),
           ),
         ),
       );
@@ -1062,17 +1118,18 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
             _buildChapterTitle(),
-            _scaledText(SelectionArea(
-              child: Text.rich(
-                _pageSpan(
-                  p.display.text,
-                  ReaderEngine.bodyStyle(
-                    _settings,
-                    color: foreground,
-                    textScale: _textScale,
-                  ),
-                ),
-                textAlign: ReaderEngine.textAlignOf(_settings.align),
+            _scaledText(_selectableBody(
+              p,
+              EnginePage(
+                displayStart: 0,
+                displayEnd: p.display.text.length,
+                sourceStart: 0,
+                sourceEnd: p.display.sourceLength,
+              ),
+              ReaderEngine.bodyStyle(
+                _settings,
+                color: foreground,
+                textScale: _textScale,
               ),
             )),
             const SizedBox(height: 40),
@@ -1230,6 +1287,11 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
               color: foreground,
             ),
             onPressed: _toggleBookmark,
+          ),
+          IconButton(
+            tooltip: '我的划线与笔记',
+            icon: Icon(Icons.edit_note_rounded, size: 21, color: foreground),
+            onPressed: _showAnnotations,
           ),
           IconButton(
             tooltip: '阅读设置',
