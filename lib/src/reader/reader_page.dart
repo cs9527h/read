@@ -373,8 +373,10 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                   },
                   itemBuilder: (BuildContext context, int index) => Padding(
                     padding: EdgeInsets.symmetric(
-                      horizontal: _style.horizontalMargin,
-                      vertical: _style.verticalMargin,
+                      left: _style.leftMargin,
+                      right: _style.rightMargin,
+                      top: _style.topMargin,
+                      bottom: _style.bottomMargin,
                     ),
                     child: Text(
                       ReaderTextFormatter.format(chapterText,
@@ -431,8 +433,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     _measureKey = key;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || _measureKey != key) return;
-      final double width = size.width - _style.horizontalMargin * 2;
-      final double height = size.height - _style.verticalMargin * 2 -
+      final double width = size.width - _style.leftMargin - _style.rightMargin;
+      final double height = size.height - _style.topMargin - _style.bottomMargin -
           (_style.showFooter ? 38 : 0);
       if (width <= 0 || height <= 0) return;
       final String chapterText = chapter.slice(widget.book.content);
@@ -1392,6 +1394,30 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                       (v) => change(_style.copyWith(horizontalMargin: v)), digits: 0),
                   _styleSlider('上下边距', _style.verticalMargin, 4, 80, 38,
                       (v) => change(_style.copyWith(verticalMargin: v)), digits: 0),
+                  ExpansionTile(
+                    title: const Text('四边独立微调'),
+                    tilePadding: EdgeInsets.zero,
+                    children: <Widget>[
+                      _styleSlider('左边距', _style.leftMargin, 0, 120, 60,
+                        (v) => change(_style.copyWith(leftMarginOverride: v)),
+                        digits: 0),
+                      _styleSlider('右边距', _style.rightMargin, 0, 120, 60,
+                        (v) => change(_style.copyWith(rightMarginOverride: v)),
+                        digits: 0),
+                      _styleSlider('上边距', _style.topMargin, 0, 120, 60,
+                        (v) => change(_style.copyWith(topMarginOverride: v)),
+                        digits: 0),
+                      _styleSlider('下边距', _style.bottomMargin, 0, 120, 60,
+                        (v) => change(_style.copyWith(bottomMarginOverride: v)),
+                        digits: 0),
+                      TextButton(
+                        onPressed: () => change(_style.copyWith(
+                          leftMarginOverride: -1, rightMarginOverride: -1,
+                          topMarginOverride: -1, bottomMarginOverride: -1)),
+                        child: const Text('恢复对称边距'),
+                      ),
+                    ],
+                  ),
                   if (!kEink) ...<Widget>[
                     section('阅读主题'),
                     Wrap(
