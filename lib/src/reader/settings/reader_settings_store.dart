@@ -127,9 +127,13 @@ class ReaderSettingsStore extends ChangeNotifier {
 
   /// 修改的生效范围。
   Future<void> save(String bookId, ReaderSettings next, ReaderScope scope) async {
+    // The sheet passes a *resolved* per-book snapshot. Persisting that entire
+    // snapshot to global scope would leak book-specific overrides into every
+    // other book. Only write fields the user changed in this interaction.
+    final Map<String, Object?> changed = next.diffFrom(resolve(bookId));
     switch (scope) {
       case ReaderScope.global:
-        _global = next.toJson();
+        _global = <String, Object?>{..._global, ...changed};
         await _prefs?.setString(_globalKey, jsonEncode(_global));
       case ReaderScope.theme:
         final String themeId = next.themeId;
