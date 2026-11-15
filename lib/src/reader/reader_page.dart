@@ -205,11 +205,12 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     return _pageWidth > 620 && _pageWidth > _pageHeight * 1.05;
   }
 
-  double get _headerHeight =>
-      _settings.headerShow ? _settings.headerFontSize * 2 + 8 : 0;
-  double get _footerHeight => _settings.footerShow
-      ? _settings.footerFontSize * 2 + (_settings.footerProgressBar ? 8 : 0) + 6
-      : 0;
+  double get _headerHeight => _settings.minimalMode || !_settings.headerShow
+      ? 0 : _settings.headerFontSize * 2 + 8;
+  double get _footerHeight => _settings.minimalMode || !_settings.footerShow
+      ? 0
+      : _settings.footerFontSize * 2 +
+          (_settings.footerProgressBar ? 8 : 0) + 6;
 
   double get _textScale {
     final TextScaler scaler = MediaQuery.textScalerOf(context);
@@ -554,7 +555,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   }
 
   Widget _buildHeader(Color secondary) {
-    if (!_settings.headerShow) return const SizedBox.shrink();
+    if (_settings.minimalMode || !_settings.headerShow) return const SizedBox.shrink();
     return SizedBox(
       height: _headerHeight,
       child: Row(
@@ -601,7 +602,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   }
 
   Widget _buildFooter(Color secondary) {
-    if (!_settings.footerShow) return const SizedBox.shrink();
+    if (_settings.minimalMode || !_settings.footerShow) return const SizedBox.shrink();
     return SizedBox(
       height: _footerHeight,
       child: Column(
@@ -790,7 +791,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   }
 
   Widget _withGuides(Widget child, Color secondary) {
-    if (!_settings.guideShow) return child;
+    if (_settings.minimalMode || !_settings.guideShow) return child;
     return Stack(
       children: <Widget>[
         Positioned.fill(child: child),
