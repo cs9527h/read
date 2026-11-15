@@ -179,12 +179,18 @@ class LibraryStore extends ChangeNotifier {
   Future<Book?> importBook() async {
     final FilePickerResult? result = await FilePicker.platform.pickFiles(
       type: FileType.any,
+      withData: false,
+      withReadStream: true,
     );
     if (result == null || result.files.isEmpty) return null;
     final PlatformFile picked = result.files.first;
-    final String? path = picked.path;
-    if (path == null) return null;
-
+    File? staged;
+    String? path = picked.path;
+    if (path == null || !await File(path).exists()) {
+      staged = await _stageDocumentStream(picked);
+      path = staged.path;
+    }
+    try {
     final String ext = picked.name.split('.').last.toLowerCase();
     if (ext == 'pdf') {
       final File source = File(path);
@@ -253,7 +259,45 @@ class LibraryStore extends ChangeNotifier {
     await _persistMeta();
     notifyListeners();
     return book;
+    } finally {
+      if (staged != null && await staged.exists()) {
+        await staged.delete();
+      }
+    }
   }
+
+  Future<File> _stageDocumentStream(PlatformFile selected) async {
+    final stream = selected.readStream;
+    if (stream == null) {
+      throw const FormatException('文件提供者没有提供可读取的内容，请先下载到本地');
+    }
+    final ext = selected.name.split('.').last.toLowerCase();
+    final limit = ext == 'pdf'
+        ? 256 * 1024 * 1024 : FormatEngine.maxSourceBytes;
+    final dir = await getTemporaryDirectory();
+    final staged = File(dir.path + '/read-import-' +
+        DateTime.now().microsecondsSinceEpoch.toString() + '.tmp');
+    final sink = staged.openWrite();
+    var bytes = 0;
+    try {
+      await for (final chunk in stream) {
+        bytes += chunk.length;
+        if (bytes > limit) {
+          throw const FormatException('电子书超过当前支持的文件大小上限');
+        }
+        sink.add(chunk);
+      }
+      await sink.flush();
+      await sink.close();
+      if (bytes == 0) throw const FormatException('导入文件为空');
+      return staged;
+    } catch (_) {
+      await sink.close();
+      if (await staged.exists()) await staged.delete();
+      rethrow;
+    }
+  }
+
 
   Future<void> deleteBook(Book book) async {
     books.remove(book);
