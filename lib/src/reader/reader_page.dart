@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:read/src/model/book.dart';
 import 'package:read/src/services/chapter_splitter.dart';
+import 'package:read/src/services/chapter_rule_store.dart';
 import 'package:read/src/services/book_search.dart';
 import 'package:read/src/services/bookmark_store.dart';
 import 'package:read/src/services/paginator.dart';
@@ -19,8 +20,11 @@ class ReaderPage extends StatefulWidget {
 }
 
 class _ReaderPageState extends State<ReaderPage> {
-  late final List<Chapter> _chapters;
+  late List<Chapter> _chapters;
+  ChapterRule _chapterRule = const ChapterRule.automatic();
   late int _chapterIndex;
+  late final int _openingChapterIndex;
+  late final int _openingCharOffset;
   int _pageIndex = 0;
 
   List<PageSlice> _pageSlices = const <PageSlice>[];
@@ -37,6 +41,8 @@ class _ReaderPageState extends State<ReaderPage> {
     super.initState();
     _chapters = splitChapters(widget.book.content);
     _chapterIndex = widget.book.chapterIndex.value;
+    _openingChapterIndex = widget.book.chapterIndex.value;
+    _openingCharOffset = widget.book.charOffset.value;
     if (_chapterIndex < 0 || _chapterIndex >= _chapters.length) {
       _chapterIndex = 0;
     }
@@ -46,6 +52,7 @@ class _ReaderPageState extends State<ReaderPage> {
     _lineHeight = store.lineHeight;
     _bgIndex = kEink ? 0 : store.backgroundIndex;
     _loadBookmarks();
+    _loadChapterRule();
   }
 
   @override
@@ -101,25 +108,65 @@ class _ReaderPageState extends State<ReaderPage> {
             ),
             onPressed: _toggleCurrentBookmark,
           ),
-          IconButton(
-            tooltip: '查看书签',
-            icon: Icon(Icons.collections_bookmark_outlined, color: palette.foreground),
-            onPressed: _showBookmarks,
-          ),
-          IconButton(
-            tooltip: '书内搜索',
-            icon: Icon(Icons.search, color: palette.foreground),
-            onPressed: _searchInBook,
-          ),
-          IconButton(
-            tooltip: '目录',
-            icon: Icon(Icons.list, color: palette.foreground),
-            onPressed: _showChapters,
-          ),
-          IconButton(
-            tooltip: '阅读设置',
-            icon: Icon(Icons.text_fields, color: palette.foreground),
-            onPressed: _showSettings,
+          PopupMenuButton<String>(
+            tooltip: '阅读工具',
+            icon: Icon(Icons.more_vert_rounded, color: palette.foreground),
+            onSelected: (value) {
+              switch (value) {
+                case 'search':
+                  _searchInBook();
+                case 'bookmarks':
+                  _showBookmarks();
+                case 'chapters':
+                  _showChapters();
+                case 'rules':
+                  _showChapterRules();
+                case 'settings':
+                  _showSettings();
+              }
+            },
+            itemBuilder: (BuildContext context) => const <PopupMenuEntry<String>>[
+              PopupMenuItem<String>(
+                value: 'search',
+                child: ListTile(
+                  leading: Icon(Icons.search_rounded),
+                  title: Text('书内搜索'),
+                  dense: true,
+                ),
+              ),
+              PopupMenuItem<String>(
+                value: 'chapters',
+                child: ListTile(
+                  leading: Icon(Icons.list_rounded),
+                  title: Text('章节目录'),
+                  dense: true,
+                ),
+              ),
+              PopupMenuItem<String>(
+                value: 'bookmarks',
+                child: ListTile(
+                  leading: Icon(Icons.collections_bookmark_outlined),
+                  title: Text('我的书签'),
+                  dense: true,
+                ),
+              ),
+              PopupMenuItem<String>(
+                value: 'rules',
+                child: ListTile(
+                  leading: Icon(Icons.tune_rounded),
+                  title: Text('分章规则'),
+                  dense: true,
+                ),
+              ),
+              PopupMenuItem<String>(
+                value: 'settings',
+                child: ListTile(
+                  leading: Icon(Icons.text_fields_rounded),
+                  title: Text('阅读设置'),
+                  dense: true,
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -228,6 +275,180 @@ class _ReaderPageState extends State<ReaderPage> {
       });
       LibraryStore.instance.saveProgress(widget.book);
     });
+  }
+
+  int _absoluteReadingOffset() {
+    final Chapter chapter = _chapters[_chapterIndex];
+    final int local = (_pageSlices.isNotEmpty &&
+            _pageIndex >= 0 &&
+            _pageIndex < _pageSlices.length)
+        ? _pageSlices[_pageIndex].start
+        : widget.book.charOffset.value.clamp(0, chapter.length);
+    return chapter.start + local;
+  }
+
+  void _applyChapterRule(ChapterRule rule, {int? absoluteOverride}) {
+    final int absolute = absoluteOverride ?? _absoluteReadingOffset();
+    final List<Chapter> next =
+        splitChapters(widget.book.content, rule: rule);
+    int index = next.length - 1;
+    for (int i = 0; i < next.length; i++) {
+      if (absolute < next[i].end) {
+        index = i;
+        break;
+      }
+    }
+    final Chapter selected = next[index];
+    setState(() {
+      _chapterRule = rule;
+      _chapters = next;
+      _chapterIndex = index;
+      _pageIndex = 0;
+      _pageSlices = const <PageSlice>[];
+      _measureKey = null;
+      widget.book.chapterIndex.value = index;
+      widget.book.pageIndex.value = 0;
+      widget.book.charOffset.value =
+          (absolute - selected.start).clamp(0, selected.length);
+    });
+    LibraryStore.instance.saveProgress(widget.book);
+  }
+
+  Future<void> _loadChapterRule() async {
+    final rule = await ChapterRuleStore.load(widget.book.id);
+    if (!mounted || rule.mode == ChapterRuleMode.automatic) return;
+    try {
+      // Saved chapter-relative progress belongs to the saved rule, not to
+      // the automatic rule temporarily shown during initialization.
+      final restoredChapters =
+          splitChapters(widget.book.content, rule: rule);
+      final savedChapter = _openingChapterIndex
+          .clamp(0, restoredChapters.length - 1);
+      final restored = restoredChapters[savedChapter];
+      final int savedLocal = _openingCharOffset;
+      final int absolute = restored.start +
+          (savedLocal < 0 ? 0 : savedLocal.clamp(0, restored.length));
+      _applyChapterRule(rule, absoluteOverride: absolute);
+    } on FormatException {
+      // Keep the original setting and original file untouched.
+    }
+  }
+
+  Future<void> _showChapterRules() async {
+    ChapterRuleMode mode = _chapterRule.mode;
+    final controller = TextEditingController(text: _chapterRule.pattern);
+    String? validationError;
+    final ChapterRule? selected = await showModalBottomSheet<ChapterRule>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: !kEink,
+      builder: (BuildContext ctx) => StatefulBuilder(
+        builder: (BuildContext ctx, StateSetter setSheetState) => Padding(
+          padding: EdgeInsets.fromLTRB(
+            20, 4, 20, MediaQuery.viewInsetsOf(ctx).bottom + 24,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text('章节识别', style: Theme.of(ctx).textTheme.titleLarge),
+                const SizedBox(height: 8),
+                const Text('仅改变目录，不修改电子书原文。'),
+                RadioListTile<ChapterRuleMode>(
+                  title: const Text('自动识别（推荐）'),
+                  value: ChapterRuleMode.automatic,
+                  groupValue: mode,
+                  onChanged: (value) => setSheetState(() {
+                    mode = value!;
+                    validationError = null;
+                  }),
+                ),
+                RadioListTile<ChapterRuleMode>(
+                  title: const Text('整本作为一章'),
+                  value: ChapterRuleMode.none,
+                  groupValue: mode,
+                  onChanged: (value) => setSheetState(() {
+                    mode = value!;
+                    validationError = null;
+                  }),
+                ),
+                RadioListTile<ChapterRuleMode>(
+                  title: const Text('自定义章节标题正则'),
+                  value: ChapterRuleMode.custom,
+                  groupValue: mode,
+                  onChanged: (value) => setSheetState(() {
+                    mode = value!;
+                    validationError = null;
+                  }),
+                ),
+                if (mode == ChapterRuleMode.custom) ...<Widget>[
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: controller,
+                    maxLength: 120,
+                    decoration: InputDecoration(
+                      labelText: '行首匹配规则',
+                      hintText: r'^第[0-9]+章',
+                      errorText: validationError,
+                    ),
+                    onChanged: (_) => setSheetState(() {
+                      validationError = null;
+                    }),
+                  ),
+                  const Text('仅支持简单的单行规则，暂不支持括号分组及分支。'),
+                ],
+                const SizedBox(height: 18),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: FilledButton(
+                    onPressed: () {
+                      final ChapterRule next;
+                      if (mode == ChapterRuleMode.automatic) {
+                        next = const ChapterRule.automatic();
+                      } else if (mode == ChapterRuleMode.none) {
+                        next = const ChapterRule.none();
+                      } else {
+                        try {
+                          validateChapterPattern(controller.text.trim());
+                        } on FormatException catch (e) {
+                          setSheetState(() => validationError = e.message);
+                          return;
+                        }
+                        next = ChapterRule.custom(controller.text.trim());
+                      }
+                      Navigator.pop(ctx, next);
+                    },
+                    child: const Text('应用'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    // The bottom sheet is closed before disposing the field controller.
+    controller.dispose();
+    if (!mounted || selected == null) return;
+    try {
+      // Validate against the actual book before saving; large numbers of
+      // matches are rejected without changing the existing preference.
+      splitChapters(widget.book.content, rule: selected);
+      await ChapterRuleStore.save(widget.book.id, selected);
+      if (!mounted) return;
+      _applyChapterRule(selected);
+    } on FormatException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('分章设置保存失败，请重试')),
+      );
+    }
   }
 
   Future<void> _loadBookmarks() async {

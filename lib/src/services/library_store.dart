@@ -11,6 +11,7 @@ import '../data/sample_book.dart';
 import '../model/book.dart';
 import '../formats/format_engine.dart';
 import 'bookmark_store.dart';
+import 'chapter_rule_store.dart';
 
 /// 书架与阅读设置的持久化。
 class LibraryStore extends ChangeNotifier {
@@ -214,6 +215,7 @@ class LibraryStore extends ChangeNotifier {
     }
     await _prefs?.remove('$_progressPrefix${book.id}');
     await BookmarkStore.clearForDeletedBook(book.id);
+    await ChapterRuleStore.clearForDeletedBook(book.id);
     await _persistMeta();
     notifyListeners();
   }
