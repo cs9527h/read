@@ -8,6 +8,7 @@ import 'package:flutter_tts/flutter_tts.dart';
 
 import 'package:read/src/model/book.dart';
 import 'package:read/src/reader/engine/reader_engine.dart';
+import 'package:read/src/reader/platform/reader_device_bridge.dart';
 import 'package:read/src/reader/settings/reader_settings.dart';
 import 'package:read/src/reader/settings/reader_settings_store.dart';
 import 'package:read/src/reader/settings/reader_theme.dart';
@@ -66,6 +67,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   int _sessionChars = 0;
   int _lastSavedOffset = 0;
   bool _isReadingActive = true;
+  StreamSubscription<String>? _volumeKeysSubscription;
+  int? _batteryLevel;
 
   final FlutterTts _tts = FlutterTts();
   bool _speaking = false;
@@ -86,6 +89,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     _applySystemUi();
     _clockTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) setState(() {});
+      unawaited(_refreshDeviceControls());
     });
     _statsTimer = Timer.periodic(const Duration(seconds: 10), (_) {
       if (!mounted || _loading || !_isReadingActive) return;
@@ -209,6 +213,19 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(text)));
+    if (Platform.isAndroid) {
+      _volumeKeysSubscription = ReaderDeviceBridge.volumeKeys.listen(
+        (String key) {
+          if (!mounted || !_isReadingActive || !_settings.volumeKeys || _loading) {
+            return;
+          }
+          final direction = key == 'up' ? -1 : 1;
+          _turnPage(_settings.reverseDirection ? -direction : direction);
+        },
+        onError: (Object _) {},
+      );
+      unawaited(_refreshDeviceControls());
+    }
   }
 
   @override
@@ -219,6 +236,11 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     _autoTurnTimer?.cancel();
     _clockTimer?.cancel();
     _statsTimer?.cancel();
+    if (Platform.isAndroid) {
+      unawaited(_volumeKeysSubscription?.cancel() ?? Future<void>.value());
+      unawaited(ReaderDeviceBridge.setVolumePaging(false).catchError((Object _) {}));
+      unawaited(ReaderDeviceBridge.setWindowBrightness(null).catchError((Object _) {}));
+    }
     _flushStats();
     AutoSyncService.instance.onBookClosed();
     unawaited(_tts.stop());
@@ -241,6 +263,29 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
       _flushStats();
       _saveProgress();
     }
+    unawaited(_refreshDeviceControls());
+  }
+
+  Future<void> _refreshDeviceControls() async {
+    if (!Platform.isAndroid) return;
+    try {
+      await ReaderDeviceBridge.setVolumePaging(
+        _settings.volumeKeys && _isReadingActive,
+      );
+      await ReaderDeviceBridge.setWindowBrightness(
+        _settings.followSystemBrightness || !_isReadingActive
+            ? null
+            : _settings.brightness,
+      );
+      final level = await ReaderDeviceBridge.batteryLevel();
+      if (mounted && _batteryLevel != level) {
+        setState(() => _batteryLevel = level);
+      }
+    } on MissingPluginException {
+      // The desktop target and legacy host builds have no Android channel.
+    } on PlatformException {
+      // A failed battery query must not prevent reading.
+    }
   }
 
   void _onStoreChanged() {
@@ -256,6 +301,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
       });
       _startAutoTurn();
       _applySystemUi();
+      unawaited(_refreshDeviceControls());
     } else {
       setState(() {});
     }
@@ -693,6 +739,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   }
 
   Widget _buildBrightnessOverlay() {
+    // Android uses the actual window brightness, without a dark overlay.
+    if (Platform.isAndroid) return const SizedBox.shrink();
     final double reduce = _settings.followSystemBrightness
         ? 0
         : (1 - _settings.brightness).clamp(0, 0.8);
@@ -873,6 +921,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
         .replaceAll('{page}', '$page')
         .replaceAll('{pages}', '$totalPages')
         .replaceAll('{percent}', '${percent.toStringAsFixed(1)}%')
+        .replaceAll('{battery}', _batteryLevel == null ? '--' : '${_batteryLevel}%')
         .replaceAll('{time}', time);
   }
 

@@ -39,6 +39,13 @@ jobs:
           fi
           ls -d android
 
+      - name: 注入原生阅读设备控制
+        run: |
+          set -e
+          mkdir -p android/app/src/main/kotlin/app/readen/read
+          cp tools/android/native/MainActivity.kt android/app/src/main/kotlin/app/readen/read/MainActivity.kt
+          test -s android/app/src/main/kotlin/app/readen/read/MainActivity.kt
+
       - name: 应用黑白羽毛图标
         run: bash tools/android/apply_icons.sh
 
