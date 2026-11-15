@@ -25,6 +25,7 @@ class ReaderStyle {
     this.fontFamily = '',
     this.backgroundImage = '',
     this.backgroundDim = 0.15,
+    this.autoTurnSeconds = 8,
   });
 
   final double fontSize;
@@ -50,6 +51,7 @@ class ReaderStyle {
   /// Private, app-owned local image path, not a remote address.
   final String backgroundImage;
   final double backgroundDim;
+  final int autoTurnSeconds;
 
   FontWeight get fontWeight => FontWeight.values[fontWeightIndex];
   TextAlign get textAlign => switch (textAlignIndex) {
@@ -86,6 +88,7 @@ class ReaderStyle {
     String? fontFamily,
     String? backgroundImage,
     double? backgroundDim,
+    int? autoTurnSeconds,
   }) =>
       ReaderStyle(
         fontSize: fontSize ?? this.fontSize,
@@ -105,6 +108,7 @@ class ReaderStyle {
         fontFamily: fontFamily ?? this.fontFamily,
         backgroundImage: backgroundImage ?? this.backgroundImage,
         backgroundDim: backgroundDim ?? this.backgroundDim,
+        autoTurnSeconds: autoTurnSeconds ?? this.autoTurnSeconds,
       );
 
   Map<String, Object> toJson() => <String, Object>{
@@ -126,6 +130,7 @@ class ReaderStyle {
         'fontFamily': fontFamily,
         'backgroundImage': backgroundImage,
         'backgroundDim': backgroundDim,
+        'autoTurnSeconds': autoTurnSeconds,
       };
 
   static ReaderStyle fromJson(Object? source, {ReaderStyle fallback = const ReaderStyle()}) {
@@ -163,6 +168,7 @@ class ReaderStyle {
               (m['backgroundImage'] as String).length <= 1024
           ? m['backgroundImage'] as String : fallback.backgroundImage,
       backgroundDim: number('backgroundDim', fallback.backgroundDim, 0, 0.8),
+      autoTurnSeconds: integer('autoTurnSeconds', fallback.autoTurnSeconds, 2, 60),
     );
   }
 
