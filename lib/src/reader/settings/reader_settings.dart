@@ -9,10 +9,10 @@ const Map<String, Object?> kReaderDefaults = <String, Object?>{
   'letterSpacing': 0.2,
   'wordSpacing': 0.0,
   'textScaleX': 1.0,
-  'lineHeight': 1.75,
+  'lineHeight': 1.55,
   // 段落
   'paragraphSpacingBefore': 0.0,
-  'paragraphSpacingAfter': 8.0,
+  'paragraphSpacingAfter': 0.0,
   'indentMode': 'fixed', // none | fixed | em
   'indentChars': 2.0,
   'align': 'left', // left | center | right | justify
@@ -78,7 +78,7 @@ const Map<String, Object?> kReaderDefaults = <String, Object?>{
   'guideOpacity': 0.12,
   'guideColor': null,
   // 翻页与交互
-  'pageTurnMode': 'cover', // cover | slide | none | scroll
+  'pageTurnMode': 'slide', // cover | slide | none | scroll
   'animationMs': 240,
   'autoTurn': false,
   'autoTurnSeconds': 30,
