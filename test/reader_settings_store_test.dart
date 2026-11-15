@@ -156,4 +156,35 @@ void main() {
     expect(store.resolve('local-a').fontSize, 30.0);
   });
 
+  test('损坏的 JSON 配置不得写入或覆盖任何已有阅读设置', () async {
+    final store = ReaderSettingsStore.instance;
+    await store.save(
+      'safe-book',
+      store.resolve('safe-book').patch(<String, Object?>{'fontSize': 22.0}),
+      ReaderScope.global,
+    );
+    final before = store.resolve('safe-book').fontSize;
+    await expectLater(
+      store.importJson('{"version":"2","global":{"fontSize":32},'
+          '"book":{"other":{"lineHeight":"not-a-number"}}}'),
+      throwsA(isA<FormatException>()),
+    );
+    expect(store.resolve('safe-book').fontSize, before);
+    await store.init();
+    expect(store.resolve('safe-book').fontSize, before);
+  });
+
+  test('非法字号和字体粗细在导入时被明确拒绝', () async {
+    final store = ReaderSettingsStore.instance;
+    await expectLater(
+      store.importJson('{"version":"2","global":{"fontSize":999}}'),
+      throwsA(isA<FormatException>()),
+    );
+    await expectLater(
+      store.importJson('{"version":"2","global":{"fontWeight":123}}'),
+      throwsA(isA<FormatException>()),
+    );
+    expect(store.resolve('plain').fontSize, 18);
+  });
+
 }
