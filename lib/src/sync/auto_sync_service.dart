@@ -223,6 +223,7 @@ class AutoSyncService extends ChangeNotifier with WidgetsBindingObserver {
         includeBookmarks: config.syncBookmarks,
         includeSettings: config.syncReaderSettings,
         includeStats: config.syncStats,
+        includeBooks: config.syncBooks,
         includeFiles: config.syncFiles,
         downloadMissingFiles: downloadMissing,
         targetId: SyncBackendFactory.targetId(config),
@@ -283,9 +284,15 @@ class AutoSyncService extends ChangeNotifier with WidgetsBindingObserver {
           await SyncTaskQueue.instance.complete(task);
           return;
         }
-        await runProgress(book, silent: true);
+        final report = await runProgress(book, silent: true);
+        if (report == null) {
+          throw StateError(config.lastError.isEmpty ? '进度同步未完成' : config.lastError);
+        }
       } else {
-        await runFull(silent: true);
+        final report = await runFull(silent: true);
+        if (report == null) {
+          throw StateError(config.lastError.isEmpty ? '完整同步未完成' : config.lastError);
+        }
       }
       await SyncTaskQueue.instance.complete(task);
     } catch (error) {

@@ -125,9 +125,16 @@ class SyncConfig extends ChangeNotifier {
       }
     }
     final vault = SecretVault.instance;
-    _webdavSecretCached =
-        (await vault.read(SecretVault.webdavPasswordKey)) != null;
-    _s3SecretCached = (await vault.read(SecretVault.s3SecretKey)) != null;
+    try {
+      _webdavSecretCached =
+          (await vault.read(SecretVault.webdavPasswordKey)) != null;
+      _s3SecretCached = (await vault.read(SecretVault.s3SecretKey)) != null;
+    } catch (_) {
+      // Desktop without a Secret Service must still start; saving a secret
+      // later surfaces the real error instead of crashing at launch.
+      _webdavSecretCached = false;
+      _s3SecretCached = false;
+    }
     notifyListeners();
   }
 
@@ -174,9 +181,16 @@ class SyncConfig extends ChangeNotifier {
       throw StateError('同步设置保存失败');
     }
     final vault = SecretVault.instance;
-    _webdavSecretCached =
-        (await vault.read(SecretVault.webdavPasswordKey)) != null;
-    _s3SecretCached = (await vault.read(SecretVault.s3SecretKey)) != null;
+    try {
+      _webdavSecretCached =
+          (await vault.read(SecretVault.webdavPasswordKey)) != null;
+      _s3SecretCached = (await vault.read(SecretVault.s3SecretKey)) != null;
+    } catch (_) {
+      // Desktop without a Secret Service must still start; saving a secret
+      // later surfaces the real error instead of crashing at launch.
+      _webdavSecretCached = false;
+      _s3SecretCached = false;
+    }
     notifyListeners();
   }
 

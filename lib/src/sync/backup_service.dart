@@ -16,6 +16,7 @@ import 'sync_history.dart';
 import '../reader/settings/reader_settings_store.dart';
 import '../services/bookmark_store.dart';
 import '../services/library_store.dart';
+import '../services/reading_stats_store.dart';
 
 DateTime? _epoch(Object? raw) {
   final value = (raw as num?)?.toInt() ?? 0;
@@ -284,6 +285,7 @@ class BackupService {
     final stats = meta['stats'];
     if (stats is String && stats.length <= 4 * 1024 * 1024) {
       await prefs.setString('read.stats.v1', stats);
+      await ReadingStatsStore.instance.init();
     }
     await SyncHistoryStore.instance.add(SyncHistoryEntry(
       at: _clock(),

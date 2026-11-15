@@ -32,6 +32,7 @@ class LocalSyncSource {
     required bool includeBookmarks,
     required bool includeSettings,
     required bool includeStats,
+    bool includeBooks = true,
     SyncDocument? baseline,
   }) async {
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -73,6 +74,7 @@ class LocalSyncSource {
       }
       bookHashes[book] = hash;
       final id = 'book:$hash';
+      if (!includeBooks) continue;
       liveIds.add(id);
       final fileName = book.fileName ??
           (book.sourcePath == null ? '' : p.basename(book.sourcePath!));
@@ -228,6 +230,7 @@ class LocalSyncApplier {
     SyncDocument document, {
     required bool includeBookmarks,
     required bool includeSettings,
+    bool includeBooks = true,
   }) async {
     var matched = 0;
     var missing = 0;

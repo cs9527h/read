@@ -67,6 +67,7 @@ class MetadataSyncService {
     required bool includeBookmarks,
     required bool includeSettings,
     required bool includeStats,
+    bool includeBooks = true,
     required bool includeFiles,
     required bool downloadMissingFiles,
     required String targetId,
@@ -97,6 +98,7 @@ class MetadataSyncService {
         includeBookmarks: includeBookmarks,
         includeSettings: includeSettings,
         includeStats: includeStats,
+        includeBooks: includeBooks,
         baseline: baseline,
       );
       merge = SyncDocumentMerger.merge(
@@ -108,6 +110,7 @@ class MetadataSyncService {
         merge.document,
         includeBookmarks: includeBookmarks,
         includeSettings: includeSettings,
+        includeBooks: includeBooks,
       );
       if (!merge.changed && remote != null) {
         break;
