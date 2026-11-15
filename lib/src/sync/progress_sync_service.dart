@@ -233,7 +233,7 @@ class ProgressSyncService {
       baselineKey, ProgressManifest(merged).encode(),
     );
     if (!succeeded) {
-      throw const StateError('云端操作已完成，但本地同步基线保存失败；请重新同步');
+      throw StateError('云端操作已完成，但本地同步基线保存失败；请重新同步');
     }
 
     final unmatched = remote.entries.keys
