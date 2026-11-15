@@ -378,11 +378,11 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                       top: _style.topMargin,
                       bottom: _style.bottomMargin,
                     ),
-                    child: Text(
-                      ReaderTextFormatter.format(chapterText,
-                          _pageSlices[index].start, _pageSlices[index].end, _style),
+                    child: Text.rich(
+                      _chapterTextSpan(chapterText,
+                          _pageSlices[index].start, _pageSlices[index].end,
+                          _style.textStyle(color: palette.foreground), chapter),
                       textAlign: _style.textAlign,
-                      style: _style.textStyle(color: palette.foreground),
                     ),
                   ),
                 ),
@@ -423,6 +423,33 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     );
   }
 
+  TextSpan _chapterTextSpan(
+      String source, int start, int end, TextStyle body, Chapter chapter) {
+    final text = ReaderTextFormatter.format(source, start, end, _style);
+    final newline = source.indexOf('\n');
+    final isHeading = start == 0 &&
+        chapter.title != '全文' &&
+        chapter.title.isNotEmpty &&
+        newline >= 0 &&
+        source.substring(0, newline).trim() == chapter.title;
+    if (!isHeading) return TextSpan(text: text, style: body);
+    final breakAt = text.indexOf('\n');
+    final headingEnd = breakAt < 0 ? text.length : breakAt;
+    final titleStyle = body.copyWith(
+      fontSize: _style.chapterTitleSize,
+      fontWeight: FontWeight.values[_style.chapterTitleWeightIndex],
+      color: _style.chapterTitleColorArgb == 0
+          ? body.color : Color(_style.chapterTitleColorArgb),
+    );
+    return TextSpan(
+      style: body,
+      children: <InlineSpan>[
+        TextSpan(text: text.substring(0, headingEnd), style: titleStyle),
+        TextSpan(text: text.substring(headingEnd)),
+      ],
+    );
+  }
+
   void _maybeMeasure(Size size, Chapter chapter) {
     // The page renderer and measurement must use identical text geometry.
     // System text scaling also changes page breaks on accessibility devices.
@@ -444,8 +471,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
         width,
         height,
         textScaler: scaler,
-        formatPage: (text, start, end) =>
-            ReaderTextFormatter.format(text, start, end, _style),
+        richPage: (text, start, end, style) =>
+            _chapterTextSpan(text, start, end, style, chapter),
       );
       // An exact source range is more reliable than indexOf(pageText), which
       // becomes ambiguous when the same paragraph or whitespace repeats.
@@ -1506,6 +1533,24 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                     value: _style.showFooter,
                     onChanged: (v) => change(_style.copyWith(showFooter: v)),
                   ),
+                  section('章节标题'),
+                  _styleSlider('章节标题字号', _style.chapterTitleSize, 14, 48, 34,
+                      (v) => change(_style.copyWith(chapterTitleSize: v)), digits: 0),
+                  _styleSlider('章节标题粗细',
+                      _style.chapterTitleWeightIndex.toDouble(), 0, 8, 8,
+                      (v) => change(_style.copyWith(
+                          chapterTitleWeightIndex: v.round())), digits: 0),
+                  if (!kEink)
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.format_color_text_rounded),
+                      label: const Text('章节标题颜色'),
+                      onPressed: () async {
+                        final value = await _pickReaderColor(foreground: true);
+                        if (!mounted || !ctx.mounted || value == null) return;
+                        refresh(() => _updateStyle(
+                            _style.copyWith(chapterTitleColorArgb: value)));
+                      },
+                    ),
                   section('页眉页脚模板'),
                   ListTile(
                     contentPadding: EdgeInsets.zero,
