@@ -26,10 +26,19 @@ class DisplayChapter {
 
   /// 反向：找到包含原文偏移 [offset] 的第一个显示位置。
   int displayOffset(int offset) {
-    for (int i = 0; i < map.length; i++) {
-      if (map[i] >= offset) return i;
+    // The source mapping is monotonically nondecreasing. A binary lower
+    // bound keeps seek/reflow responsive even for very long TXT chapters.
+    int low = 0;
+    int high = map.length;
+    while (low < high) {
+      final int middle = low + ((high - low) >> 1);
+      if (map[middle] >= offset) {
+        high = middle;
+      } else {
+        low = middle + 1;
+      }
     }
-    return text.length;
+    return low;
   }
 }
 
@@ -64,10 +73,18 @@ class PaginatedChapter {
   final bool showTitle;
 
   int pageForSourceOffset(int chapterRelativeOffset) {
-    for (int i = 0; i < pages.length; i++) {
-      if (chapterRelativeOffset < pages[i].sourceEnd) return i;
+    if (pages.isEmpty) return 0;
+    int low = 0;
+    int high = pages.length;
+    while (low < high) {
+      final int middle = low + ((high - low) >> 1);
+      if (chapterRelativeOffset < pages[middle].sourceEnd) {
+        high = middle;
+      } else {
+        low = middle + 1;
+      }
     }
-    return pages.isEmpty ? 0 : pages.length - 1;
+    return low < pages.length ? low : pages.length - 1;
   }
 }
 
@@ -277,8 +294,25 @@ class ReaderEngine {
       final double pageHeight = (pages.isEmpty && showTitle)
           ? math.max(1, height - titleHeight)
           : height;
-      int low = 1;
-      int high = display.text.length - start;
+      // Search around the expected page length. Measuring half of a
+      // multi-megabyte chapter for *every* page made long TXT books slow.
+      final int remaining = display.text.length - start;
+      int low = 0;
+      int probe = math.min(256, remaining);
+      int high = remaining;
+      while (true) {
+        if (fits(start, probe, pageHeight)) {
+          low = probe;
+          if (probe == remaining) {
+            high = probe;
+            break;
+          }
+          probe = math.min(remaining, probe * 2);
+        } else {
+          high = probe - 1;
+          break;
+        }
+      }
       while (low < high) {
         final int mid = (low + high + 1) ~/ 2;
         if (fits(start, mid, pageHeight)) {
@@ -287,7 +321,7 @@ class ReaderEngine {
           high = mid - 1;
         }
       }
-      int end = start + low;
+      int end = start + math.max(low, 1);
       if (end < display.text.length &&
           _isHighSurrogate(display.text.codeUnitAt(end - 1)) &&
           _isLowSurrogate(display.text.codeUnitAt(end))) {

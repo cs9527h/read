@@ -127,4 +127,36 @@ void main() {
         ReaderEngine.titleBlockHeight(s, '第一章', 300, 1.0);
     expect(height, 0);
   });
+  test('重复映射字符的二分定位使用最早合法原文锚点', () {
+    const display = DisplayChapter('abcdef', <int>[0, 0, 1, 2, 2, 3], 4);
+    expect(display.displayOffset(-1), 0);
+    expect(display.displayOffset(0), 0);
+    expect(display.displayOffset(1), 2);
+    expect(display.displayOffset(2), 3);
+    expect(display.displayOffset(3), 5);
+    expect(display.displayOffset(4), 6);
+    expect(display.displayOffset(100), 6);
+  });
+
+  test('分页偏移二分定位保持边界和尾页语义', () {
+    const display = DisplayChapter('abcdef', <int>[0, 1, 2, 3, 4, 5], 6);
+    const result = PaginatedChapter(
+      display: display,
+      titleHeight: 0,
+      showTitle: false,
+      pages: <EnginePage>[
+        EnginePage(displayStart: 0, displayEnd: 2, sourceStart: 0, sourceEnd: 2),
+        EnginePage(displayStart: 2, displayEnd: 4, sourceStart: 2, sourceEnd: 4),
+        EnginePage(displayStart: 4, displayEnd: 6, sourceStart: 4, sourceEnd: 6),
+      ],
+    );
+    expect(result.pageForSourceOffset(-1), 0);
+    expect(result.pageForSourceOffset(0), 0);
+    expect(result.pageForSourceOffset(1), 0);
+    expect(result.pageForSourceOffset(2), 1);
+    expect(result.pageForSourceOffset(4), 2);
+    expect(result.pageForSourceOffset(6), 2);
+    expect(result.pageForSourceOffset(999), 2);
+  });
+
 }

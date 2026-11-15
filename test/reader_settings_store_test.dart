@@ -94,4 +94,112 @@ void main() {
       throwsA(isA<FormatException>()),
     );
   });
+  test('单本书设置跨 init 重启恢复且不污染其他书籍', () async {
+    final store = ReaderSettingsStore.instance;
+    await store.save(
+      'book-local',
+      store.resolve('book-local').patch(<String, Object?>{
+        'fontSize': 29.0,
+        'marginLeft': 35.0,
+        'titleFontSize': 26.0,
+      }),
+      ReaderScope.book,
+    );
+    expect(store.resolve('book-local').fontSize, 29.0);
+    await store.init(); // Simulates the next app launch on the same prefs.
+    expect(store.resolve('book-local').fontSize, 29.0);
+    expect(store.resolve('book-local').marginLeft, 35.0);
+    expect(store.resolve('book-local').titleFontSize, 26.0);
+    expect(store.resolve('another-book').fontSize, 18.0);
+    expect(store.hasOverride('book-local', ReaderScope.book), isTrue);
+  });
+
+  test('重新初始化必须清掉已经被外部删除的旧配置缓存', () async {
+    final store = ReaderSettingsStore.instance;
+    await store.save(
+      'book-stale',
+      store.resolve('book-stale').patch(<String, Object?>{
+        'fontSize': 31.0,
+      }),
+      ReaderScope.book,
+    );
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('read.reader.settings.book.book-stale');
+    await store.init();
+    expect(store.resolve('book-stale').fontSize, 18.0);
+    expect(store.hasOverride('book-stale', ReaderScope.book), isFalse);
+  });
+
+  test('修改全局参数不应泄漏当前书籍的专属字号边距', () async {
+    final store = ReaderSettingsStore.instance;
+    await store.save(
+      'local-a',
+      store.resolve('local-a').patch(<String, Object?>{
+        'fontSize': 30.0,
+        'marginLeft': 39.0,
+      }),
+      ReaderScope.book,
+    );
+    await store.save(
+      'local-a',
+      store.resolve('local-a').patch(<String, Object?>{'lineHeight': 2.2}),
+      ReaderScope.global,
+    );
+    expect(store.resolve('local-a').fontSize, 30.0);
+    expect(store.resolve('local-a').marginLeft, 39.0);
+    expect(store.resolve('other-b').fontSize, 18.0);
+    expect(store.resolve('other-b').marginLeft, 20.0);
+    expect(store.resolve('other-b').lineHeight, 2.2);
+    await store.init();
+    expect(store.resolve('other-b').fontSize, 18.0);
+    expect(store.resolve('other-b').lineHeight, 2.2);
+    expect(store.resolve('local-a').fontSize, 30.0);
+  });
+
+  test('损坏的 JSON 配置不得写入或覆盖任何已有阅读设置', () async {
+    final store = ReaderSettingsStore.instance;
+    await store.save(
+      'safe-book',
+      store.resolve('safe-book').patch(<String, Object?>{'fontSize': 22.0}),
+      ReaderScope.global,
+    );
+    final before = store.resolve('safe-book').fontSize;
+    await expectLater(
+      store.importJson('{"version":"2","global":{"fontSize":32},'
+          '"book":{"other":{"lineHeight":"not-a-number"}}}'),
+      throwsA(isA<FormatException>()),
+    );
+    expect(store.resolve('safe-book').fontSize, before);
+    await store.init();
+    expect(store.resolve('safe-book').fontSize, before);
+  });
+
+  test('非法字号和字体粗细在导入时被明确拒绝', () async {
+    final store = ReaderSettingsStore.instance;
+    await expectLater(
+      store.importJson('{"version":"2","global":{"fontSize":999}}'),
+      throwsA(isA<FormatException>()),
+    );
+    await expectLater(
+      store.importJson('{"version":"2","global":{"fontWeight":123}}'),
+      throwsA(isA<FormatException>()),
+    );
+    expect(store.resolve('plain').fontSize, 18);
+  });
+
+  test('快速连续修改字号后重启应恢复最后一次设置', () async {
+    final store = ReaderSettingsStore.instance;
+    final writes = <Future<void>>[];
+    for (final size in <double>[19, 24, 17, 28]) {
+      writes.add(store.save(
+        'rapid-book',
+        store.resolve('rapid-book').patch(<String, Object?>{'fontSize': size}),
+        ReaderScope.book,
+      ));
+    }
+    await Future.wait(writes);
+    await store.init();
+    expect(store.resolve('rapid-book').fontSize, 28.0);
+  });
+
 }

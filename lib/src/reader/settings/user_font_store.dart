@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -15,6 +16,7 @@ class UserFontStore extends ChangeNotifier {
   static final UserFontStore instance = UserFontStore._();
 
   static const String _key = 'read.reader.fonts.v1';
+  static const int _maxFontBytes = 12 * 1024 * 1024;
 
   SharedPreferences? _prefs;
   final List<UserFont> _fonts = <UserFont>[];
@@ -23,6 +25,7 @@ class UserFontStore extends ChangeNotifier {
 
   Future<void> init() async {
     _prefs = await SharedPreferences.getInstance();
+    _fonts.clear();
     final String? raw = _prefs!.getString(_key);
     if (raw != null) {
       try {
@@ -45,28 +48,69 @@ class UserFontStore extends ChangeNotifier {
       type: FileType.custom,
       allowedExtensions: <String>['ttf', 'otf'],
       withData: false,
+      withReadStream: true,
     );
-    final PlatformFile? file = result?.files.singleOrNull;
-    if (file?.path == null) return null;
-    final File source = File(file!.path!);
-    if (!await source.exists()) return null;
+    final PlatformFile? picked = result?.files.singleOrNull;
+    if (picked == null) return null;
+    if (picked.size <= 0 || picked.size > _maxFontBytes) {
+      throw const FormatException('字体文件必须小于 12MB');
+    }
+
+    // Android SAF providers do not always expose a filesystem path.
+    Stream<List<int>>? stream = picked.readStream;
+    if (stream == null && picked.path != null) {
+      final file = File(picked.path!);
+      if (await file.exists()) stream = file.openRead();
+    }
+    if (stream == null) {
+      throw const FormatException('文件提供者无法提供字体内容');
+    }
+
     final Directory docs = await getApplicationDocumentsDirectory();
-    final Directory dir = Directory('${docs.path}/fonts');
+    final Directory dir = Directory(docs.path + '/fonts');
     if (!await dir.exists()) await dir.create(recursive: true);
-    final String family = 'user-${DateTime.now().millisecondsSinceEpoch}';
-    final String name = p.basenameWithoutExtension(file.name);
-    final String target = '${dir.path}/$family${p.extension(file.name).toLowerCase()}';
-    await source.copy(target);
-    final UserFont font = UserFont(
-      family: family,
-      name: name,
-      path: target,
-    );
-    await _load(font);
-    _fonts.add(font);
-    await _persist();
-    notifyListeners();
-    return font;
+    final String family = 'user-' + DateTime.now().microsecondsSinceEpoch.toString();
+    final String name = p.basenameWithoutExtension(picked.name);
+    final String target = dir.path + '/' + family +
+        p.extension(picked.name).toLowerCase();
+    final dest = File(target);
+    final sink = dest.openWrite();
+    int size = 0;
+    final signature = <int>[];
+    try {
+      await for (final chunk in stream) {
+        size += chunk.length;
+        if (size > _maxFontBytes) {
+          throw const FormatException('字体文件超过 12MB');
+        }
+        if (signature.length < 4) {
+          signature.addAll(chunk.take(4 - signature.length));
+        }
+        sink.add(chunk);
+      }
+      await sink.flush();
+      await sink.close();
+      final trueType = signature.length == 4 &&
+          signature[0] == 0 && signature[1] == 1 &&
+          signature[2] == 0 && signature[3] == 0;
+      final openType = signature.length == 4 &&
+          String.fromCharCodes(signature) == 'OTTO';
+      if (!trueType && !openType) {
+        throw const FormatException('不是有效的 TTF/OTF 字体');
+      }
+      final font = UserFont(family: family, name: name, path: target);
+      if (!await _load(font)) {
+        throw const FormatException('字体加载失败，请检查文件是否损坏');
+      }
+      _fonts.add(font);
+      await _persist();
+      notifyListeners();
+      return font;
+    } catch (_) {
+      await sink.close();
+      if (await dest.exists()) await dest.delete();
+      rethrow;
+    }
   }
 
   Future<void> deleteFont(UserFont font) async {
@@ -79,18 +123,20 @@ class UserFontStore extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> _load(UserFont font) async {
+  Future<bool> _load(UserFont font) async {
     try {
       final File file = File(font.path);
-      if (!await file.exists()) return;
+      if (!await file.exists()) return false;
       final ByteData data = ByteData.sublistView(
         Uint8List.fromList(await file.readAsBytes()),
       );
       final FontLoader loader = FontLoader(font.family)
         ..addFont(Future<ByteData>.value(data));
       await loader.load();
+      return true;
     } catch (_) {
-      // 坏字体文件不影响应用启动，只是不出现预览。
+      // A corrupt saved font must not prevent opening the reader.
+      return false;
     }
   }
 

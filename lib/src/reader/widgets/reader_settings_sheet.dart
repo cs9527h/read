@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
@@ -32,12 +33,20 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
   late ReaderSettings _settings;
   late ReaderSettings _initial;
   ReaderScope _scope = ReaderScope.book;
+  late final TextEditingController _boldPatternController;
 
   @override
   void initState() {
     super.initState();
     _settings = _store.resolve(widget.bookId);
     _initial = _settings;
+    _boldPatternController = TextEditingController(text: _settings.boldPattern);
+  }
+
+  @override
+  void dispose() {
+    _boldPatternController.dispose();
+    super.dispose();
   }
 
   void _update(Map<String, Object?> patch) {
@@ -51,12 +60,16 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
     setState(() {
       _settings = _store.resolve(widget.bookId);
       _initial = _settings;
+      _boldPatternController.text = _settings.boldPattern;
     });
     widget.onRepaginate();
   }
 
   void _undo() {
-    setState(() => _settings = _initial);
+    setState(() {
+      _settings = _initial;
+      _boldPatternController.text = _settings.boldPattern;
+    });
     _store.save(widget.bookId, _settings, _scope);
     widget.onRepaginate();
   }
@@ -282,22 +295,54 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
           alignment: Alignment.centerLeft,
           child: TextButton.icon(
             onPressed: () async {
-              final UserFont? font = await UserFontStore.instance.importFont();
-              if (font == null) return;
-              _update(<String, Object?>{'fontFamily': font.family});
+              try {
+                final UserFont? font = await UserFontStore.instance.importFont();
+                if (!mounted || font == null) return;
+                _update(<String, Object?>{'fontFamily': font.family});
+              } catch (error) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('字体导入失败：$error')),
+                );
+              }
             },
             icon: const Icon(Icons.upload_file_rounded),
             label: const Text('导入 TTF / OTF 字体'),
           ),
         ),
-        _slider(
-          '字号',
-          _settings.fontSize,
-          12,
-          34,
-          divisions: 22,
-          label: '${_settings.fontSize.toStringAsFixed(0)} pt',
-          onChanged: (double v) => _update(<String, Object?>{'fontSize': v}),
+        Row(
+          children: <Widget>[
+            IconButton(
+              tooltip: '缩小字号',
+              onPressed: _settings.fontSize <= 12
+                  ? null
+                  : () => _update(<String, Object?>{
+                      'fontSize': (_settings.fontSize - 1).clamp(12.0, 34.0),
+                    }),
+              icon: const Icon(Icons.remove_circle_outline_rounded),
+            ),
+            Expanded(
+              child: _slider(
+                '字号',
+                _settings.fontSize,
+                12,
+                34,
+                divisions: 22,
+                label: '${_settings.fontSize.toStringAsFixed(0)} pt',
+                onChanged: (double v) =>
+                    _update(<String, Object?>{'fontSize': v}),
+              ),
+            ),
+            IconButton(
+              tooltip: '放大字号',
+              onPressed: _settings.fontSize >= 34
+                  ? null
+                  : () => _update(<String, Object?>{
+                      'fontSize': (_settings.fontSize + 1).clamp(12.0, 34.0),
+                    }),
+              icon: const Icon(Icons.add_circle_outline_rounded),
+            ),
+          ],
         ),
         _slider(
           '行距',
@@ -428,9 +473,7 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
         ),
         _section('行内强调', secondary),
         TextField(
-          controller: TextEditingController(text: _settings.boldPattern)
-            ..selection = TextSelection.collapsed(
-                offset: _settings.boldPattern.length),
+          controller: _boldPatternController,
           decoration: const InputDecoration(
             labelText: '加粗行匹配规则（正则，留空关闭）',
             hintText: r'^【.*】',
@@ -631,6 +674,12 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
               (String v) => _update(<String, Object?>{'headerCenter': v})),
           _templateField('右侧', _settings.headerRight,
               (String v) => _update(<String, Object?>{'headerRight': v})),
+          _fontDropdown(
+            '页眉字体',
+            _settings.headerFontFamily,
+            (String? family) =>
+                _update(<String, Object?>{'headerFontFamily': family}),
+          ),
           _slider(
             '页眉字号',
             _settings.headerFontSize,
@@ -664,6 +713,12 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
               (String v) => _update(<String, Object?>{'footerCenter': v})),
           _templateField('右侧', _settings.footerRight,
               (String v) => _update(<String, Object?>{'footerRight': v})),
+          _fontDropdown(
+            '页脚字体',
+            _settings.footerFontFamily,
+            (String? family) =>
+                _update(<String, Object?>{'footerFontFamily': family}),
+          ),
           _slider(
             '页脚字号',
             _settings.footerFontSize,
@@ -881,6 +936,70 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
   // 高级
   // ---------------------------------------------------------------------------
 
+  void _setQuickAction(String action, bool enabled) {
+    final selected = _settings.bottomActions.toList();
+    if (enabled) {
+      if (selected.contains(action)) return;
+      if (selected.length >= 3) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('底部最多显示三个快捷功能')),
+        );
+        return;
+      }
+      selected.add(action);
+    } else {
+      if (selected.length <= 1) return;
+      selected.remove(action);
+    }
+    _update(<String, Object?>{'bottomActions': selected.join(',')});
+  }
+
+  void _moveQuickAction(String action, int direction) {
+    final selected = _settings.bottomActions.toList();
+    final oldIndex = selected.indexOf(action);
+    final target = oldIndex + direction;
+    if (oldIndex < 0 || target < 0 || target >= selected.length) return;
+    selected.removeAt(oldIndex);
+    selected.insert(target, action);
+    _update(<String, Object?>{'bottomActions': selected.join(',')});
+  }
+
+  Widget _quickActionRow(String action) {
+    final selected = _settings.bottomActions;
+    final index = selected.indexOf(action);
+    final title = switch (action) {
+      'toc' => '目录',
+      'bookmark' => '书签',
+      'search' => '搜索',
+      _ => '设置',
+    };
+    return ListTile(
+      dense: true,
+      contentPadding: EdgeInsets.zero,
+      title: Text(title),
+      leading: Checkbox(
+        value: index >= 0,
+        onChanged: (checked) => _setQuickAction(action, checked ?? false),
+      ),
+      trailing: index < 0 ? null : Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          IconButton(
+            tooltip: '上移' + title,
+            onPressed: index == 0 ? null : () => _moveQuickAction(action, -1),
+            icon: const Icon(Icons.keyboard_arrow_up_rounded),
+          ),
+          IconButton(
+            tooltip: '下移' + title,
+            onPressed: index == selected.length - 1
+                ? null : () => _moveQuickAction(action, 1),
+            icon: const Icon(Icons.keyboard_arrow_down_rounded),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _advancedTab(Color secondary) {
     return ListView(
       padding: const EdgeInsets.fromLTRB(18, 14, 18, 32),
@@ -1023,6 +1142,11 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
         ),
         _switch('极简模式（关闭翻页动画）', _settings.minimalMode,
             (bool v) => _update(<String, Object?>{'minimalMode': v})),
+        _section('底部快捷功能', secondary),
+        Text('最多显示三个，可勾选并调整顺序。',
+            style: TextStyle(fontSize: 11, color: secondary)),
+        for (final action in const <String>['toc', 'bookmark', 'search', 'settings'])
+          _quickActionRow(action),
         _section('方案与配置', secondary),
         Row(
           children: <Widget>[
@@ -1357,19 +1481,78 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
   }
 
   Future<void> _pickBackgroundImage() async {
-    final FilePickerResult? result = await FilePicker.platform.pickFiles(
-      type: FileType.image,
-    );
-    if (result == null || result.files.length != 1) return;
-    final PlatformFile file = result.files.first;
-    if (file.path == null) return;
-    final Directory docs = await getApplicationDocumentsDirectory();
-    final Directory dir = Directory('${docs.path}/backgrounds');
-    if (!await dir.exists()) await dir.create(recursive: true);
-    final String target =
-        '${dir.path}/bg-${DateTime.now().millisecondsSinceEpoch}${p.extension(file.name).toLowerCase()}';
-    await File(file.path!).copy(target);
-    _update(<String, Object?>{'bgImagePath': target});
+    File? staged;
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        withData: false,
+        withReadStream: true,
+      );
+      if (result == null || result.files.isEmpty) return;
+      final picked = result.files.first;
+      const maxBytes = 8 * 1024 * 1024;
+      if (picked.size <= 0 || picked.size > maxBytes) {
+        throw const FormatException('阅读背景图片不得超过 8MB');
+      }
+      Stream<List<int>>? stream = picked.readStream;
+      if (stream == null && picked.path != null) {
+        final source = File(picked.path!);
+        if (await source.exists()) stream = source.openRead();
+      }
+      if (stream == null) {
+        throw const FormatException('文件提供者未返回图片内容');
+      }
+      final docs = await getApplicationDocumentsDirectory();
+      final dir = Directory(docs.path + '/backgrounds');
+      if (!await dir.exists()) await dir.create(recursive: true);
+      final target = dir.path + '/bg-' +
+          DateTime.now().microsecondsSinceEpoch.toString() +
+          p.extension(picked.name).toLowerCase();
+      staged = File(target);
+      final sink = staged.openWrite();
+      var total = 0;
+      final signature = <int>[];
+      try {
+        await for (final chunk in stream) {
+          total += chunk.length;
+          if (total > maxBytes) {
+            throw const FormatException('阅读背景图片超过 8MB');
+          }
+          if (signature.length < 12) {
+            signature.addAll(chunk.take(12 - signature.length));
+          }
+          sink.add(chunk);
+        }
+        await sink.flush();
+        await sink.close();
+      } catch (_) {
+        await sink.close();
+        rethrow;
+      }
+      final png = signature.length >= 4 &&
+          signature[0] == 0x89 && signature[1] == 0x50 &&
+          signature[2] == 0x4E && signature[3] == 0x47;
+      final jpeg = signature.length >= 2 &&
+          signature[0] == 0xFF && signature[1] == 0xD8;
+      final webp = signature.length >= 12 &&
+          String.fromCharCodes(signature.sublist(0, 4)) == 'RIFF' &&
+          String.fromCharCodes(signature.sublist(8, 12)) == 'WEBP';
+      if (!png && !jpeg && !webp) {
+        throw const FormatException('背景仅支持 JPG、PNG 和 WebP 图片');
+      }
+      if (!mounted) return;
+      _update(<String, Object?>{'bgImagePath': staged.path});
+      staged = null; // The imported image is now owned by the reader.
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('背景导入失败：$error')),
+      );
+    } finally {
+      if (staged != null && await staged.exists()) {
+        await staged.delete();
+      }
+    }
   }
 
   Future<int?> _pickColor(BuildContext context, int initial) async {

@@ -28,6 +28,10 @@ class LibraryStore extends ChangeNotifier {
   final List<Book> books = <Book>[];
   SharedPreferences? _prefs;
 
+  // Capture immutable progress snapshots and serialize writes to prevent
+  // older page turns racing a newer chapter/character position.
+  Future<void> _progressWrites = Future<void>.value();
+
   double _fontSize = 18;
   double _lineHeight = 1.7;
   int _backgroundIndex = 0;
@@ -42,7 +46,7 @@ class LibraryStore extends ChangeNotifier {
     _lineHeight = _prefs!.getDouble(_lineKey) ?? 1.7;
     _backgroundIndex = _prefs!.getInt(_bgKey) ?? 0;
 
-    books.clear();
+    final loadedBooks = <Book>[];
     final String? raw = _prefs!.getString(_metaKey);
     if (raw != null) {
       try {
@@ -51,7 +55,7 @@ class LibraryStore extends ChangeNotifier {
           final Book? book = await _loadBook(item as Map<String, dynamic>);
           if (book != null) {
             _restoreProgress(book);
-            books.add(book);
+            loadedBooks.add(book);
           }
         }
       } catch (error) {
@@ -60,6 +64,9 @@ class LibraryStore extends ChangeNotifier {
       }
     }
 
+    books
+      ..clear()
+      ..addAll(loadedBooks);
     _sortBooks();
     notifyListeners();
   }
@@ -111,12 +118,18 @@ class LibraryStore extends ChangeNotifier {
   }
 
   Future<void> saveProgress(Book book) async {
-    final SharedPreferences? p = _prefs;
-    if (p == null) return;
-    await p.setString(
-      '$_progressPrefix${book.id}',
-      '${book.chapterIndex.value}:${book.pageIndex.value}:${book.charOffset.value}',
-    );
+    final prefs = _prefs;
+    if (prefs == null) return;
+    final key = '$_progressPrefix${book.id}';
+    final snapshot =
+        '${book.chapterIndex.value}:${book.pageIndex.value}:${book.charOffset.value}';
+    final write = _progressWrites.catchError((Object _) {}).then((_) async {
+      if (!await prefs.setString(key, snapshot)) {
+        throw StateError('阅读进度写入失败');
+      }
+    });
+    _progressWrites = write;
+    await write;
   }
 
   /// Apply validated remote progress without altering the imported file.
@@ -166,15 +179,22 @@ class LibraryStore extends ChangeNotifier {
   Future<Book?> importBook() async {
     final FilePickerResult? result = await FilePicker.platform.pickFiles(
       type: FileType.any,
+      withData: false,
+      withReadStream: true,
     );
     if (result == null || result.files.isEmpty) return null;
     final PlatformFile picked = result.files.first;
-    final String? path = picked.path;
-    if (path == null) return null;
-
+    File? staged;
+    String? path = picked.path;
+    if (path == null || !await File(path).exists()) {
+      staged = await _stageDocumentStream(picked);
+      path = staged.path;
+    }
+    final String readablePath = path;
+    try {
     final String ext = picked.name.split('.').last.toLowerCase();
     if (ext == 'pdf') {
-      final File source = File(path);
+      final File source = File(readablePath);
       await PdfFormat.verifyHeader(source);
       final Directory base = await getApplicationDocumentsDirectory();
       final Directory dir = Directory(base.path + '/books');
@@ -186,17 +206,13 @@ class LibraryStore extends ChangeNotifier {
           : picked.name;
       final Book book = Book(id: id, title: title, author: '本地 PDF',
           format: 'PDF', content: '', sourcePath: copy.path);
-      books.add(book);
-      _sortBooks();
-      await _persistMeta();
-      notifyListeners();
-      return book;
+      return await _commitImportedBook(book);
     }
     if (!FormatEngine.supported.contains(ext)) {
       throw const FormatException(
         '当前支持 TXT、EPUB（文字版）、PDF、Markdown、HTML，其余格式开发中');
     }
-    final File source = File(path);
+    final File source = File(readablePath);
     final int fileSize = await source.length();
     if (fileSize > FormatEngine.maxSourceBytes) {
       throw const FormatException(
@@ -235,26 +251,90 @@ class LibraryStore extends ChangeNotifier {
       content: text,
       sourcePath: target.path,
     );
+    return await _commitImportedBook(book);
+    } finally {
+      if (staged != null && await staged.exists()) {
+        await staged.delete();
+      }
+    }
+  }
+
+  Future<File> _stageDocumentStream(PlatformFile selected) async {
+    final stream = selected.readStream;
+    if (stream == null) {
+      throw const FormatException('文件提供者没有提供可读取的内容，请先下载到本地');
+    }
+    final ext = selected.name.split('.').last.toLowerCase();
+    final limit = ext == 'pdf'
+        ? 256 * 1024 * 1024 : FormatEngine.maxSourceBytes;
+    final dir = await getTemporaryDirectory();
+    final staged = File(dir.path + '/read-import-' +
+        DateTime.now().microsecondsSinceEpoch.toString() + '.tmp');
+    final sink = staged.openWrite();
+    var bytes = 0;
+    try {
+      await for (final chunk in stream) {
+        bytes += chunk.length;
+        if (bytes > limit) {
+          throw const FormatException('电子书超过当前支持的文件大小上限');
+        }
+        sink.add(chunk);
+      }
+      await sink.flush();
+      await sink.close();
+      if (bytes == 0) throw const FormatException('导入文件为空');
+      return staged;
+    } catch (_) {
+      await sink.close();
+      if (await staged.exists()) await staged.delete();
+      rethrow;
+    }
+  }
+
+
+  Future<Book> _commitImportedBook(Book book) async {
     books.add(book);
     _sortBooks();
-    await _persistMeta();
-    notifyListeners();
-    return book;
+    try {
+      await _persistMeta();
+      notifyListeners();
+      return book;
+    } catch (_) {
+      // A storage failure must not leave an unreadable phantom entry.
+      books.removeWhere((item) => item.id == book.id);
+      final owned = book.sourcePath;
+      if (owned != null) {
+        try {
+          final file = File(owned);
+          if (await file.exists()) await file.delete();
+        } catch (_) {}
+      }
+      notifyListeners();
+      rethrow;
+    }
   }
 
   Future<void> deleteBook(Book book) async {
-    books.remove(book);
-    final String? path = book.sourcePath;
+    final index = books.indexWhere((item) => item.id == book.id);
+    if (index < 0) return;
+    final removed = books.removeAt(index);
+    try {
+      // Commit the library change before deleting the only local copy.
+      // A failed write must restore the visible book and preserve its bytes.
+      await _persistMeta();
+    } catch (_) {
+      books.insert(index, removed);
+      notifyListeners();
+      rethrow;
+    }
+    final path = book.sourcePath;
     if (path != null) {
-      final File file = File(path);
-      if (await file.exists()) {
-        await file.delete();
-      }
+      final file = File(path);
+      if (await file.exists()) await file.delete();
     }
     await _prefs?.remove('$_progressPrefix${book.id}');
     await BookmarkStore.clearForDeletedBook(book.id);
     await ChapterRuleStore.clearForDeletedBook(book.id);
-    await _persistMeta();
     notifyListeners();
   }
 
@@ -292,7 +372,9 @@ class LibraryStore extends ChangeNotifier {
     final SharedPreferences? p = _prefs;
     if (p == null) return;
     final String raw = jsonEncode(books.map((Book b) => b.toMeta()).toList());
-    await p.setString(_metaKey, raw);
+    if (!await p.setString(_metaKey, raw)) {
+      throw StateError('书架索引保存失败，未继续修改本地文件');
+    }
   }
 
   /// Kept for backwards compatibility with import tests and older callers.

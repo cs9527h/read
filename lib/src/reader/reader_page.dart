@@ -29,7 +29,7 @@ class ReaderPage extends StatefulWidget {
   State<ReaderPage> createState() => _ReaderPageState();
 }
 
-class _ReaderPageState extends State<ReaderPage> {
+class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   final ReaderSettingsStore _store = ReaderSettingsStore.instance;
   ReaderSettings _settings = ReaderSettings();
 
@@ -49,6 +49,7 @@ class _ReaderPageState extends State<ReaderPage> {
   double _pageWidth = 520;
   double _pageHeight = 800;
   int? _anchorOffset;
+  double? _scrubPreview;
 
   Timer? _autoTurnTimer;
   Timer? _clockTimer;
@@ -56,10 +57,12 @@ class _ReaderPageState extends State<ReaderPage> {
   int _sessionSeconds = 0;
   int _sessionChars = 0;
   int _lastSavedOffset = 0;
+  bool _isReadingActive = true;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _settings = _store.resolve(widget.book.id);
     _store.addListener(_onStoreChanged);
     UserFontStore.instance.addListener(_onStoreChanged);
@@ -70,7 +73,7 @@ class _ReaderPageState extends State<ReaderPage> {
       if (mounted) setState(() {});
     });
     _statsTimer = Timer.periodic(const Duration(seconds: 10), (_) {
-      if (!mounted || _loading) return;
+      if (!mounted || _loading || !_isReadingActive) return;
       _sessionSeconds += 10;
       _flushStats();
     });
@@ -79,6 +82,7 @@ class _ReaderPageState extends State<ReaderPage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _store.removeListener(_onStoreChanged);
     UserFontStore.instance.removeListener(_onStoreChanged);
     _autoTurnTimer?.cancel();
@@ -89,6 +93,21 @@ class _ReaderPageState extends State<ReaderPage> {
     _scrollController?.dispose();
     _restoreSystemUi();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final active = state == AppLifecycleState.resumed;
+    if (_isReadingActive == active) return;
+    _isReadingActive = active;
+    if (active) {
+      _startAutoTurn();
+    } else {
+      _autoTurnTimer?.cancel();
+      _autoTurnTimer = null;
+      _flushStats();
+      _saveProgress();
+    }
   }
 
   void _onStoreChanged() {
@@ -186,11 +205,12 @@ class _ReaderPageState extends State<ReaderPage> {
     return _pageWidth > 620 && _pageWidth > _pageHeight * 1.05;
   }
 
-  double get _headerHeight =>
-      _settings.headerShow ? _settings.headerFontSize * 2 + 8 : 0;
-  double get _footerHeight => _settings.footerShow
-      ? _settings.footerFontSize * 2 + (_settings.footerProgressBar ? 8 : 0) + 6
-      : 0;
+  double get _headerHeight => _settings.minimalMode || !_settings.headerShow
+      ? 0 : _settings.headerFontSize * 2 + 8;
+  double get _footerHeight => _settings.minimalMode || !_settings.footerShow
+      ? 0
+      : _settings.footerFontSize * 2 +
+          (_settings.footerProgressBar ? 8 : 0) + 6;
 
   double get _textScale {
     final TextScaler scaler = MediaQuery.textScalerOf(context);
@@ -271,9 +291,16 @@ class _ReaderPageState extends State<ReaderPage> {
 
   int get _currentAbsoluteOffset {
     final PaginatedChapter? p = _pagination;
-    if (p == null || p.pages.isEmpty || _chapterIndex >= _chapters.length) {
-      final int saved = widget.book.charOffset.value;
-      return saved < 0 ? 0 : saved;
+    if (_chapters.isEmpty || _chapterIndex >= _chapters.length) return 0;
+    if (_showScroll) {
+      final chapter = _chapters[_chapterIndex];
+      return chapter.start +
+          widget.book.charOffset.value.clamp(0, chapter.length);
+    }
+    if (p == null || p.pages.isEmpty) {
+      final chapter = _chapters[_chapterIndex];
+      final saved = _anchorOffset ?? widget.book.charOffset.value;
+      return chapter.start + saved.clamp(0, chapter.length);
     }
     final int column = _pageIndex.clamp(0, p.pages.length - 1);
     return _chapters[_chapterIndex].start + p.pages[column].sourceStart;
@@ -318,11 +345,11 @@ class _ReaderPageState extends State<ReaderPage> {
 
   void _startAutoTurn() {
     _autoTurnTimer?.cancel();
-    if (!_settings.autoTurn || _settings.minimalMode) return;
+    if (!_settings.autoTurn || _settings.minimalMode || !_isReadingActive) return;
     _autoTurnTimer = Timer.periodic(
       Duration(seconds: _settings.autoTurnSeconds.clamp(3, 600)),
       (_) {
-        if (!mounted || _menuVisible) return;
+        if (!mounted || !_isReadingActive || _menuVisible) return;
         _turnPage(1);
       },
     );
@@ -468,7 +495,9 @@ class _ReaderPageState extends State<ReaderPage> {
                         children: <Widget>[
                           _buildHeader(secondary),
                           Expanded(
-                            child: _buildPageArea(foreground, secondary),
+                            child: _buildTapLayer(
+                              _buildPageArea(foreground, secondary),
+                            ),
                           ),
                           _buildFooter(secondary),
                         ],
@@ -479,7 +508,6 @@ class _ReaderPageState extends State<ReaderPage> {
               },
             ),
           ),
-          _buildTapLayer(),
           _buildMenu(background, foreground, secondary),
           _buildBrightnessOverlay(),
         ],
@@ -533,7 +561,7 @@ class _ReaderPageState extends State<ReaderPage> {
   }
 
   Widget _buildHeader(Color secondary) {
-    if (!_settings.headerShow) return const SizedBox.shrink();
+    if (_settings.minimalMode || !_settings.headerShow) return const SizedBox.shrink();
     return SizedBox(
       height: _headerHeight,
       child: Row(
@@ -547,6 +575,7 @@ class _ReaderPageState extends State<ReaderPage> {
               _settings.headerColor,
               _settings.headerOpacity,
               TextAlign.left,
+              _settings.headerFontFamily,
             ),
           ),
           Expanded(
@@ -558,6 +587,7 @@ class _ReaderPageState extends State<ReaderPage> {
               _settings.headerColor,
               _settings.headerOpacity,
               TextAlign.center,
+              _settings.headerFontFamily,
             ),
           ),
           Expanded(
@@ -569,6 +599,7 @@ class _ReaderPageState extends State<ReaderPage> {
               _settings.headerColor,
               _settings.headerOpacity,
               TextAlign.right,
+              _settings.headerFontFamily,
             ),
           ),
         ],
@@ -577,7 +608,7 @@ class _ReaderPageState extends State<ReaderPage> {
   }
 
   Widget _buildFooter(Color secondary) {
-    if (!_settings.footerShow) return const SizedBox.shrink();
+    if (_settings.minimalMode || !_settings.footerShow) return const SizedBox.shrink();
     return SizedBox(
       height: _footerHeight,
       child: Column(
@@ -594,6 +625,7 @@ class _ReaderPageState extends State<ReaderPage> {
                   _settings.footerColor,
                   _settings.footerOpacity,
                   TextAlign.left,
+                  _settings.footerFontFamily,
                 ),
               ),
               Expanded(
@@ -605,6 +637,7 @@ class _ReaderPageState extends State<ReaderPage> {
                   _settings.footerColor,
                   _settings.footerOpacity,
                   TextAlign.center,
+                  _settings.footerFontFamily,
                 ),
               ),
               Expanded(
@@ -616,6 +649,7 @@ class _ReaderPageState extends State<ReaderPage> {
                   _settings.footerColor,
                   _settings.footerOpacity,
                   TextAlign.right,
+                  _settings.footerFontFamily,
                 ),
               ),
             ],
@@ -638,12 +672,10 @@ class _ReaderPageState extends State<ReaderPage> {
   }
 
   double get _overallProgress {
-    final PaginatedChapter? p = _pagination;
-    final int total = _chapters.isEmpty ? 1 : _chapters.length;
-    final double within = p == null || p.pages.isEmpty
-        ? 0
-        : _pageIndex / math.max(1, p.pages.length);
-    return ((_chapterIndex + within) / math.max(1, total)).clamp(0, 1);
+    if (_scrubPreview != null) return _scrubPreview!.clamp(0, 1);
+    final total = widget.book.content.length;
+    if (total == 0) return 0;
+    return (_currentAbsoluteOffset / total).clamp(0, 1);
   }
 
   Widget _templateText(
@@ -653,6 +685,7 @@ class _ReaderPageState extends State<ReaderPage> {
     int? color,
     double opacity,
     TextAlign align,
+    String? fontFamily,
   ) {
     if (template.trim().isEmpty) return const SizedBox.shrink();
     final String text = _renderTemplate(template);
@@ -670,6 +703,7 @@ class _ReaderPageState extends State<ReaderPage> {
         textAlign: align,
         style: TextStyle(
           fontSize: size,
+          fontFamily: fontFamily ?? _settings.fontFamily,
           color: Color(color ?? fallback.toARGB32())
               .withValues(alpha: opacity.clamp(0, 1)),
           fontWeight: FontWeight.w400,
@@ -763,7 +797,7 @@ class _ReaderPageState extends State<ReaderPage> {
   }
 
   Widget _withGuides(Widget child, Color secondary) {
-    if (!_settings.guideShow) return child;
+    if (_settings.minimalMode || !_settings.guideShow) return child;
     return Stack(
       children: <Widget>[
         Positioned.fill(child: child),
@@ -823,9 +857,11 @@ class _ReaderPageState extends State<ReaderPage> {
       color: foreground,
       textScale: _textScale,
     );
-    final Widget body = _scaledText(Text.rich(
-      _pageSpan(page.textOf(p.display), style),
-      textAlign: ReaderEngine.textAlignOf(_settings.align),
+    final Widget body = _scaledText(SelectionArea(
+      child: Text.rich(
+        _pageSpan(page.textOf(p.display), style),
+        textAlign: ReaderEngine.textAlignOf(_settings.align),
+      ),
     ));
     children.add(
       Expanded(
@@ -862,9 +898,11 @@ class _ReaderPageState extends State<ReaderPage> {
             alignment: _settings.bottomAlign
                 ? Alignment.bottomLeft
                 : Alignment.topLeft,
-            child: _scaledText(Text.rich(
-              _pageSpan(page.textOf(p.display), style),
-              textAlign: ReaderEngine.textAlignOf(_settings.align),
+            child: _scaledText(SelectionArea(
+              child: Text.rich(
+                _pageSpan(page.textOf(p.display), style),
+                textAlign: ReaderEngine.textAlignOf(_settings.align),
+              ),
             )),
           ),
         ),
@@ -975,16 +1013,18 @@ class _ReaderPageState extends State<ReaderPage> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
             _buildChapterTitle(),
-            _scaledText(Text.rich(
-              _pageSpan(
-                p.display.text,
-                ReaderEngine.bodyStyle(
-                  _settings,
-                  color: foreground,
-                  textScale: _textScale,
+            _scaledText(SelectionArea(
+              child: Text.rich(
+                _pageSpan(
+                  p.display.text,
+                  ReaderEngine.bodyStyle(
+                    _settings,
+                    color: foreground,
+                    textScale: _textScale,
+                  ),
                 ),
+                textAlign: ReaderEngine.textAlignOf(_settings.align),
               ),
-              textAlign: ReaderEngine.textAlignOf(_settings.align),
             )),
             const SizedBox(height: 40),
           ],
@@ -1015,25 +1055,23 @@ class _ReaderPageState extends State<ReaderPage> {
   // 点击、菜单与手势
   // ---------------------------------------------------------------------------
 
-  Widget _buildTapLayer() {
-    return Positioned.fill(
-      child: GestureDetector(
-        behavior: HitTestBehavior.translucent,
-        onTapUp: (TapUpDetails details) {
-          final double width = MediaQuery.sizeOf(context).width;
-          final double x = details.localPosition.dx;
-          final String action;
-          if (x < width * 0.3) {
-            action = _settings.tapLeft;
-          } else if (x < width * 0.7) {
-            action = _settings.tapCenter;
-          } else {
-            action = _settings.tapRight;
-          }
-          _performTapAction(action);
-        },
-        onLongPress: _showSelectionActions,
-      ),
+  /// The tap recognizer must wrap the actual page rather than sit above it
+  /// as a full-screen Stack overlay. Overlays intercept hit testing and make
+  /// PageView swipes and long-press text selection impossible.
+  Widget _buildTapLayer(Widget page) {
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTapUp: (details) {
+        final width = _pageWidth > 0 ? _pageWidth : MediaQuery.sizeOf(context).width;
+        final x = details.localPosition.dx;
+        final action = x < width * 0.3
+            ? _settings.tapLeft
+            : x > width * 0.7
+                ? _settings.tapRight
+                : _settings.tapCenter;
+        _performTapAction(action);
+      },
+      child: page,
     );
   }
 
@@ -1170,24 +1208,45 @@ class _ReaderPageState extends State<ReaderPage> {
             Expanded(
               child: Slider(
                 value: _overallProgress.clamp(0, 1),
-                onChanged: _seekProgress,
+                onChanged: widget.book.content.isEmpty
+                    ? null
+                    : (value) => setState(() => _scrubPreview = value),
+                onChangeEnd: widget.book.content.isEmpty ? null : (value) {
+                  setState(() => _scrubPreview = null);
+                  _seekProgress(value);
+                },
               ),
             ),
-            IconButton(
-              tooltip: '目录',
-              icon: Icon(Icons.list_rounded, color: foreground),
-              onPressed: _showChapters,
-            ),
-            IconButton(
-              tooltip: '书签',
-              icon: Icon(Icons.collections_bookmark_outlined, color: foreground),
-              onPressed: _showBookmarks,
-            ),
-            IconButton(
-              tooltip: '设置',
-              icon: Icon(Icons.text_fields_rounded, color: foreground),
-              onPressed: _openSettings,
-            ),
+            for (final action in _settings.bottomActions)
+              IconButton(
+                tooltip: switch (action) {
+                  'toc' => '目录',
+                  'bookmark' => '书签',
+                  'search' => '书内搜索',
+                  _ => '阅读设置',
+                },
+                icon: Icon(
+                  switch (action) {
+                    'toc' => Icons.list_rounded,
+                    'bookmark' => Icons.collections_bookmark_outlined,
+                    'search' => Icons.search_rounded,
+                    _ => Icons.text_fields_rounded,
+                  },
+                  color: foreground,
+                ),
+                onPressed: () {
+                  switch (action) {
+                    case 'toc':
+                      _showChapters();
+                    case 'bookmark':
+                      _showBookmarks();
+                    case 'search':
+                      _searchInBook();
+                    default:
+                      _openSettings();
+                  }
+                },
+              ),
           ],
         ),
       ),
@@ -1195,10 +1254,9 @@ class _ReaderPageState extends State<ReaderPage> {
   }
 
   void _seekProgress(double fraction) {
-    if (_chapters.isEmpty) return;
-    final int targetChapter =
-        (fraction * _chapters.length).floor().clamp(0, _chapters.length - 1);
-    _gotoChapter(targetChapter);
+    if (_chapters.isEmpty || widget.book.content.isEmpty) return;
+    final absolute = (fraction.clamp(0, 1) * widget.book.content.length).round();
+    _jumpToAbsolute(absolute);
   }
 
   Future<void> _openSettings() async {
@@ -1214,57 +1272,6 @@ class _ReaderPageState extends State<ReaderPage> {
           _layoutKey = '';
           _pagination = null;
         }),
-      ),
-    );
-  }
-
-  Future<void> _showSelectionActions() async {
-    final PaginatedChapter? p = _pagination;
-    if (p == null || p.pages.isEmpty) return;
-    final String pageText = p.pages[_pageIndex.clamp(0, p.pages.length - 1)]
-        .textOf(p.display)
-        .trim();
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (BuildContext ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            ListTile(
-              leading: const Icon(Icons.copy_rounded),
-              title: const Text('复制本页文字'),
-              onTap: () async {
-                await Clipboard.setData(ClipboardData(text: pageText));
-                if (ctx.mounted) Navigator.pop(ctx);
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('已复制本页文字')),
-                  );
-                }
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.search_rounded),
-              title: const Text('搜索本页文字'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _searchInBook(
-                  initialQuery:
-                      pageText.length > 24 ? pageText.substring(0, 24) : pageText,
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.bookmark_add_outlined),
-              title: const Text('在当前位置添加书签'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _toggleBookmark();
-              },
-            ),
-          ],
-        ),
       ),
     );
   }

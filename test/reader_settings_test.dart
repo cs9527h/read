@@ -47,4 +47,16 @@ void main() {
       throwsA(isA<FormatException>()),
     );
   });
+  test('底部快捷功能仅保留有效项目、最多三个并按选择顺序显示', () {
+    expect(ReaderSettings().bottomActions,
+        <String>['toc', 'bookmark', 'settings']);
+    final custom = ReaderSettings(<String, Object?>{
+      'bottomActions': 'search,toc,bookmark,settings,search,unknown',
+    });
+    expect(custom.bottomActions, <String>['search', 'toc', 'bookmark']);
+    expect(ReaderSettings(<String, Object?>{
+      'bottomActions': 'wrong,wrong',
+    }).bottomActions, <String>['toc', 'bookmark', 'settings']);
+  });
+
 }

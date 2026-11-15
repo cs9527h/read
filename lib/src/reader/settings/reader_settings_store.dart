@@ -35,12 +35,44 @@ class ReaderSettingsStore extends ChangeNotifier {
 
   final Map<String, ReaderSettings> _presets = <String, ReaderSettings>{};
 
+  Future<void> _settingWrites = Future<void>.value();
+
+  Future<void> _writeSetting(String key, String? value) {
+    // Keep slider updates in the same order they were issued. Earlier async
+    // writes must not overwrite newer typography changes after a fast drag.
+    final task = _settingWrites.catchError((Object _) {}).then((_) async {
+      final prefs = _prefs;
+      if (prefs == null) throw StateError('阅读配置尚未初始化');
+      final ok = value == null
+          ? await prefs.remove(key)
+          : await prefs.setString(key, value);
+      if (!ok) throw StateError('阅读配置持久化失败');
+    });
+    _settingWrites = task;
+    return task;
+  }
+
   bool _ready = false;
   bool get ready => _ready;
 
   Future<void> init() async {
+    _ready = false;
     _prefs = await SharedPreferences.getInstance();
+    // Reinitialize from the persisted snapshot, not stale singleton state.
+    // A book's private layout must survive app restart and bookshelf reload.
+    _bookOverrides.clear();
+    _themeTypo.clear();
+    _customThemes.clear();
+    _presets.clear();
     _global = _decodeMap(_prefs!.getString(_globalKey));
+    for (final String key in _prefs!.getKeys()) {
+      if (!key.startsWith(_bookPrefix)) continue;
+      final String bookId = key.substring(_bookPrefix.length);
+      if (bookId.isEmpty) continue;
+      final Map<String, Object?> saved =
+          _decodeMap(_prefs!.getString(key));
+      if (saved.isNotEmpty) _bookOverrides[bookId] = saved;
+    }
     final String? themesRaw = _prefs!.getString(_themesKey);
     if (themesRaw != null) {
       try {
@@ -75,7 +107,7 @@ class ReaderSettingsStore extends ChangeNotifier {
     try {
       final Object? decoded = jsonDecode(raw);
       return decoded is Map<String, dynamic>
-          ? Map<String, Object?>.from(decoded)
+          ? validatedReaderSettingsMap(decoded)
           : <String, Object?>{};
     } catch (_) {
       return <String, Object?>{};
@@ -112,10 +144,14 @@ class ReaderSettingsStore extends ChangeNotifier {
 
   /// 修改的生效范围。
   Future<void> save(String bookId, ReaderSettings next, ReaderScope scope) async {
+    // The sheet passes a *resolved* per-book snapshot. Persisting that entire
+    // snapshot to global scope would leak book-specific overrides into every
+    // other book. Only write fields the user changed in this interaction.
+    final Map<String, Object?> changed = next.diffFrom(resolve(bookId));
     switch (scope) {
       case ReaderScope.global:
-        _global = next.toJson();
-        await _prefs?.setString(_globalKey, jsonEncode(_global));
+        _global = <String, Object?>{..._global, ...changed};
+        await _writeSetting(_globalKey, jsonEncode(_global));
       case ReaderScope.theme:
         final String themeId = next.themeId;
         final Map<String, Object?> delta =
@@ -127,7 +163,7 @@ class ReaderSettingsStore extends ChangeNotifier {
           ...(_themeTypo[themeId] ?? const <String, Object?>{}),
           ...delta,
         };
-        await _prefs?.setString('$_themePrefix$themeId', jsonEncode(_themeTypo[themeId]));
+        await _writeSetting('$_themePrefix$themeId', jsonEncode(_themeTypo[themeId]));
       case ReaderScope.book:
         final Map<String, Object?> bookDelta =
             next.diffFrom(ReaderSettings(<String, Object?>{
@@ -135,9 +171,9 @@ class ReaderSettingsStore extends ChangeNotifier {
           ...(_themeTypo[next.themeId] ?? const <String, Object?>{}),
         }));
         _bookOverrides[bookId] = bookDelta;
-        await _prefs?.setString('$_bookPrefix$bookId', jsonEncode(bookDelta));
+        await _writeSetting('$_bookPrefix$bookId', jsonEncode(bookDelta));
         if (bookDelta.isEmpty) {
-          await _prefs?.remove('$_bookPrefix$bookId');
+          await _writeSetting('$_bookPrefix$bookId', null);
           _bookOverrides.remove(bookId);
         }
     }
@@ -148,11 +184,11 @@ class ReaderSettingsStore extends ChangeNotifier {
     switch (scope) {
       case ReaderScope.global:
         _global = <String, Object?>{};
-        await _prefs?.remove(_globalKey);
+        await _writeSetting(_globalKey, null);
       case ReaderScope.theme:
         final String themeId = resolve(bookId).themeId;
         _themeTypo.remove(themeId);
-        await _prefs?.remove('$_themePrefix$themeId');
+        await _writeSetting('$_themePrefix$themeId', null);
       case ReaderScope.book:
         _bookOverrides.remove(bookId);
         await _prefs?.remove('$_bookPrefix$bookId');
@@ -324,6 +360,9 @@ class ReaderSettingsStore extends ChangeNotifier {
 
   /// 导入会校验结构；旧版本（version 1 / 缺失）按当前默认值迁移。
   Future<int> importJson(String raw) async {
+    if (raw.length > 2 * 1024 * 1024) {
+      throw const FormatException('阅读配置文件过大');
+    }
     final Object? decoded = jsonDecode(raw);
     if (decoded is! Map<String, dynamic>) {
       throw const FormatException('配置文件不是 JSON 对象');
@@ -332,9 +371,33 @@ class ReaderSettingsStore extends ChangeNotifier {
     if (version != null && version != '1' && version != configVersion) {
       throw FormatException('不支持的配置版本：$version');
     }
+    // Validate all scopes *before* persisting anything. A malformed
+    // later book must never leave the earlier settings half-imported.
+    if (decoded['global'] is Map<String, dynamic>) {
+      validatedReaderSettingsMap(decoded['global'] as Map<String, dynamic>);
+    }
+    for (final field in const <String>['book', 'themeTypo', 'presets']) {
+      final value = decoded[field];
+      if (value is! Map<String, dynamic>) continue;
+      if (value.length > 5000) {
+        throw FormatException(field + ' 设置条目过多');
+      }
+      for (final entry in value.entries) {
+        if (entry.key.isEmpty || entry.key.length > 200) {
+          throw const FormatException('配置条目名称非法');
+        }
+        if (entry.value is Map<String, dynamic>) {
+          validatedReaderSettingsMap(entry.value as Map<String, dynamic>);
+        } else {
+          throw FormatException('配置 ' + field + ' 内含无效内容');
+        }
+      }
+    }
     final Object? global = decoded['global'];
     if (global is Map<String, dynamic>) {
-      _global = <String, Object?>{..._global, ...global};
+      _global = <String, Object?>{
+        ..._global, ...validatedReaderSettingsMap(global),
+      };
       await _prefs?.setString(_globalKey, jsonEncode(_global));
     }
     final Object? book = decoded['book'];
@@ -342,7 +405,7 @@ class ReaderSettingsStore extends ChangeNotifier {
       for (final MapEntry<String, dynamic> entry in book.entries) {
         if (entry.value is Map<String, dynamic>) {
           final Map<String, Object?> value =
-              Map<String, Object?>.from(entry.value as Map<String, dynamic>);
+              validatedReaderSettingsMap(entry.value as Map<String, dynamic>);
           _bookOverrides[entry.key] = value;
           await _prefs?.setString('$_bookPrefix${entry.key}', jsonEncode(value));
         }
@@ -353,7 +416,7 @@ class ReaderSettingsStore extends ChangeNotifier {
       for (final MapEntry<String, dynamic> entry in typo.entries) {
         if (entry.value is Map<String, dynamic>) {
           final Map<String, Object?> value =
-              Map<String, Object?>.from(entry.value as Map<String, dynamic>);
+              validatedReaderSettingsMap(entry.value as Map<String, dynamic>);
           _themeTypo[entry.key] = value;
           await _prefs?.setString('$_themePrefix${entry.key}', jsonEncode(value));
         }
@@ -379,7 +442,8 @@ class ReaderSettingsStore extends ChangeNotifier {
     if (presets is Map<String, dynamic>) {
       for (final MapEntry<String, dynamic> entry in presets.entries) {
         if (entry.value is Map<String, dynamic>) {
-          _presets[entry.key] = ReaderSettings(entry.value as Map<String, dynamic>);
+          _presets[entry.key] = ReaderSettings(
+              validatedReaderSettingsMap(entry.value as Map<String, dynamic>));
         }
       }
       await _prefs?.setString(
