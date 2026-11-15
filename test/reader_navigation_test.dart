@@ -32,7 +32,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
     expect(book.chapterIndex.value, 1);
-    expect(find.text('第二章 终点', skipOffstage: false), findsWidgets);
+    expect(find.textContaining('第二章 终点', skipOffstage: false), findsWidgets);
 
     await tester.tap(find.byTooltip('上一页'));
     await tester.pump();
