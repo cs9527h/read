@@ -129,23 +129,27 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
 
   _Palette get _palette {
     if (kEink) return const _Palette(Colors.white, Colors.black);
+    final _Palette base;
     if (_style.backgroundImage.isNotEmpty) {
-      return const _Palette(Colors.black, Colors.white);
+      base = const _Palette(Colors.black, Colors.white);
+    } else {
+      base = switch (_style.backgroundIndex) {
+        1 => const _Palette(Color(0xFFF5EFE1), Color(0xFF41382B)),
+        2 => const _Palette(Color(0xFF121212), Color(0xFFDBDBDB)),
+        3 => const _Palette(Color(0xFFE9E9E9), Color(0xFF252525)),
+        4 => const _Palette(Color(0xFFEAF0E5), Color(0xFF2D3A30)),
+        5 => const _Palette(Colors.black, Colors.white),
+        _ => const _Palette(Color(0xFFFCFCF8), Color(0xFF24332F)),
+      };
     }
-    switch (_style.backgroundIndex) {
-      case 1:
-        return const _Palette(Color(0xFFF5EFE1), Color(0xFF41382B));
-      case 2:
-        return const _Palette(Color(0xFF121212), Color(0xFFDBDBDB));
-      case 3:
-        return const _Palette(Color(0xFFE9E9E9), Color(0xFF252525));
-      case 4:
-        return const _Palette(Color(0xFFEAF0E5), Color(0xFF2D3A30));
-      case 5:
-        return const _Palette(Colors.black, Colors.white);
-      default:
-        return const _Palette(Color(0xFFFCFCF8), Color(0xFF24332F));
-    }
+    return _Palette(
+      _style.customBackgroundArgb == 0
+          ? base.background
+          : Color(_style.customBackgroundArgb),
+      _style.customForegroundArgb == 0
+          ? base.foreground
+          : Color(_style.customForegroundArgb),
+    );
   }
 
   @override
