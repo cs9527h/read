@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/sample_book.dart';
 import '../model/book.dart';
+import '../formats/format_engine.dart';
 
 /// 书架与阅读设置的持久化。
 class LibraryStore extends ChangeNotifier {
@@ -52,8 +53,9 @@ class LibraryStore extends ChangeNotifier {
             books.add(book);
           }
         }
-      } catch (_) {
-        books.clear();
+      } catch (error) {
+        // A damaged index must not silently be overwritten with sample data.
+        throw StateError('书架索引读取失败。原书籍文件未删除；请备份后修复。$error');
       }
     }
 
@@ -66,7 +68,7 @@ class LibraryStore extends ChangeNotifier {
           content: kSampleContent,
         ),
       );
-      await _persistMeta();
+      if (raw == null) await _persistMeta();
     }
     _sortBooks();
     notifyListeners();
@@ -91,7 +93,10 @@ class LibraryStore extends ChangeNotifier {
     if (path != null) {
       final File file = File(path);
       if (await file.exists()) {
-        content = await decodeText(await file.readAsBytes());
+        final Uint8List bytes = await file.readAsBytes();
+        final ImportedDocument parsed =
+            await FormatEngine.importBytes(bytes, path);
+        content = parsed.text;
       }
     }
     if (content.isEmpty) {
@@ -146,9 +151,18 @@ class LibraryStore extends ChangeNotifier {
     final String? path = picked.path;
     if (path == null) return null;
 
+    final String ext = picked.name.split('.').last.toLowerCase();
+    if (!FormatEngine.supported.contains(ext)) {
+      throw const FormatException(
+        '当前只支持 TXT、EPUB（文字版）、Markdown、HTML，其余格式开发中');
+    }
     final Uint8List bytes = await File(path).readAsBytes();
-    final String text = await decodeText(bytes);
-    if (text.trim().isEmpty) return null;
+    final ImportedDocument parsed =
+        await FormatEngine.importBytes(bytes, picked.name);
+    final String text = parsed.text;
+    if (text.trim().isEmpty) {
+      throw const FormatException('文件中没有可以阅读的文字内容');
+    }
 
     final String id = DateTime.now().microsecondsSinceEpoch.toString();
     final Directory dir = await getApplicationDocumentsDirectory();
@@ -156,14 +170,18 @@ class LibraryStore extends ChangeNotifier {
     if (!await booksDir.exists()) {
       await booksDir.create(recursive: true);
     }
-    final File target = File('${booksDir.path}/$id.txt');
-    await target.writeAsString(text);
+    final File target = File('${booksDir.path}/$id.$ext');
+    // Preserve the original file, including EPUB structure, for future
+    // richer layout support and content-addressed cloud sync.
+    await target.writeAsBytes(bytes, flush: true);
 
-    final String name = picked.name.replaceAll(RegExp(r'\.(txt|epub|md)$', caseSensitive: false), '');
+    final String name = picked.name.replaceFirst(
+      RegExp(r'\.[^.]+
     final Book book = Book(
       id: id,
-      title: name,
-      author: '本地导入',
+      title: parsed.title?.isNotEmpty == true ? parsed.title! : name,
+      author: parsed.author?.isNotEmpty == true ? parsed.author! : '本地导入',
+      format: parsed.format,
       content: text,
       sourcePath: target.path,
     );
@@ -216,26 +234,7 @@ class LibraryStore extends ChangeNotifier {
     await p.setString(_metaKey, raw);
   }
 
-  /// 编码兜底：优先 UTF-8，失败后按 GB18030 解码（中文 TXT 常见）。
-  static Future<String> decodeText(Uint8List bytes) async {
-    if (bytes.isEmpty) return '';
-    if (bytes.length >= 3 &&
-        bytes[0] == 0xEF &&
-        bytes[1] == 0xBB &&
-        bytes[2] == 0xBF) {
-      return utf8.decode(bytes.sublist(3), allowMalformed: true);
-    }
-    try {
-      return utf8.decode(bytes);
-    } catch (_) {
-      // 继续尝试 GBK 系编码
-    }
-    try {
-      final String text = await CharsetConverter.decode('gb18030', bytes);
-      if (text.isNotEmpty) return text;
-    } catch (_) {
-      // 落到宽松 UTF-8
-    }
-    return utf8.decode(bytes, allowMalformed: true);
-  }
+  /// Kept for backwards compatibility with import tests and older callers.
+  static Future<String> decodeText(Uint8List bytes) =>
+      FormatEngine.decodeText(bytes);
 }
