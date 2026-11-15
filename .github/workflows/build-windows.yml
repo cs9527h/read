@@ -27,6 +27,17 @@ jobs:
         run: |
           flutter config --enable-windows-desktop
           flutter create --org app.readen --project-name read --platforms=windows .
+          # Flutter scaffolding can create an unrelated sample test referring to
+          # MyApp/material_ui, while Read's actual app uses a different entry.
+          # Remove only that exact generated template, never project tests.
+          $template = "test/widget_test.dart"
+          if (Test-Path $template) {
+            $source = Get-Content $template -Raw
+            if ($source.Contains("MyApp") -and $source.Contains("material_ui")) {
+              Remove-Item $template
+              Write-Output "Removed generated scaffold widget test"
+            }
+          }
 
       - name: Resolve dependencies
         run: flutter pub get
