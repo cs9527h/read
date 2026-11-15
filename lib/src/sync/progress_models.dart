@@ -9,6 +9,7 @@ class ProgressRecord {
     required this.revision,
     required this.device,
     required this.updatedAt,
+    this.textHash,
   });
 
   final String hash;
@@ -18,6 +19,8 @@ class ProgressRecord {
   final int revision;
   final String device;
   final int updatedAt;
+  /// Fingerprint of decoded text. Detects differing EPUB/text import pipelines.
+  final String? textHash;
 
   bool samePosition(ProgressRecord other) =>
       format == other.format && offset == other.offset && page == other.page;
@@ -31,11 +34,13 @@ class ProgressRecord {
         revision: newRevision,
         device: newDevice,
         updatedAt: now,
+        textHash: textHash,
       );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
     'hash': hash, 'format': format, 'offset': offset, 'page': page,
     'rev': revision, 'device': device, 'modified': updatedAt,
+    'text_hash': textHash,
   };
 
   factory ProgressRecord.fromJson(Map<String, dynamic> data) {
@@ -46,6 +51,7 @@ class ProgressRecord {
     final revision = data['rev'];
     final device = data['device'];
     final modified = data['modified'];
+    final textHash = data['text_hash'];
     if (hash is! String ||
         !RegExp(r'^[a-f0-9]{64}$').hasMatch(hash) ||
         format is! String ||
@@ -54,7 +60,106 @@ class ProgressRecord {
         page is! int || page < 0 ||
         revision is! int || revision < 0 ||
         device is! String || device.isEmpty ||
-        modified is! int || modified < 0) {
+        modified is! int || modified < 0 ||
+        (format != 'PDF' &&
+            (textHash is! String ||
+                !RegExp(r'^[a-f0-9]{64}
+      throw const FormatException('阅读进度同步记录损坏');
+    }
+    return ProgressRecord(
+      hash: hash, format: format, offset: offset, page: page,
+      revision: revision, device: device, updatedAt: modified,
+      textHash: textHash as String?,
+    );
+  }
+}
+
+class ProgressManifest {
+  const ProgressManifest(this.entries);
+  static const format = 'read-progress-v1';
+  final Map<String, ProgressRecord> entries;
+
+  String encode() => jsonEncode(<String, dynamic>{
+    'format': format,
+    'entries': entries.values.map((value) => value.toJson()).toList(),
+  });
+
+  factory ProgressManifest.decode(String value) {
+    final dynamic parsed;
+    try {
+      parsed = jsonDecode(value);
+    } catch (_) {
+      throw const FormatException('云端进度文件不是有效的 JSON');
+    }
+    if (parsed is! Map<String, dynamic> ||
+        parsed['format'] != format || parsed['entries'] is! List) {
+      throw const FormatException('云端进度格式不受支持');
+    }
+    final entries = <String, ProgressRecord>{};
+    for (final item in parsed['entries'] as List) {
+      if (item is! Map<String, dynamic>) {
+        throw const FormatException('云端进度记录类型错误');
+      }
+      final record = ProgressRecord.fromJson(item);
+      if (entries.containsKey(record.hash)) {
+        throw const FormatException('云端存在重复的书籍内容指纹');
+      }
+      entries[record.hash] = record;
+    }
+    return ProgressManifest(entries);
+  }
+}
+
+enum ProgressChoice { local, cloud }
+enum ProgressDecision { local, cloud, conflict }
+
+class ProgressMerger {
+  /// Uses the last successfully synchronized position as a common ancestor.
+  /// Timestamp skew must never silently decide between two divergent edits.
+  static ProgressDecision compareToBaseline({
+    required ProgressRecord local,
+    required ProgressRecord remote,
+    required ProgressRecord? baseline,
+  }) {
+    if (local.format != remote.format || local.textHash != remote.textHash) {
+      return ProgressDecision.conflict;
+    }
+    if (local.samePosition(remote)) return ProgressDecision.cloud;
+    if (baseline == null) return ProgressDecision.conflict;
+    final localChanged = !local.samePosition(baseline);
+    final cloudChanged = !remote.samePosition(baseline);
+    if (localChanged && cloudChanged) return ProgressDecision.conflict;
+    if (localChanged) return ProgressDecision.local;
+    return ProgressDecision.cloud;
+  }
+
+  static ProgressDecision decide({
+    required ProgressRecord local,
+    required ProgressRecord remote,
+    required bool locallyChanged,
+    required int baseRevision,
+  }) {
+    if (local.format != remote.format) return ProgressDecision.conflict;
+    if (local.samePosition(remote)) {
+      return local.revision >= remote.revision
+          ? ProgressDecision.local
+          : ProgressDecision.cloud;
+    }
+    if (!locallyChanged) return ProgressDecision.cloud;
+    if (remote.revision <= baseRevision) return ProgressDecision.local;
+    return ProgressDecision.conflict;
+  }
+
+  static ProgressRecord resolved(
+    ProgressRecord chosen, ProgressRecord other, String device, int now,
+  ) => chosen.withRevision(
+    (chosen.revision > other.revision ? chosen.revision : other.revision) + 1,
+    device,
+    now,
+  );
+}
+).hasMatch(textHash))) ||
+        (format == 'PDF' && textHash != null)) {
       throw const FormatException('阅读进度同步记录损坏');
     }
     return ProgressRecord(
