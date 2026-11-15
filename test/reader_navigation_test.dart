@@ -36,6 +36,12 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
     expect(book.chapterIndex.value, 1);
+    debugPrint('READER_DEBUG chapter1 visible texts: ' +
+        tester.widgetList<Text>(find.byType(Text, skipOffstage: false))
+            .map((widget) => widget.data ?? widget.textSpan?.toPlainText() ?? '')
+            .join(' | '));
+    debugPrint('READER_DEBUG loading spinners: ' +
+        find.byType(CircularProgressIndicator, skipOffstage: false).evaluate().length.toString());
     expect(find.textContaining('第二章 终点', skipOffstage: false), findsWidgets);
 
     await tester.tap(find.byTooltip('上一页'));
