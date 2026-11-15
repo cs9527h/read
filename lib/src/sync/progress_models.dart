@@ -104,6 +104,23 @@ enum ProgressChoice { local, cloud }
 enum ProgressDecision { local, cloud, conflict }
 
 class ProgressMerger {
+  /// Uses the last successfully synchronized position as a common ancestor.
+  /// Timestamp skew must never silently decide between two divergent edits.
+  static ProgressDecision compareToBaseline({
+    required ProgressRecord local,
+    required ProgressRecord remote,
+    required ProgressRecord? baseline,
+  }) {
+    if (local.format != remote.format) return ProgressDecision.conflict;
+    if (local.samePosition(remote)) return ProgressDecision.cloud;
+    if (baseline == null) return ProgressDecision.conflict;
+    final localChanged = !local.samePosition(baseline);
+    final cloudChanged = !remote.samePosition(baseline);
+    if (localChanged && cloudChanged) return ProgressDecision.conflict;
+    if (localChanged) return ProgressDecision.local;
+    return ProgressDecision.cloud;
+  }
+
   static ProgressDecision decide({
     required ProgressRecord local,
     required ProgressRecord remote,
