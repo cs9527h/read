@@ -15,6 +15,7 @@ import 'package:read/src/services/reader_style_store.dart';
 import 'package:read/src/services/reader_text_formatter.dart';
 import 'package:read/src/services/reader_font_store.dart';
 import 'package:read/src/services/reader_background_store.dart';
+import 'package:read/src/services/reader_overlay_formatter.dart';
 import 'package:read/src/services/reading_stats_store.dart';
 import 'package:read/src/theme.dart';
 
@@ -173,7 +174,15 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
         surfaceTintColor: Colors.transparent,
         foregroundColor: palette.foreground,
         title: Text(
-          widget.book.title,
+          ReaderOverlayFormatter.render(
+            _style.headerTemplate,
+            book: widget.book.title,
+            chapter: chapter.title,
+            page: _pageIndex + 1,
+            pages: _pageSlices.length,
+            absoluteOffset: _absoluteReadingOffset(),
+            totalChars: widget.book.content.length,
+          ),
           style: TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w600,
@@ -372,32 +381,25 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                   height: 38,
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 18),
-                    child: Row(
-                      children: <Widget>[
-                        Expanded(
-                          child: Text(
-                            chapter.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: palette.foreground.withValues(alpha: 0.62),
-                            ),
-                          ),
+                    child: Align(
+                      alignment: Alignment.center,
+                      child: Text(
+                        ReaderOverlayFormatter.render(
+                          _style.footerTemplate,
+                          book: widget.book.title,
+                          chapter: chapter.title,
+                          page: _pageIndex + 1,
+                          pages: _pageSlices.length,
+                          absoluteOffset: _absoluteReadingOffset(),
+                          totalChars: widget.book.content.length,
                         ),
-                        const SizedBox(width: 10),
-                        Text(
-                          (_pageIndex + 1).toString() + ' / ' +
-                              _pageSlices.length.toString() + ' · ' +
-                              (widget.book.content.isEmpty ? '0.0' :
-                                (_absoluteReadingOffset() * 100 /
-                                    widget.book.content.length).clamp(0, 100).toStringAsFixed(1)) + '%',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: palette.foreground.withValues(alpha: 0.72),
-                          ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: palette.foreground.withValues(alpha: 0.72),
                         ),
-                      ],
+                      ),
                     ),
                   ),
                 ),
@@ -954,6 +956,42 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   }
 
 
+  Future<String?> _editOverlayTemplate(String name, String current) async {
+    final field = TextEditingController(text: current);
+    try {
+      return await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text('自定义' + name),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              TextField(
+                controller: field,
+                maxLength: 200,
+                minLines: 1,
+                maxLines: 3,
+                decoration: const InputDecoration(labelText: '信息模板'),
+              ),
+              const Text('支持：{book}、{chapter}、{page}、{pages}、{progress}、{time}',
+                  style: TextStyle(fontSize: 12)),
+            ],
+          ),
+          actions: <Widget>[
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, field.text),
+              child: const Text('应用'),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      WidgetsBinding.instance.addPostFrameCallback((_) => field.dispose());
+    }
+  }
+
   Future<int?> _pickReaderColor({required bool foreground}) async {
     final color = foreground ? _palette.foreground : _palette.background;
     var red = (color.r * 255).round().clamp(0, 255);
@@ -1431,6 +1469,29 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                     title: const Text('显示章节、页数与全书百分比'),
                     value: _style.showFooter,
                     onChanged: (v) => change(_style.copyWith(showFooter: v)),
+                  ),
+                  section('页眉页脚模板'),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('页眉信息格式'),
+                    subtitle: Text(_style.headerTemplate),
+                    trailing: const Icon(Icons.edit_outlined),
+                    onTap: () async {
+                      final updated = await _editOverlayTemplate('页眉', _style.headerTemplate);
+                      if (!mounted || !ctx.mounted || updated == null) return;
+                      refresh(() => _updateStyle(_style.copyWith(headerTemplate: updated)));
+                    },
+                  ),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('页脚信息格式'),
+                    subtitle: Text(_style.footerTemplate),
+                    trailing: const Icon(Icons.edit_outlined),
+                    onTap: () async {
+                      final updated = await _editOverlayTemplate('页脚', _style.footerTemplate);
+                      if (!mounted || !ctx.mounted || updated == null) return;
+                      refresh(() => _updateStyle(_style.copyWith(footerTemplate: updated)));
+                    },
                   ),
                   section('翻页交互'),
                   _styleSlider('自动翻页间隔（秒）',
