@@ -133,7 +133,7 @@ List<Chapter> splitChapters(
       int end = (start + 100000).clamp(0, text.length);
       if (end < text.length) {
         // Prefer a line boundary near the 100k mark without scanning the book.
-        final boundary = text.lastIndexOf('\\n', end);
+        final boundary = text.lastIndexOf('\n', end);
         if (boundary > start + 50000) end = boundary + 1;
         // Never split the UTF-16 surrogate pair of an emoji.
         if (end < text.length && end > start &&
