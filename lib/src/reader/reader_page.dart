@@ -278,8 +278,20 @@ class _ReaderPageState extends State<ReaderPage> {
                         itemBuilder: (BuildContext context, int index) {
                           final int offset = _bookmarks[index];
                           final String source = widget.book.content;
-                          final int end = (offset + 45).clamp(0, source.length);
-                          final preview = source.substring(offset.clamp(0, source.length), end)
+                          int begin = offset.clamp(0, source.length);
+                          int end = (begin + 45).clamp(0, source.length);
+                          // Do not split an emoji's UTF-16 surrogate pair.
+                          if (begin > 0 && begin < source.length &&
+                              source.codeUnitAt(begin) >= 0xDC00 &&
+                              source.codeUnitAt(begin) <= 0xDFFF) {
+                            begin++;
+                          }
+                          if (end > begin && end < source.length &&
+                              source.codeUnitAt(end) >= 0xDC00 &&
+                              source.codeUnitAt(end) <= 0xDFFF) {
+                            end--;
+                          }
+                          final preview = source.substring(begin, end)
                               .replaceAll(RegExp(r'[\r\n]+'), ' ')
                               .trim();
                           return ListTile(
