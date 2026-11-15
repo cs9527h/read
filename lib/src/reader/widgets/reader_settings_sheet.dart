@@ -673,6 +673,12 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
               (String v) => _update(<String, Object?>{'headerCenter': v})),
           _templateField('右侧', _settings.headerRight,
               (String v) => _update(<String, Object?>{'headerRight': v})),
+          _fontDropdown(
+            '页眉字体',
+            _settings.headerFontFamily,
+            (String? family) =>
+                _update(<String, Object?>{'headerFontFamily': family}),
+          ),
           _slider(
             '页眉字号',
             _settings.headerFontSize,
@@ -706,6 +712,12 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
               (String v) => _update(<String, Object?>{'footerCenter': v})),
           _templateField('右侧', _settings.footerRight,
               (String v) => _update(<String, Object?>{'footerRight': v})),
+          _fontDropdown(
+            '页脚字体',
+            _settings.footerFontFamily,
+            (String? family) =>
+                _update(<String, Object?>{'footerFontFamily': family}),
+          ),
           _slider(
             '页脚字号',
             _settings.footerFontSize,
