@@ -175,8 +175,11 @@ class LibraryStore extends ChangeNotifier {
     // richer layout support and content-addressed cloud sync.
     await target.writeAsBytes(bytes, flush: true);
 
-    final String name = picked.name.replaceFirst(
-      RegExp(r'\.[^.]+
+    final String name = picked.name.substring(
+      0, picked.name.lastIndexOf('.') > 0
+          ? picked.name.lastIndexOf('.')
+          : picked.name.length,
+    );
     final Book book = Book(
       id: id,
       title: parsed.title?.isNotEmpty == true ? parsed.title! : name,
