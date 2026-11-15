@@ -292,6 +292,11 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   int get _currentAbsoluteOffset {
     final PaginatedChapter? p = _pagination;
     if (_chapters.isEmpty || _chapterIndex >= _chapters.length) return 0;
+    if (_showScroll) {
+      final chapter = _chapters[_chapterIndex];
+      return chapter.start +
+          widget.book.charOffset.value.clamp(0, chapter.length);
+    }
     if (p == null || p.pages.isEmpty) {
       final chapter = _chapters[_chapterIndex];
       final saved = _anchorOffset ?? widget.book.charOffset.value;
