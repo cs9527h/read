@@ -301,7 +301,6 @@ class _BookCell extends StatelessWidget {
   Widget build(BuildContext context) {
     final ReadPalette palette = ReadPalette.of(context);
     final String progress = _progressLabel(book);
-    final bool read = book.lastReadAt != null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
