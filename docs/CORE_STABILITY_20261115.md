@@ -18,3 +18,8 @@
 - Verify import from Android document providers that may not provide a local path; the current picker displays an actionable message and does not yet stream provider URIs.
 - Verify very short/empty chapters and E-Ink next/previous controls.
 - Do not merge this PR into main separately from its parent UI PR #17 without checking dependency.
+## Additional verified-in-code changes
+- EPUB2 and EPUB3 manifest cover recognition for embedded JPEG/PNG images only, capped at 3MB and checked by signature. Saves cover in app-owned book folder, persists optional path, and deletes it with the book. Missing/damaged/unsupported cover falls back to the grayscale placeholder. E-Ink displays a grayscale-filtered real cover. EPUB text extraction remains text-only, not a full layout engine.
+- Shared ReadingAnchor utility converts custom chapter-relative UTF-16 offsets into absolute source offsets and back; WebDAV now loads each book's saved ChapterRule before upload and after download. Adds roundtrip and legacy metadata tests.
+- Existing PR #17 now merged to main, this PR targets main and leaves its black-white UI unchanged.
+- Added widget test for previous/next chapter navigation. Run CI and device smoke test before merging.
