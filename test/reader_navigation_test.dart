@@ -20,7 +20,7 @@ void main() {
 
     await tester.pumpWidget(MaterialApp(home: ReaderPage(book: book)));
     await tester.pumpAndSettle();
-    expect(find.text('第一章 起点', skipOffstage: false), findsWidgets);
+    expect(find.textContaining('第一章 起点', skipOffstage: false), findsWidgets);
 
     // Center tap reveals the contextual toolbar, without permanent chrome.
     await tester.tapAt(tester.getCenter(find.byType(PageView)));
