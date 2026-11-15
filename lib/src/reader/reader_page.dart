@@ -66,6 +66,7 @@ class _ReaderPageState extends State<ReaderPage> {
   Widget build(BuildContext context) {
     final _Palette palette = _palette;
     final Chapter chapter = _chapters[_chapterIndex];
+    final String chapterText = chapter.slice(widget.book.content);
     return Scaffold(
       backgroundColor: palette.background,
       appBar: AppBar(
@@ -115,7 +116,7 @@ class _ReaderPageState extends State<ReaderPage> {
                   itemBuilder: (BuildContext context, int index) => Padding(
                     padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
                     child: Text(
-                      _pageSlices[index].textOf(chapter.slice(widget.book.content)),
+                      _pageSlices[index].textOf(chapterText),
                       style: TextStyle(
                         fontSize: _fontSize,
                         height: _lineHeight,
