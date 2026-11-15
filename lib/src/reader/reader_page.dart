@@ -407,14 +407,18 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
       // chapter, or the stored character anchor may jump unexpectedly.
       if (!mounted || _measureKey != key ||
           !identical(_chapters[_chapterIndex], chapter)) return;
+      final oldController = _controller;
       setState(() {
         _pageSlices = slices;
         _pageIndex = targetPage.clamp(0, slices.length - 1);
-        _controller?.dispose();
         _controller = PageController(initialPage: _pageIndex);
         widget.book.chapterIndex.value = _chapterIndex;
         widget.book.pageIndex.value = _pageIndex;
         widget.book.charOffset.value = slices[_pageIndex].start;
+      });
+      // Dispose the detached controller after the new PageView is mounted.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        oldController?.dispose();
       });
       _persistProgress();
     });
