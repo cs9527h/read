@@ -2,7 +2,7 @@
 
 更新：2026-11-16 · 基线提交 `cfa386b` · PR #26
 
-> 状态严格区分 PASS / PARTIAL / BLOCKED / FAIL / NOT_STARTED。**PASS 仅用于已有源码与测试证据的项目；其余不冒充完成。** 未逐项审计的项目保持 NOT_STARTED，下一轮从最小未处理编号继续。
+> 状态严格区分 PASS / PARTIAL / BLOCKED / FAIL / NOT_STARTED。**PASS 仅用于已有源码与测试证据的项目；其余不冒充完成。** 标记 PARTIAL 的 944 项表示所属模块已有代码，但未逐项独立验收；42 项保持 NOT_STARTED，下一轮从最小未处理编号继续。
 
 ## 汇总
 
