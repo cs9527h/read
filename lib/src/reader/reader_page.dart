@@ -372,11 +372,11 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                     setState(() {});
                   },
                   itemBuilder: (BuildContext context, int index) => Padding(
-                    padding: EdgeInsets.symmetric(
-                      left: _style.leftMargin,
-                      right: _style.rightMargin,
-                      top: _style.topMargin,
-                      bottom: _style.bottomMargin,
+                    padding: EdgeInsets.fromLTRB(
+                      _style.leftMargin,
+                      _style.topMargin,
+                      _style.rightMargin,
+                      _style.bottomMargin,
                     ),
                     child: Text.rich(
                       _chapterTextSpan(chapterText,
