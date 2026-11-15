@@ -91,6 +91,84 @@ const Map<String, Object?> kReaderDefaults = <String, Object?>{
   'minimalMode': false,
 };
 
+/// Validate untrusted layout JSON before persisting it. The reader uses
+/// strongly typed getters; a string in a numeric field must not reach them.
+Map<String, Object?> validatedReaderSettingsMap(Map<String, dynamic> input) {
+  final result = <String, Object?>{};
+  for (final entry in input.entries) {
+    final key = entry.key;
+    if (!kReaderDefaults.containsKey(key)) continue;
+    final value = entry.value;
+    final fallback = kReaderDefaults[key];
+    if (value == null) {
+      if (fallback != null) {
+        throw FormatException('配置 $key 不能为空');
+      }
+      result[key] = null;
+    } else if (fallback is bool) {
+      if (value is! bool) throw FormatException('配置 $key 必须是开关');
+      result[key] = value;
+    } else if (fallback is int) {
+      if (value is! num || !value.isFinite) {
+        throw FormatException('配置 $key 必须是有效整数');
+      }
+      final n = value.toInt();
+      if (n < 0 || n > 1000000) {
+        throw FormatException('配置 $key 超出范围');
+      }
+      result[key] = n;
+    } else if (fallback is double) {
+      if (value is! num || !value.isFinite) {
+        throw FormatException('配置 $key 必须是有效数值');
+      }
+      final n = value.toDouble();
+      if (n < -1000 || n > 10000) {
+        throw FormatException('配置 $key 超出范围');
+      }
+      result[key] = n;
+    } else if (fallback is String) {
+      if (value is! String || value.length > 1024) {
+        throw FormatException('配置 $key 必须是有效文本');
+      }
+      result[key] = value;
+    } else {
+      // Nullable fields are font/image paths or ARGB colors.
+      if (value is int && value >= 0 && value <= 0xFFFFFFFF) {
+        result[key] = value;
+      } else if (value is String && value.length <= 1024) {
+        result[key] = value;
+      } else {
+        throw FormatException('配置 $key 类型不支持');
+      }
+    }
+  }
+  // Reject settings that would cause invalid dimensions or broken indexes.
+  final fontSize = result['fontSize'];
+  if (fontSize is num && (fontSize < 8 || fontSize > 72)) {
+    throw const FormatException('字体大小必须在 8–72 之间');
+  }
+  final lineHeight = result['lineHeight'];
+  if (lineHeight is num && (lineHeight < 0.6 || lineHeight > 4)) {
+    throw const FormatException('行距超出安全范围');
+  }
+  for (final field in const ['fontWeight', 'titleWeight']) {
+    final weight = result[field];
+    if (weight is num && (weight < 100 || weight > 900 ||
+        weight.toInt() % 100 != 0)) {
+      throw FormatException('配置 $field 不是有效字体粗细');
+    }
+  }
+  for (final field in const [
+    'marginTop', 'marginBottom', 'marginLeft', 'marginRight',
+  ]) {
+    final margin = result[field];
+    if (margin is num && (margin < 0 || margin > 300)) {
+      throw FormatException('配置 $field 超出合理页边距');
+    }
+  }
+  return result;
+}
+
 /// 不可变的阅读设置；内部用 Map 存放，便于合并「全局 → 主题 → 本书」。
 class ReaderSettings {
   ReaderSettings([Map<String, Object?> raw = const <String, Object?>{}])
