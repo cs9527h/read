@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'package:read/src/model/book.dart';
 import 'package:read/src/services/chapter_splitter.dart';
@@ -910,6 +911,112 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     }
   }
 
+
+  Future<void> _saveCurrentPreset() async {
+    final field = TextEditingController();
+    try {
+      final name = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('保存阅读排版预设'),
+          content: TextField(
+            controller: field,
+            autofocus: true,
+            maxLength: 32,
+            decoration: const InputDecoration(hintText: '例如：夜间小说'),
+          ),
+          actions: <Widget>[
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, field.text.trim()),
+              child: const Text('保存'),
+            ),
+          ],
+        ),
+      );
+      if (name == null || name.isEmpty) return;
+      await ReaderStyleStore.instance.savePreset(name, _style);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('已保存排版预设：' + name)));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('保存排版预设失败')));
+      }
+    } finally {
+      WidgetsBinding.instance.addPostFrameCallback((_) => field.dispose());
+    }
+  }
+
+  Future<ReaderStyle?> _choosePreset() async {
+    try {
+      final presets = await ReaderStyleStore.instance.loadPresets();
+      if (!mounted) return null;
+      return await showModalBottomSheet<ReaderStyle>(
+        context: context,
+        showDragHandle: !kEink,
+        builder: (ctx) => SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            children: <Widget>[
+              const ListTile(title: Text('切换阅读排版预设')),
+              if (presets.isEmpty)
+                const ListTile(title: Text('还没有保存的预设')),
+              for (final entry in presets.entries)
+                ListTile(
+                  title: Text(entry.key),
+                  subtitle: Text('字号 ' + entry.value.fontSize.toStringAsFixed(0) +
+                      ' · 行高 ' + entry.value.lineHeight.toStringAsFixed(1)),
+                  onTap: () => Navigator.pop(ctx, entry.value),
+                  trailing: IconButton(
+                    tooltip: '删除预设',
+                    icon: const Icon(Icons.delete_outline_rounded),
+                    onPressed: () async {
+                      await ReaderStyleStore.instance.deletePreset(entry.key);
+                      if (ctx.mounted) Navigator.pop(ctx);
+                    },
+                  ),
+                ),
+            ],
+          ),
+        ),
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('读取阅读预设失败')));
+      }
+      return null;
+    }
+  }
+
+  Future<void> _importStyleFromClipboard() async {
+    try {
+      final data = await Clipboard.getData(Clipboard.kTextPlain);
+      final text = data?.text;
+      if (text == null) throw const FormatException('剪贴板为空');
+      final style = ReaderStyleStore.instance.importStyle(text);
+      if (style.fontFamily.isNotEmpty &&
+          !await ReaderFontStore.instance.load(style.fontFamily)) {
+        throw const FormatException('配置引用的字体尚未导入');
+      }
+      if (style.backgroundImage.isNotEmpty &&
+          !await ReaderBackgroundStore.instance.isAppOwned(style.backgroundImage)) {
+        throw const FormatException('配置引用的背景图片尚未导入');
+      }
+      if (!mounted) return;
+      _updateStyle(style);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('阅读排版配置已应用')));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('导入排版配置失败：' + error.toString())));
+    }
+  }
+
   Future<String?> _selectFont() async {
     try {
       final fonts = await ReaderFontStore.instance.list();
@@ -1020,6 +1127,46 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                       TextButton(
                         onPressed: () => change(const ReaderStyle()),
                         child: const Text('恢复默认'),
+                      ),
+                    ],
+                  ),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: <Widget>[
+                      OutlinedButton.icon(
+                        onPressed: _saveCurrentPreset,
+                        icon: const Icon(Icons.save_outlined, size: 18),
+                        label: const Text('保存预设'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: () async {
+                          final preset = await _choosePreset();
+                          if (!mounted || !ctx.mounted || preset == null) return;
+                          refresh(() => _updateStyle(preset));
+                        },
+                        icon: const Icon(Icons.bookmarks_outlined, size: 18),
+                        label: const Text('选择预设'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: () async {
+                          await Clipboard.setData(ClipboardData(
+                            text: ReaderStyleStore.instance.exportStyle(_style)));
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('配置 JSON 已复制')));
+                          }
+                        },
+                        icon: const Icon(Icons.copy_outlined, size: 18),
+                        label: const Text('导出配置'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: () async {
+                          await _importStyleFromClipboard();
+                          if (ctx.mounted) refresh(() {});
+                        },
+                        icon: const Icon(Icons.content_paste_outlined, size: 18),
+                        label: const Text('导入配置'),
                       ),
                     ],
                   ),
