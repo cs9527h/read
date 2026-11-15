@@ -12,7 +12,7 @@ class Chapter {
 }
 
 final RegExp _heading = RegExp(
-  r'^\s*(第\s*[0-9零一二三四五六七八九十百千万〇两]+\s*[章回卷节篇集部册]|'
+  r'^[ \t]*(第[ \t]*[0-9零一二三四五六七八九十百千万〇两]+[ \t]*[章回卷节篇集部册]|'
   r'Chapter\s+\d+|CHAPTER\s+\d+|序章|楔子|引言|前言|后记|尾声|番外)\s*[^\n]*$',
   multiLine: true,
 );
