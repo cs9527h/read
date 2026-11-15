@@ -17,8 +17,8 @@ void main() {
       id: 'navigation-case',
       title: '章节切换测试',
       author: '作者',
-      content: '第一章 起点\n' + '开始阅读。' * 3 +
-          '\n第二章 继续\n' + '第二章内容。' * 3,
+      content: '第一章 起点\n' + List<String>.filled(3, '开始阅读。').join() +
+          '\n第二章 继续\n' + List<String>.filled(3, '第二章内容。').join(),
     );
     await tester.pumpWidget(
       MaterialApp(home: ReaderPage(book: book)),
