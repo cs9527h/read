@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:read/src/model/book.dart';
 import 'package:read/src/services/chapter_splitter.dart';
+import 'package:read/src/services/book_search.dart';
 import 'package:read/src/services/paginator.dart';
 import 'package:read/src/services/library_store.dart';
 import 'package:read/src/theme.dart';
@@ -79,6 +80,11 @@ class _ReaderPageState extends State<ReaderPage> {
           overflow: TextOverflow.ellipsis,
         ),
         actions: <Widget>[
+          IconButton(
+            tooltip: '书内搜索',
+            icon: Icon(Icons.search, color: palette.foreground),
+            onPressed: _searchInBook,
+          ),
           IconButton(
             tooltip: '目录',
             icon: Icon(Icons.list, color: palette.foreground),
@@ -192,6 +198,26 @@ class _ReaderPageState extends State<ReaderPage> {
       });
       LibraryStore.instance.saveProgress(widget.book);
     });
+  }
+
+  Future<void> _searchInBook() async {
+    final BookSearchMatch? hit = await showSearch<BookSearchMatch?>(
+      context: context,
+      delegate: _BookSearchDelegate(widget.book.content, _chapters),
+    );
+    if (!mounted || hit == null) return;
+    final Chapter target = _chapters[hit.chapterIndex];
+    final int localOffset = hit.start - target.start;
+    setState(() {
+      _chapterIndex = hit.chapterIndex;
+      _pageIndex = 0;
+      widget.book.chapterIndex.value = hit.chapterIndex;
+      widget.book.pageIndex.value = 0;
+      widget.book.charOffset.value = localOffset;
+      _pageSlices = const <PageSlice>[];
+      _measureKey = null;
+    });
+    await LibraryStore.instance.saveProgress(widget.book);
   }
 
   Future<void> _showChapters() async {
@@ -331,4 +357,69 @@ class _Palette {
 
   final Color background;
   final Color foreground;
+}
+
+class _BookSearchDelegate extends SearchDelegate<BookSearchMatch?> {
+  _BookSearchDelegate(this.content, this.chapters);
+
+  final String content;
+  final List<Chapter> chapters;
+
+  @override
+  String get searchFieldLabel => '搜索本书内容';
+
+  @override
+  List<Widget> buildActions(BuildContext context) => <Widget>[
+    if (query.isNotEmpty)
+      IconButton(
+        tooltip: '清空',
+        icon: const Icon(Icons.clear),
+        onPressed: () {
+          query = '';
+          showSuggestions(context);
+        },
+      ),
+  ];
+
+  @override
+  Widget buildLeading(BuildContext context) => IconButton(
+    tooltip: '返回',
+    icon: const Icon(Icons.arrow_back),
+    onPressed: () => close(context, null),
+  );
+
+  @override
+  Widget buildSuggestions(BuildContext context) => _results(context);
+
+  @override
+  Widget buildResults(BuildContext context) => _results(context);
+
+  Widget _results(BuildContext context) {
+    if (query.trim().isEmpty) {
+      return const Center(child: Text('输入关键词搜索当前书籍'));
+    }
+    final matches = searchBookText(content, chapters, query);
+    if (matches.isEmpty) {
+      return const Center(child: Text('未找到匹配内容'));
+    }
+    return ListView.builder(
+      itemCount: matches.length,
+      itemBuilder: (BuildContext context, int index) {
+        final match = matches[index];
+        return ListTile(
+          title: Text(
+            chapters[match.chapterIndex].title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          subtitle: Text(
+            match.snippet,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          onTap: () => close(context, match),
+        );
+      },
+    );
+  }
 }
