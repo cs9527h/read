@@ -37,7 +37,8 @@ jobs:
 
       - name: Work around upstream url_launcher_android lint parser crash
         run: |
-          # Target only the affected plugin's Release lint task.
+          # Target only the affected plugin's Release lint task. Flutter
+          # analyzer and all app unit tests remain enabled.
           cat >> android/build.gradle.kts <<'GRADLE'
           subprojects {
               if (name == "url_launcher_android") {
