@@ -33,6 +33,7 @@ List<PageSlice> paginateSlices(
   double maxWidth,
   double maxHeight, {
   TextScaler textScaler = TextScaler.noScaling,
+  String Function(String source, int start, int end)? formatPage,
 }) {
   if (!maxWidth.isFinite || !maxHeight.isFinite ||
       maxWidth <= 0 || maxHeight <= 0) {
@@ -57,7 +58,8 @@ List<PageSlice> paginateSlices(
     }
     if (safeCount <= 0) return false;
     painter.text = TextSpan(
-      text: text.substring(start, start + safeCount),
+      text: formatPage?.call(text, start, start + safeCount) ??
+          text.substring(start, start + safeCount),
       style: style,
     );
     painter.layout(maxWidth: maxWidth);
