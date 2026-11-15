@@ -10,6 +10,7 @@ import 'package:read/src/services/bookmark_store.dart';
 import 'package:read/src/services/paginator.dart';
 import 'package:read/src/services/library_store.dart';
 import 'package:read/src/services/reader_style_store.dart';
+import 'package:read/src/services/reader_text_formatter.dart';
 import 'package:read/src/services/reading_stats_store.dart';
 import 'package:read/src/theme.dart';
 
@@ -320,7 +321,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                       vertical: _style.verticalMargin,
                     ),
                     child: Text(
-                      _pageSlices[index].textOf(chapterText),
+                      ReaderTextFormatter.format(chapterText,
+                          _pageSlices[index].start, _pageSlices[index].end, _style),
                       textAlign: _style.textAlign,
                       style: _style.textStyle(color: palette.foreground),
                     ),
@@ -390,6 +392,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
         width,
         height,
         textScaler: scaler,
+        formatPage: (text, start, end) =>
+            ReaderTextFormatter.format(text, start, end, _style),
       );
       // An exact source range is more reliable than indexOf(pageText), which
       // becomes ambiguous when the same paragraph or whitespace repeats.
@@ -969,6 +973,15 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                           () => _updateStyle(_style.copyWith(textAlignIndex: 3))),
                     ],
                   ),
+                  section('段落'),
+                  _styleSlider('首行缩进（全角字符）', _style.indentCharacters.toDouble(),
+                      0, 4, 4, (v) =>
+                          change(_style.copyWith(indentCharacters: v.round())),
+                      digits: 0),
+                  _styleSlider('段落间距（额外空行）', _style.paragraphBlankLines.toDouble(),
+                      0, 2, 2, (v) =>
+                          change(_style.copyWith(paragraphBlankLines: v.round())),
+                      digits: 0),
                   section('页面留白'),
                   _styleSlider('左右边距', _style.horizontalMargin, 8, 80, 36,
                       (v) => change(_style.copyWith(horizontalMargin: v)), digits: 0),
