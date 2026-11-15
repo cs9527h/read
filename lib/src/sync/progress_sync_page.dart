@@ -81,7 +81,8 @@ class _ProgressSyncPageState extends State<ProgressSyncPage> {
     final uri = Uri.tryParse(_url.text.trim());
     if (uri == null || uri.scheme != 'https' || uri.host.isEmpty ||
         uri.userInfo.isNotEmpty || uri.query.isNotEmpty ||
-        uri.fragment.isNotEmpty) {
+        uri.fragment.isNotEmpty || uri.path.isEmpty ||
+        uri.path.endsWith('/')) {
       setState(() => _error = '请输入不含密码、查询参数的 HTTPS WebDAV 文件地址');
       return;
     }
