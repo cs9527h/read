@@ -248,8 +248,8 @@ class _ReaderPageState extends State<ReaderPage> {
     return chapter.start + local;
   }
 
-  void _applyChapterRule(ChapterRule rule) {
-    final int absolute = _absoluteReadingOffset();
+  void _applyChapterRule(ChapterRule rule, {int? absoluteOverride}) {
+    final int absolute = absoluteOverride ?? _absoluteReadingOffset();
     final List<Chapter> next =
         splitChapters(widget.book.content, rule: rule);
     int index = next.length - 1;
@@ -277,8 +277,21 @@ class _ReaderPageState extends State<ReaderPage> {
 
   Future<void> _loadChapterRule() async {
     final rule = await ChapterRuleStore.load(widget.book.id);
-    if (mounted && rule.mode != ChapterRuleMode.automatic) {
-      _applyChapterRule(rule);
+    if (!mounted || rule.mode == ChapterRuleMode.automatic) return;
+    try {
+      // Saved chapter-relative progress belongs to the saved rule, not to
+      // the automatic rule temporarily shown during initialization.
+      final restoredChapters =
+          splitChapters(widget.book.content, rule: rule);
+      final savedChapter = widget.book.chapterIndex.value
+          .clamp(0, restoredChapters.length - 1);
+      final restored = restoredChapters[savedChapter];
+      final int savedLocal = widget.book.charOffset.value;
+      final int absolute = restored.start +
+          (savedLocal < 0 ? 0 : savedLocal.clamp(0, restored.length));
+      _applyChapterRule(rule, absoluteOverride: absolute);
+    } on FormatException {
+      // Keep the original setting and original file untouched.
     }
   }
 
@@ -380,10 +393,17 @@ class _ReaderPageState extends State<ReaderPage> {
     controller.dispose();
     if (!mounted || selected == null) return;
     try {
-      // Save first; an I/O failure must not silently change the active rule.
+      // Validate against the actual book before saving; large numbers of
+      // matches are rejected without changing the existing preference.
+      splitChapters(widget.book.content, rule: selected);
       await ChapterRuleStore.save(widget.book.id, selected);
       if (!mounted) return;
       _applyChapterRule(selected);
+    } on FormatException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
