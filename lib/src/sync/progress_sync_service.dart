@@ -204,7 +204,7 @@ class ProgressSyncService {
 
     // If this book has never been opened locally, do not invent position 0
     // or treat it as a conflicting edit. Adopt the matched cloud anchor.
-    for (final pair in remote.entries) {
+    for (final pair in remote.entries.entries) {
       if (!local.containsKey(pair.key) && booksByHash.containsKey(pair.key)) {
         toApply[pair.key] = pair.value;
       }
