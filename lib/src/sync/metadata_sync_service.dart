@@ -275,6 +275,11 @@ class MetadataSyncService {
           lastReadAt: lastRead is int && lastRead > 0
               ? DateTime.fromMillisecondsSinceEpoch(lastRead)
               : null,
+          tags: (record.fields['tags'] as List<dynamic>?)
+              ?.whereType<String>()
+              .where((String t) => t.trim().isNotEmpty)
+              .map((String t) => t.trim())
+              .toList(),
         );
         count++;
       } catch (_) {

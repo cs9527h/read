@@ -16,10 +16,12 @@ import 'package:read/src/reader/settings/user_font_store.dart';
 import 'package:read/src/reader/widgets/reader_settings_sheet.dart';
 import 'package:read/src/theme.dart';
 import 'package:read/src/services/book_search.dart';
+import 'package:read/src/services/bookmark_meta_store.dart';
 import 'package:read/src/services/bookmark_store.dart';
 import 'package:read/src/services/chapter_rule_store.dart';
 import 'package:read/src/services/chapter_splitter.dart';
 import 'package:read/src/services/highlight_store.dart';
+import 'package:read/src/services/manual_chapter_store.dart';
 import 'package:read/src/services/library_store.dart';
 import 'package:read/src/services/reading_stats_store.dart';
 import 'package:read/src/sync/auto_sync_service.dart';
@@ -309,9 +311,13 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
 
   Future<void> _initChapters() async {
     final ChapterRule rule = await ChapterRuleStore.load(widget.book.id);
+    final marks = await ManualChapterStore.load(widget.book.id);
     if (!mounted) return;
-    final List<Chapter> chapters =
-        splitChapters(widget.book.content, rule: rule);
+    final List<Chapter> chapters = applyManualChapters(
+      widget.book.content,
+      splitChapters(widget.book.content, rule: rule),
+      marks,
+    );
     final int savedChapter =
         widget.book.chapterIndex.value.clamp(0, chapters.length - 1);
     final int savedOffset = widget.book.charOffset.value;
@@ -1897,6 +1903,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
         _ttsContinuous = true;
         await _speakCurrent();
       case 'pause':
+        _saveProgress();
         await _tts.pause();
         if (mounted) {
           setState(() {
@@ -1908,6 +1915,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
         _ttsPaused = false;
         await _speakCurrent();
       case 'stop':
+        _saveProgress();
         _ttsContinuous = false;
         _ttsPaused = false;
         await _tts.stop();
@@ -1934,6 +1942,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   }
 
   Future<void> _speakCurrent() async {
+    _saveProgress();
     final text = _currentPageText();
     if (text.isEmpty) {
       _showToast('当前页没有可朗读的文字');
@@ -1979,7 +1988,84 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
       if (selected != _chapterIndex) await _gotoChapter(selected);
     } else if (query == 'rules') {
       await _showChapterRules();
+    } else if (query == 'manual') {
+      await _addManualChapter();
+    } else if (query.startsWith('remove:')) {
+      final offset = int.tryParse(query.substring('remove:'.length));
+      if (offset != null) await _removeManualChapter(offset);
     }
+  }
+
+  Future<void> _addManualChapter() async {
+    final controller = TextEditingController();
+    final title = await showDialog<String>(
+      context: context,
+      builder: (BuildContext ctx) => AlertDialog(
+        title: const Text('从当前位置新增章节'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: '章节标题',
+            hintText: '留空则使用“手动章节”',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: <Widget>[
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text),
+            child: const Text('新增'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (title == null || !mounted) return;
+    final offset = _currentAbsoluteOffset;
+    await ManualChapterStore.add(widget.book.id, offset, title);
+    await _reloadChapters(anchor: offset);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('已在当前位置新增章节'), duration: Duration(seconds: 2)),
+    );
+  }
+
+  Future<void> _removeManualChapter(int offset) async {
+    await ManualChapterStore.remove(widget.book.id, offset);
+    final absolute = _currentAbsoluteOffset;
+    await _reloadChapters(anchor: absolute);
+  }
+
+  Future<void> _reloadChapters({required int anchor}) async {
+    final marks = await ManualChapterStore.load(widget.book.id);
+    final next = applyManualChapters(
+      widget.book.content,
+      splitChapters(widget.book.content, rule: _rule),
+      marks,
+    );
+    if (!mounted || next.isEmpty) return;
+    int index = next.length - 1;
+    for (int i = 0; i < next.length; i++) {
+      if (anchor < next[i].end) {
+        index = i;
+        break;
+      }
+    }
+    setState(() {
+      _chapters = next;
+      _chapterIndex = index;
+      _pageIndex = 0;
+      _anchorOffset = (anchor - next[index].start).clamp(0, next[index].length);
+      _pagination = null;
+      _layoutKey = '';
+      widget.book.chapterIndex.value = index;
+      widget.book.pageIndex.value = 0;
+      widget.book.charOffset.value = _anchorOffset!;
+    });
+    _lastSavedOffset = _anchorOffset!;
+    LibraryStore.instance.noteChapterCount(widget.book, next.length);
+    LibraryStore.instance.saveProgress(widget.book);
   }
 
   Future<void> _showChapterRules() async {
@@ -2087,8 +2173,12 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
       await ChapterRuleStore.save(widget.book.id, selected);
       if (!mounted) return;
       final int absolute = _currentAbsoluteOffset;
-      final List<Chapter> next =
-          splitChapters(widget.book.content, rule: selected);
+      final marks = await ManualChapterStore.load(widget.book.id);
+      final List<Chapter> next = applyManualChapters(
+        widget.book.content,
+        splitChapters(widget.book.content, rule: selected),
+        marks,
+      );
       int index = next.length - 1;
       for (int i = 0; i < next.length; i++) {
         if (absolute < next[i].end) {
@@ -2146,11 +2236,15 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   }
 
   Future<void> _showBookmarks() async {
+    final Map<int, BookmarkMeta> metas =
+        await BookmarkMetaStore.load(widget.book.id);
+    if (!mounted) return;
     final int? position = await showModalBottomSheet<int>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (BuildContext ctx) => SafeArea(
+      builder: (BuildContext ctx) => StatefulBuilder(
+        builder: (BuildContext ctx, StateSetter setSheetState) => SafeArea(
         child: SizedBox(
           height: MediaQuery.sizeOf(ctx).height * 0.65,
           child: Column(
@@ -2158,7 +2252,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
               const ListTile(
                 title: Text('我的书签',
                     style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
-                subtitle: Text('按书籍中的位置排列'),
+                subtitle: Text('按书籍中的位置排列，可添加备注'),
               ),
               Expanded(
                 child: _bookmarks.isEmpty
@@ -2167,6 +2261,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                         itemCount: _bookmarks.length,
                         itemBuilder: (BuildContext context, int index) {
                           final int offset = _bookmarks[index];
+                          final BookmarkMeta? meta = metas[offset];
                           final String source = widget.book.content;
                           int begin = offset.clamp(0, source.length);
                           int end = (begin + 45).clamp(0, source.length);
@@ -2193,7 +2288,30 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                             ),
-                            subtitle: Text('位置 ${offset + 1}'),
+                            subtitle: Text(
+                              meta == null || meta.note.isEmpty
+                                  ? '位置 ${offset + 1}'
+                                  : '位置 ${offset + 1} · ${meta.note}',
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            trailing: IconButton(
+                              tooltip: '编辑备注',
+                              icon: const Icon(Icons.edit_note_rounded, size: 20),
+                              onPressed: () async {
+                                final note = await _askBookmarkNote(meta?.note ?? '');
+                                if (note == null || !mounted) return;
+                                await BookmarkMetaStore.setNote(
+                                    widget.book.id, offset, note);
+                                metas[offset] = BookmarkMeta(
+                                  offset: offset,
+                                  createdAt: meta?.createdAt ??
+                                      DateTime.now().millisecondsSinceEpoch,
+                                  note: note,
+                                );
+                                setSheetState(() {});
+                              },
+                            ),
                             onTap: () => Navigator.pop(ctx, offset),
                           );
                         },
@@ -2203,9 +2321,38 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
           ),
         ),
       ),
+      ),
     );
     if (!mounted || position == null) return;
     _jumpToAbsolute(position);
+  }
+
+  Future<String?> _askBookmarkNote(String current) async {
+    final controller = TextEditingController(text: current);
+    final value = await showDialog<String>(
+      context: context,
+      builder: (BuildContext ctx) => AlertDialog(
+        title: const Text('书签备注'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLines: 3,
+          decoration: const InputDecoration(
+            hintText: '写下这一处为什么值得记住',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: <Widget>[
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    return value;
   }
 
   Future<void> _searchInBook({String? initialQuery}) async {
@@ -2319,11 +2466,21 @@ class _ChapterSheetState extends State<_ChapterSheet> {
               itemCount: indices.length + 1,
               itemBuilder: (BuildContext c, int listIndex) {
                 if (listIndex == indices.length) {
-                  return ListTile(
-                    leading: const Icon(Icons.tune_rounded),
-                    title: const Text('章节识别规则'),
-                    subtitle: const Text('自动 / 整本一章 / 自定义正则'),
-                    onTap: () => Navigator.pop(ctx, 'rules'),
+                  return Column(
+                    children: <Widget>[
+                      ListTile(
+                        leading: const Icon(Icons.playlist_add_rounded),
+                        title: const Text('从当前位置新增章节'),
+                        subtitle: const Text('手动修正目录边界，不改原文'),
+                        onTap: () => Navigator.pop(ctx, 'manual'),
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.tune_rounded),
+                        title: const Text('章节识别规则'),
+                        subtitle: const Text('自动 / 整本一章 / 自定义正则'),
+                        onTap: () => Navigator.pop(ctx, 'rules'),
+                      ),
+                    ],
                   );
                 }
                 final index = indices[listIndex];
@@ -2352,10 +2509,17 @@ class _ChapterSheetState extends State<_ChapterSheet> {
                       fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
                     ),
                   ),
-                  trailing: selected
-                      ? Text('阅读中',
-                          style: TextStyle(fontSize: 10, color: palette.muted))
-                      : null,
+                  trailing: chapter.manual
+                      ? IconButton(
+                          tooltip: '删除手动章节',
+                          icon: const Icon(Icons.delete_outline, size: 18),
+                          onPressed: () =>
+                              Navigator.pop(ctx, 'remove:${chapter.start}'),
+                        )
+                      : selected
+                          ? Text('阅读中',
+                              style: TextStyle(fontSize: 10, color: palette.muted))
+                          : null,
                   onTap: () => Navigator.pop(ctx, '$index'),
                 );
               },
@@ -2460,8 +2624,8 @@ class _BookSearchDelegate extends SearchDelegate<BookSearchMatch?> {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
-          subtitle: Text(
-            match.snippet,
+          subtitle: Text.rich(
+            _highlightSnippet(context, match.snippet),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),
@@ -2469,5 +2633,34 @@ class _BookSearchDelegate extends SearchDelegate<BookSearchMatch?> {
         );
       },
     );
+  }
+
+  TextSpan _highlightSnippet(BuildContext context, String snippet) {
+    final textStyle = Theme.of(context).textTheme.bodyMedium ??
+        const TextStyle(fontSize: 14);
+    final keyword = query.trim();
+    if (keyword.isEmpty) {
+      return TextSpan(text: snippet, style: textStyle);
+    }
+    final lower = snippet.toLowerCase();
+    final target = keyword.toLowerCase();
+    final spans = <InlineSpan>[];
+    int start = 0;
+    while (true) {
+      final hit = lower.indexOf(target, start);
+      if (hit < 0) break;
+      if (hit > start) {
+        spans.add(TextSpan(text: snippet.substring(start, hit)));
+      }
+      spans.add(TextSpan(
+        text: snippet.substring(hit, hit + keyword.length),
+        style: const TextStyle(fontWeight: FontWeight.w700),
+      ));
+      start = hit + keyword.length;
+    }
+    if (start < snippet.length) {
+      spans.add(TextSpan(text: snippet.substring(start)));
+    }
+    return TextSpan(style: textStyle, children: spans);
   }
 }

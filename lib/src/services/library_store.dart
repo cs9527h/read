@@ -12,6 +12,7 @@ import '../model/book.dart';
 import '../formats/format_engine.dart';
 import '../formats/pdf_format.dart';
 import 'bookmark_store.dart';
+import 'manual_chapter_store.dart';
 import 'chapter_rule_store.dart';
 
 /// 书架与阅读设置的持久化。
@@ -350,6 +351,7 @@ class LibraryStore extends ChangeNotifier {
     await _prefs?.remove('$_progressPrefix${book.id}');
     await BookmarkStore.clearForDeletedBook(book.id);
     await ChapterRuleStore.clearForDeletedBook(book.id);
+    await ManualChapterStore.clearForDeletedBook(book.id);
     notifyListeners();
   }
 
@@ -427,6 +429,7 @@ class LibraryStore extends ChangeNotifier {
     required String author,
     required int chapterCount,
     required DateTime? lastReadAt,
+    List<String>? tags,
   }) async {
     final index = books.indexWhere((Book b) => b.contentHash == hash);
     if (index < 0) return;
@@ -443,12 +446,24 @@ class LibraryStore extends ChangeNotifier {
       contentHash: old.contentHash,
       fileName: old.fileName,
       fileSize: old.fileSize,
+      tags: tags ?? old.tags,
     );
     replacement.chapterIndex.value = old.chapterIndex.value;
     replacement.pageIndex.value = old.pageIndex.value;
     replacement.charOffset.value = old.charOffset.value;
     books[index] = replacement;
     _sortBooks();
+    await _persistMeta();
+    notifyListeners();
+  }
+
+  Future<void> updateTags(Book book, List<String> tags) async {
+    final cleaned = tags
+        .map((String t) => t.trim())
+        .where((String t) => t.isNotEmpty)
+        .toSet()
+        .toList();
+    book.tags = cleaned;
     await _persistMeta();
     notifyListeners();
   }
@@ -466,6 +481,7 @@ class LibraryStore extends ChangeNotifier {
     required String format,
     required int chapterCount,
     required DateTime? lastReadAt,
+    List<String>? tags,
   }) async {
     final existing = bookByHash(hash);
     if (existing != null) return existing;
@@ -497,6 +513,7 @@ class LibraryStore extends ChangeNotifier {
       contentHash: hash,
       fileName: fileName,
       fileSize: bytes.length,
+      tags: tags,
     );
     return _commitImportedBook(book);
   }

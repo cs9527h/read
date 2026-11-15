@@ -22,6 +22,7 @@ class _BookshelfPageState extends State<BookshelfPage> {
   String _searchTerm = '';
   bool _grid = true;
   String _filter = 'all';
+  String? _tagFilter;
 
   @override
   void dispose() {
@@ -41,8 +42,10 @@ class _BookshelfPageState extends State<BookshelfPage> {
         final List<Book> visibleBooks = store.books.where((Book book) {
           final bool matchesSearch = term.isEmpty ||
               book.title.toLowerCase().contains(term) ||
-              book.author.toLowerCase().contains(term);
+              book.author.toLowerCase().contains(term) ||
+              book.tags.any((String tag) => tag.toLowerCase().contains(term));
           if (!matchesSearch) return false;
+          if (_tagFilter != null && !book.tags.contains(_tagFilter)) return false;
           final bool finished = ReadingStatsStore.instance.isFinished(book.id);
           return switch (_filter) {
             'reading' => book.lastReadAt != null && !finished,
@@ -59,6 +62,10 @@ class _BookshelfPageState extends State<BookshelfPage> {
         final Book? continueBook =
             continueCandidates.isEmpty ? null : continueCandidates.first;
         final int total = store.books.length;
+        final List<String> allTags = <String>{
+          for (final Book b in store.books) ...b.tags,
+        }.toList()
+          ..sort();
 
         return Scaffold(
           backgroundColor: palette.background,
@@ -183,6 +190,51 @@ class _BookshelfPageState extends State<BookshelfPage> {
                     ],
                   ),
                 ),
+                if (allTags.isNotEmpty)
+                  SizedBox(
+                    height: 30,
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+                      children: <Widget>[
+                        Padding(
+                          padding: const EdgeInsets.only(right: 6),
+                          child: ChoiceChip(
+                            label: const Text('全部标签',
+                                style: TextStyle(fontSize: 10)),
+                            selected: _tagFilter == null,
+                            onSelected: (_) =>
+                                setState(() => _tagFilter = null),
+                            showCheckmark: false,
+                            visualDensity: VisualDensity.compact,
+                            shape: RoundedRectangleBorder(
+                              borderRadius:
+                                  BorderRadius.circular(kEink ? 0 : 14),
+                              side: BorderSide(color: palette.outline),
+                            ),
+                          ),
+                        ),
+                        for (final tag in allTags)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 6),
+                            child: ChoiceChip(
+                              label: Text('#$tag',
+                                  style: const TextStyle(fontSize: 10)),
+                              selected: _tagFilter == tag,
+                              onSelected: (_) =>
+                                  setState(() => _tagFilter = tag),
+                              showCheckmark: false,
+                              visualDensity: VisualDensity.compact,
+                              shape: RoundedRectangleBorder(
+                                borderRadius:
+                                    BorderRadius.circular(kEink ? 0 : 14),
+                                side: BorderSide(color: palette.outline),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
                 if (continueBook != null && term.isEmpty && _filter == 'all')
                   _ContinueCard(
                     book: continueBook,

@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:read/src/model/book.dart';
+import 'package:read/src/services/bookmark_meta_store.dart';
 import 'package:read/src/services/bookmark_store.dart';
 import 'package:read/src/services/library_store.dart';
 import 'package:read/src/sync/encrypted_sync_envelope.dart';
@@ -80,6 +81,7 @@ void main() {
     );
     LibraryStore.instance.books.add(book);
     await BookmarkStore.replaceAll(book.id, <int>[3, 9]);
+    await BookmarkMetaStore.setNote(book.id, 3, '本地备注');
 
     final store = FakeRemoteStore();
     final service = MetadataSyncService();
@@ -118,6 +120,7 @@ void main() {
             'file_size': 200,
             'chapter_count': 3,
             'last_read_at': 5,
+            'tags': <String>['小说', '待读'],
           },
         ),
         'bookmark:$hash:5': SyncRecord(
@@ -127,7 +130,12 @@ void main() {
           deviceId: 'remote-device',
           updatedAt: 2,
           deleted: false,
-          fields: <String, dynamic>{'book_hash': hash, 'offset': 5},
+          fields: <String, dynamic>{
+            'book_hash': hash,
+            'offset': 5,
+            'note': '远端备注',
+            'created_at': 1234,
+          },
         ),
         'bookmark:$hash:3': SyncRecord(
           id: 'bookmark:$hash:3',
@@ -166,6 +174,10 @@ void main() {
     expect(second.downloaded, greaterThan(0));
     expect(LibraryStore.instance.bookByHash(hash)!.title, '远端书名');
     expect(await BookmarkStore.load(book.id), <int>[5]);
+    expect(LibraryStore.instance.bookByHash(hash)!.tags, <String>['小说', '待读']);
+    final meta = (await BookmarkMetaStore.load(book.id))[5];
+    expect(meta?.note, '远端备注');
+    expect(meta?.createdAt, 1234);
     expect(store.writes, 2);
 
     // Corrupt ciphertext must be rejected without overwriting the remote.
