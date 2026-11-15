@@ -74,7 +74,16 @@ class _BookshelfPageState extends State<BookshelfPage> {
                       IconButton(
                         tooltip: '刷新书架',
                         onPressed: () async {
-                          await LibraryStore.instance.init();
+                          try {
+                            await LibraryStore.instance.init();
+                          } catch (_) {
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('书架刷新失败；现有书籍未清空，请检查文件或存储空间'),
+                              ),
+                            );
+                          }
                         },
                         icon: Icon(Icons.refresh_rounded, color: palette.icon),
                       ),
