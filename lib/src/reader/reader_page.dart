@@ -565,6 +565,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
               _settings.headerColor,
               _settings.headerOpacity,
               TextAlign.left,
+              _settings.headerFontFamily,
             ),
           ),
           Expanded(
@@ -576,6 +577,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
               _settings.headerColor,
               _settings.headerOpacity,
               TextAlign.center,
+              _settings.headerFontFamily,
             ),
           ),
           Expanded(
@@ -587,6 +589,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
               _settings.headerColor,
               _settings.headerOpacity,
               TextAlign.right,
+              _settings.headerFontFamily,
             ),
           ),
         ],
@@ -612,6 +615,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                   _settings.footerColor,
                   _settings.footerOpacity,
                   TextAlign.left,
+                  _settings.footerFontFamily,
                 ),
               ),
               Expanded(
@@ -623,6 +627,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                   _settings.footerColor,
                   _settings.footerOpacity,
                   TextAlign.center,
+                  _settings.footerFontFamily,
                 ),
               ),
               Expanded(
@@ -634,6 +639,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                   _settings.footerColor,
                   _settings.footerOpacity,
                   TextAlign.right,
+                  _settings.footerFontFamily,
                 ),
               ),
             ],
@@ -671,6 +677,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     int? color,
     double opacity,
     TextAlign align,
+    String? fontFamily,
   ) {
     if (template.trim().isEmpty) return const SizedBox.shrink();
     final String text = _renderTemplate(template);
@@ -688,6 +695,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
         textAlign: align,
         style: TextStyle(
           fontSize: size,
+          fontFamily: fontFamily ?? _settings.fontFamily,
           color: Color(color ?? fallback.toARGB32())
               .withValues(alpha: opacity.clamp(0, 1)),
           fontWeight: FontWeight.w400,
