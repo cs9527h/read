@@ -187,4 +187,19 @@ void main() {
     expect(store.resolve('plain').fontSize, 18);
   });
 
+  test('快速连续修改字号后重启应恢复最后一次设置', () async {
+    final store = ReaderSettingsStore.instance;
+    final writes = <Future<void>>[];
+    for (final size in <double>[19, 24, 17, 28]) {
+      writes.add(store.save(
+        'rapid-book',
+        store.resolve('rapid-book').patch(<String, Object?>{'fontSize': size}),
+        ReaderScope.book,
+      ));
+    }
+    await Future.wait(writes);
+    await store.init();
+    expect(store.resolve('rapid-book').fontSize, 28.0);
+  });
+
 }
