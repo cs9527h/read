@@ -26,10 +26,19 @@ class DisplayChapter {
 
   /// 反向：找到包含原文偏移 [offset] 的第一个显示位置。
   int displayOffset(int offset) {
-    for (int i = 0; i < map.length; i++) {
-      if (map[i] >= offset) return i;
+    // The source mapping is monotonically nondecreasing. A binary lower
+    // bound keeps seek/reflow responsive even for very long TXT chapters.
+    int low = 0;
+    int high = map.length;
+    while (low < high) {
+      final int middle = low + ((high - low) >> 1);
+      if (map[middle] >= offset) {
+        high = middle;
+      } else {
+        low = middle + 1;
+      }
     }
-    return text.length;
+    return low;
   }
 }
 
@@ -64,10 +73,18 @@ class PaginatedChapter {
   final bool showTitle;
 
   int pageForSourceOffset(int chapterRelativeOffset) {
-    for (int i = 0; i < pages.length; i++) {
-      if (chapterRelativeOffset < pages[i].sourceEnd) return i;
+    if (pages.isEmpty) return 0;
+    int low = 0;
+    int high = pages.length;
+    while (low < high) {
+      final int middle = low + ((high - low) >> 1);
+      if (chapterRelativeOffset < pages[middle].sourceEnd) {
+        high = middle;
+      } else {
+        low = middle + 1;
+      }
     }
-    return pages.isEmpty ? 0 : pages.length - 1;
+    return low < pages.length ? low : pages.length - 1;
   }
 }
 
