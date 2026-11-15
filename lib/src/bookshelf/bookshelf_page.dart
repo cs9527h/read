@@ -6,6 +6,7 @@ import 'package:read/src/reader/reader_page.dart';
 import 'package:read/src/services/library_store.dart';
 import 'package:read/src/sync/progress_sync_page.dart';
 import 'package:read/src/theme.dart';
+import 'package:read/src/version.dart';
 
 /// A calm, responsive bookshelf: no account, decorations store or fake data.
 class BookshelfPage extends StatefulWidget {
@@ -98,7 +99,7 @@ class _BookshelfPageState extends State<BookshelfPage> {
                   padding: const EdgeInsets.fromLTRB(22, 16, 22, 112),
                   children: <Widget>[
                     Text(
-                      'READ AT YOUR OWN PACE',
+                      'READ AT YOUR OWN PACE · $appVersionLabel',
                       style: TextStyle(
                         color: kEink ? Colors.black : ReadColors.accent,
                         fontWeight: FontWeight.w700,

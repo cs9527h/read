@@ -32,6 +32,12 @@
 
 > 上表只记录真实实现。占位、模拟、静态界面不会标为完成。
 
+## 版本与发布
+
+当前预览版：**v0.2.0 preview**（`version: 0.2.0+2`）。打 `v*` 标签会触发 `.github/workflows/release.yml`，自动构建两个 APK 并附到 GitHub Release，同时上传 `APK_SHA256.txt`。
+
+CI 使用内部测试签名，不是正式发布签名；正式覆盖升级前必须换成固定的 keystore。
+
 ## 构建
 
 推送 `main` 或手动触发 `.github/workflows/build-android.yml`，产物为两个 APK：

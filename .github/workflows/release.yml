@@ -1,0 +1,133 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要发布到 Release 的标签（例如 v0.2.0-preview）'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 取出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: 安装 Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: 生成 Android 平台壳（首次）
+        run: |
+          set -e
+          if [ ! -d android ]; then
+            flutter create --org app.readen --project-name read --platforms=android /tmp/scaffold
+            cp -r /tmp/scaffold/android ./android
+            cp /tmp/scaffold/.metadata ./.metadata || true
+          fi
+
+      - name: 规避 url_launcher_android 的 lint 解析崩溃
+        run: |
+          cat >> android/build.gradle.kts <<'GRADLE'
+          subprojects {
+              if (name == "url_launcher_android") {
+                  tasks.configureEach {
+                      if (name == "lintVitalAnalyzeRelease") {
+                          enabled = false
+                      }
+                  }
+              }
+          }
+          GRADLE
+
+      - name: 拉取依赖
+        run: flutter pub get
+
+      - name: 生成 drift 数据库代码
+        run: dart run build_runner build --delete-conflicting-outputs
+
+      - name: 静态检查
+        run: flutter analyze --no-fatal-infos
+
+      - name: 单元测试
+        run: flutter test
+
+      - name: 构建普通版 APK
+        run: flutter build apk --release --dart-define=EINK=false
+
+      - name: 收集普通版 APK
+        run: |
+          mkdir -p out
+          cp build/app/outputs/flutter-apk/app-release.apk out/read-android.apk
+          ls -lh out
+
+      - name: 设置墨水屏独立包名
+        run: |
+          python3 - <<'PYCODE'
+          from pathlib import Path
+          import re
+          gradle = Path('android/app/build.gradle.kts')
+          body = gradle.read_text(encoding='utf-8')
+          body, n = re.subn(r'applicationId\s*=\s*"app\.readen\.read"',
+                            'applicationId = "app.readen.read.eink"', body, count=1)
+          if n != 1:
+              raise SystemExit('Expected Android applicationId not found; review Flutter template')
+          gradle.write_text(body, encoding='utf-8')
+          print('E-ink applicationId set to app.readen.read.eink')
+          PYCODE
+
+      - name: 构建墨水屏 APK
+        run: flutter build apk --release --dart-define=EINK=true
+
+      - name: 收集墨水屏 APK
+        run: |
+          cp build/app/outputs/flutter-apk/app-release.apk out/read-eink.apk
+          ls -lh out
+
+      - name: 生成校验值
+        run: |
+          cd out
+          sha256sum read-android.apk read-eink.apk | tee APK_SHA256.txt
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: read-release-apks
+          path: out/*
+          if-no-files-found: error
+
+      - name: 发布 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}
+          name: Read ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}
+          prerelease: true
+          generate_release_notes: true
+          body: |
+            Read 极简阅读器 · 预览版
+
+            本版本包含两个 APK：
+            - `read-android.apk`：手机版（包名 app.readen.read）
+            - `read-eink.apk`：墨水屏版（包名 app.readen.read.eink，可与手机版同时安装）
+
+            当前使用 CI 内部测试签名，**不是正式发布签名**；后续覆盖升级需要换成正式 keystore。
+            功能状态以仓库 README 的进度表为准，未在真机验证的项不会标注为已完成。
+          files: |
+            out/read-android.apk
+            out/read-eink.apk
+            out/APK_SHA256.txt
