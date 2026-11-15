@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import 'package:read/src/theme.dart';
 import 'package:read/src/version.dart';
 
 /// 关于：黑底白 logo，版本号与开源信息。
