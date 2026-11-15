@@ -29,12 +29,14 @@ void main() {
     final next = find.byTooltip('下一页');
     expect(next, findsOneWidget);
     await tester.tap(next);
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
     expect(book.chapterIndex.value, 1);
     expect(find.text('第二章 终点', skipOffstage: false), findsWidgets);
 
     await tester.tap(find.byTooltip('上一页'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
     expect(book.chapterIndex.value, 0);
     expect(book.charOffset.value, greaterThanOrEqualTo(0));
   });
