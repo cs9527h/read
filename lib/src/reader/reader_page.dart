@@ -219,7 +219,18 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
           return Column(
             children: <Widget>[
               Expanded(
-                child: PageView.builder(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onTapUp: (details) {
+                    final width = constraints.maxWidth;
+                    if (width <= 0) return;
+                    if (details.localPosition.dx < width * 0.28) {
+                      _turnPage(-1);
+                    } else if (details.localPosition.dx > width * 0.72) {
+                      _turnPage(1);
+                    }
+                  },
+                  child: PageView.builder(
                   controller: _controller,
                   itemCount: _pageSlices.length,
                   onPageChanged: (int index) {
@@ -247,6 +258,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                       ),
                     ),
                   ),
+                ),
                 ),
               ),
               Padding(
