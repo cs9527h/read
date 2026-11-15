@@ -36,13 +36,10 @@ jobs:
           ls -d android
 
       - name: 应用黑白羽毛图标
-        run: |
-          set -e
-          for spec in mdpi:48 hdpi:72 xhdpi:96 xxhdpi:144 xxxhdpi:192; do
-            dpi="${spec%%:*}"
-            cp "assets/app_icon/ic_launcher_${dpi}.png" "android/app/src/main/res/mipmap-${dpi}/ic_launcher.png"
-          done
-          ls -l android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+        run: bash tools/android/apply_icons.sh
+
+      - name: 配置固定预览签名
+        run: python3 tools/android/setup_signing.py
 
       - name: Work around upstream url_launcher_android lint parser crash
         run: |
