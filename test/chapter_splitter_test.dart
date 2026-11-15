@@ -49,4 +49,24 @@ void main() {
     expect(chapters.length, 2);
   });
 
+  test('large unchaptered TXT uses bounded virtual segments with no lost text', () {
+    final text = List<String>.filled(32000, '无标题📚换行\n').join();
+    final chapters = splitChapters(text);
+    expect(chapters.length, greaterThan(1));
+    expect(chapters.map((chapter) => chapter.slice(text)).join(), text);
+    for (int i = 1; i < chapters.length; i++) {
+      expect(chapters[i - 1].end, chapters[i].start);
+      expect(chapters[i].length, lessThanOrEqualTo(100000));
+      if (chapters[i].start < text.length) {
+        final unit = text.codeUnitAt(chapters[i].start);
+        expect(unit >= 0xDC00 && unit <= 0xDFFF, isFalse);
+      }
+    }
+    // A user explicitly selecting a single chapter retains that behavior.
+    expect(
+      splitChapters(text, rule: const ChapterRule.none()).length,
+      1,
+    );
+  });
+
 }
