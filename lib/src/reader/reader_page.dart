@@ -55,11 +55,11 @@ class _ReaderPageState extends State<ReaderPage> {
     if (kEink) return const _Palette(Colors.white, Colors.black);
     switch (_bgIndex) {
       case 1:
-        return const _Palette(Color(0xFFF6EFE0), Color(0xFF3A3226));
+        return const _Palette(Color(0xFFF5EFE1), Color(0xFF41382B));
       case 2:
         return const _Palette(Color(0xFF121212), Color(0xFFBDBDBD));
       default:
-        return const _Palette(Colors.white, Color(0xFF1F1F1F));
+        return const _Palette(Color(0xFFFCFCF8), Color(0xFF24332F));
     }
   }
 
@@ -73,10 +73,15 @@ class _ReaderPageState extends State<ReaderPage> {
       appBar: AppBar(
         backgroundColor: palette.background,
         elevation: 0,
+        surfaceTintColor: Colors.transparent,
         foregroundColor: palette.foreground,
         title: Text(
           widget.book.title,
-          style: TextStyle(fontSize: 14, color: palette.foreground),
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: palette.foreground,
+          ),
           overflow: TextOverflow.ellipsis,
         ),
         actions: <Widget>[
@@ -120,33 +125,37 @@ class _ReaderPageState extends State<ReaderPage> {
                     setState(() {});
                   },
                   itemBuilder: (BuildContext context, int index) => Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: constraints.maxWidth > 720 ? 64 : 24,
+                      vertical: 12,
+                    ),
                     child: Text(
                       _pageSlices[index].textOf(chapterText),
                       style: TextStyle(
                         fontSize: _fontSize,
                         height: _lineHeight,
                         color: palette.foreground,
+                        letterSpacing: 0.15,
                       ),
                     ),
                   ),
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 30),
+                padding: const EdgeInsets.fromLTRB(24, 4, 24, 20),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: <Widget>[
                     Flexible(
                       child: Text(
                         chapter.title,
-                        style: TextStyle(fontSize: 12, color: palette.foreground.withOpacity(0.6)),
+                        style: TextStyle(fontSize: 12, color: palette.foreground.withValues(alpha: 0.65)),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
                     Text(
                       '${_pageIndex + 1} / ${_pageSlices.length}',
-                      style: TextStyle(fontSize: 12, color: palette.foreground.withOpacity(0.6)),
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: palette.foreground.withValues(alpha: 0.65)),
                     ),
                   ],
                 ),
@@ -165,8 +174,8 @@ class _ReaderPageState extends State<ReaderPage> {
     _measureKey = key;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final double width = size.width - 40;
-      final double height = size.height - 50;
+      final double width = size.width - (size.width > 720 ? 128 : 48);
+      final double height = size.height - 56;
       if (width <= 0 || height <= 0) return;
       final String chapterText = chapter.slice(widget.book.content);
       final List<PageSlice> slices = paginateSlices(
@@ -242,10 +251,13 @@ class _ReaderPageState extends State<ReaderPage> {
       setState(() {
         _chapterIndex = selected;
         _pageIndex = 0;
+        widget.book.chapterIndex.value = selected;
+        widget.book.pageIndex.value = 0;
         widget.book.charOffset.value = 0;
         _pageSlices = const <PageSlice>[];
         _measureKey = null;
       });
+      await LibraryStore.instance.saveProgress(widget.book);
     }
   }
 
