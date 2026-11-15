@@ -83,11 +83,3 @@ TXT 是 Read 的长期核心格式，**不会因为增加 EPUB/PDF 就删减功�
 
 验证和限制见 [WebDAV 进度同步说明](docs/WEBDAV_PROGRESS_V1.md)，完整的 Reeden 同步能力缺口和验收目标见 [同步对标清单](docs/REEDEN_SYNC_PARITY_PLAN.md)。
 
-## WebDAV 阅读进度双向同步（PR #15，开发分支）
-
-正在实现手动触发的加密阅读进度同步：按源文件 SHA-256 识别同一本书，文本使用绝对 UTF-16 字符偏移并检查解析后文本摘要，PDF 使用页码；WebDAV 上传使用 ETag 条件提交，遇到冲突由用户选择。新设备导入相同文件后可拉取已有云端进度；对无法确认的旧版页码位置不会自动覆盖。
-
-**状态：待 GitHub Actions、真机以及跨设备验收，未合并、未发布。** 目前不传书籍文件、书签、笔记、设置，也没有开启后台自动同步或凭据持久保存。不要把这个开发分支当作 Reeden 完整同步功能。
-
-验证和限制见 [WebDAV 进度同步说明](docs/WEBDAV_PROGRESS_V1.md)，完整的 Reeden 同步能力缺口和验收目标见 [同步对标清单](docs/REEDEN_SYNC_PARITY_PLAN.md)。
->>>>>>> origin/feature/read-progress-webdav-manual-20261115
