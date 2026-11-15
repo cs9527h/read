@@ -42,17 +42,24 @@ class BookshelfPage extends StatelessWidget {
                 ),
           floatingActionButton: FloatingActionButton.extended(
             onPressed: () async {
-              final Book? book = await LibraryStore.instance.importBook();
-              if (!context.mounted) return;
-              if (book == null) {
+              try {
+                final Book? book = await LibraryStore.instance.importBook();
+                if (!context.mounted) return;
+                if (book == null) return;
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('没有选到可读的文本文件')),
+                  SnackBar(content: Text('已导入《${book.title}》（${book.format}）')),
                 );
-                return;
+              } on FormatException catch (error) {
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(error.message)),
+                );
+              } catch (_) {
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('文件导入失败，原始文件未修改')),
+                );
               }
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('已导入《${book.title}》')),
-              );
             },
             icon: const Icon(Icons.file_open),
             label: const Text('导入'),
