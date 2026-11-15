@@ -1272,57 +1272,6 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     );
   }
 
-  Future<void> _showSelectionActions() async {
-    final PaginatedChapter? p = _pagination;
-    if (p == null || p.pages.isEmpty) return;
-    final String pageText = p.pages[_pageIndex.clamp(0, p.pages.length - 1)]
-        .textOf(p.display)
-        .trim();
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (BuildContext ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            ListTile(
-              leading: const Icon(Icons.copy_rounded),
-              title: const Text('复制本页文字'),
-              onTap: () async {
-                await Clipboard.setData(ClipboardData(text: pageText));
-                if (ctx.mounted) Navigator.pop(ctx);
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('已复制本页文字')),
-                  );
-                }
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.search_rounded),
-              title: const Text('搜索本页文字'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _searchInBook(
-                  initialQuery:
-                      pageText.length > 24 ? pageText.substring(0, 24) : pageText,
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.bookmark_add_outlined),
-              title: const Text('在当前位置添加书签'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _toggleBookmark();
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   // ---------------------------------------------------------------------------
   // 章节调整 / 书签 / 搜索
   // ---------------------------------------------------------------------------
