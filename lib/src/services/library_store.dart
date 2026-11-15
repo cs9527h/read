@@ -190,10 +190,11 @@ class LibraryStore extends ChangeNotifier {
       staged = await _stageDocumentStream(picked);
       path = staged.path;
     }
+    final String readablePath = path!;
     try {
     final String ext = picked.name.split('.').last.toLowerCase();
     if (ext == 'pdf') {
-      final File source = File(path);
+      final File source = File(readablePath);
       await PdfFormat.verifyHeader(source);
       final Directory base = await getApplicationDocumentsDirectory();
       final Directory dir = Directory(base.path + '/books');
@@ -215,7 +216,7 @@ class LibraryStore extends ChangeNotifier {
       throw const FormatException(
         '当前支持 TXT、EPUB（文字版）、PDF、Markdown、HTML，其余格式开发中');
     }
-    final File source = File(path);
+    final File source = File(readablePath);
     final int fileSize = await source.length();
     if (fileSize > FormatEngine.maxSourceBytes) {
       throw const FormatException(
