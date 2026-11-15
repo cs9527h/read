@@ -128,6 +128,31 @@ class LibraryStore extends ChangeNotifier {
     );
   }
 
+  /// Apply validated remote progress without altering the imported file.
+  /// This is called only after a successful WebDAV transaction.
+  Future<void> applySyncedProgress(
+    Book book, {
+    required int chapterIndex,
+    required int pageIndex,
+    required int charOffset,
+  }) async {
+    final previousChapter = book.chapterIndex.value;
+    final previousPage = book.pageIndex.value;
+    final previousOffset = book.charOffset.value;
+    book.chapterIndex.value = chapterIndex;
+    book.pageIndex.value = pageIndex;
+    book.charOffset.value = charOffset;
+    try {
+      await saveProgress(book);
+    } catch (_) {
+      book.chapterIndex.value = previousChapter;
+      book.pageIndex.value = previousPage;
+      book.charOffset.value = previousOffset;
+      rethrow;
+    }
+    notifyListeners();
+  }
+
   Future<void> setFontSize(double value) async {
     _fontSize = value;
     await _prefs?.setDouble(_fontKey, value);
