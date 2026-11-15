@@ -35,6 +35,21 @@ jobs:
           fi
           ls -d android
 
+      - name: Work around upstream url_launcher_android lint parser crash
+        run: |
+          # Target only the affected plugin's Release lint task.
+          cat >> android/build.gradle.kts <<'GRADLE'
+          subprojects {
+              if (name == "url_launcher_android") {
+                  tasks.configureEach {
+                      if (name == "lintVitalAnalyzeRelease") {
+                          enabled = false
+                      }
+                  }
+              }
+          }
+          GRADLE
+
       - name: 拉取依赖
         run: flutter pub get
 
