@@ -41,7 +41,21 @@ List<PageSlice> paginateSlices(
 
   final painter = TextPainter(textDirection: TextDirection.ltr);
   bool fits(int start, int count) {
-    painter.text = TextSpan(text: text.substring(start, start + count), style: style);
+    // TextPainter must never receive half a UTF-16 surrogate pair, even
+    // temporarily during the binary/exponential measurement probes.
+    int safeCount = count;
+    final int end = start + safeCount;
+    if (safeCount > 0 &&
+        end < text.length &&
+        _highSurrogate(text.codeUnitAt(end - 1)) &&
+        _lowSurrogate(text.codeUnitAt(end))) {
+      safeCount--;
+    }
+    if (safeCount <= 0) return false;
+    painter.text = TextSpan(
+      text: text.substring(start, start + safeCount),
+      style: style,
+    );
     painter.layout(maxWidth: maxWidth);
     return painter.height <= maxHeight + 0.5;
   }
