@@ -954,6 +954,66 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   }
 
 
+  Future<int?> _pickReaderColor({required bool foreground}) async {
+    final color = foreground ? _palette.foreground : _palette.background;
+    var red = (color.r * 255).round().clamp(0, 255);
+    var green = (color.g * 255).round().clamp(0, 255);
+    var blue = (color.b * 255).round().clamp(0, 255);
+    return showDialog<int>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, refresh) => AlertDialog(
+          title: Text(foreground ? '自定义文字颜色' : '自定义页面背景颜色'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Container(
+                height: 42,
+                decoration: BoxDecoration(
+                  color: Color.fromARGB(255, red, green, blue),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey.shade400),
+                ),
+              ),
+              const SizedBox(height: 12),
+              for (final channel in const <int>[0, 1, 2])
+                Row(
+                  children: <Widget>[
+                    SizedBox(width: 16, child: Text(
+                        const <String>['R', 'G', 'B'][channel])),
+                    Expanded(
+                      child: Slider(
+                        min: 0, max: 255,
+                        divisions: 255,
+                        value: (channel == 0 ? red :
+                            channel == 1 ? green : blue).toDouble(),
+                        onChanged: (value) => refresh(() {
+                          if (channel == 0) red = value.round();
+                          if (channel == 1) green = value.round();
+                          if (channel == 2) blue = value.round();
+                        }),
+                      ),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, 0),
+              child: const Text('使用主题颜色'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(
+                  ctx, 0xFF000000 | (red << 16) | (green << 8) | blue),
+              child: const Text('应用'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _saveCurrentPreset() async {
     final field = TextEditingController();
     try {
@@ -1329,6 +1389,35 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                       _styleSlider('图片暗度', _style.backgroundDim, 0, 0.8, 16,
                         (v) => change(_style.copyWith(backgroundDim: v))),
                     ],
+                  ],
+                  if (!kEink) ...<Widget>[
+                    section('自定义文字与页面颜色'),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: <Widget>[
+                        OutlinedButton.icon(
+                          icon: const Icon(Icons.format_color_text_rounded),
+                          label: const Text('文字颜色'),
+                          onPressed: () async {
+                            final picked = await _pickReaderColor(foreground: true);
+                            if (!mounted || !ctx.mounted || picked == null) return;
+                            refresh(() => _updateStyle(
+                                _style.copyWith(customForegroundArgb: picked)));
+                          },
+                        ),
+                        OutlinedButton.icon(
+                          icon: const Icon(Icons.format_color_fill_rounded),
+                          label: const Text('页面颜色'),
+                          onPressed: () async {
+                            final picked = await _pickReaderColor(foreground: false);
+                            if (!mounted || !ctx.mounted || picked == null) return;
+                            refresh(() => _updateStyle(
+                                _style.copyWith(customBackgroundArgb: picked)));
+                          },
+                        ),
+                      ],
+                    ),
                   ],
                   section('显示内容'),
                   SwitchListTile.adaptive(
