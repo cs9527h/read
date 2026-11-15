@@ -23,6 +23,8 @@ class ReaderStyle {
     this.indentCharacters = 0,
     this.paragraphBlankLines = 0,
     this.fontFamily = '',
+    this.backgroundImage = '',
+    this.backgroundDim = 0.15,
   });
 
   final double fontSize;
@@ -45,6 +47,9 @@ class ReaderStyle {
   final int paragraphBlankLines;
   /// Empty selects the system font. Other values reference app-owned fonts.
   final String fontFamily;
+  /// Private, app-owned local image path, not a remote address.
+  final String backgroundImage;
+  final double backgroundDim;
 
   FontWeight get fontWeight => FontWeight.values[fontWeightIndex];
   TextAlign get textAlign => switch (textAlignIndex) {
@@ -79,6 +84,8 @@ class ReaderStyle {
     int? indentCharacters,
     int? paragraphBlankLines,
     String? fontFamily,
+    String? backgroundImage,
+    double? backgroundDim,
   }) =>
       ReaderStyle(
         fontSize: fontSize ?? this.fontSize,
@@ -96,6 +103,8 @@ class ReaderStyle {
         indentCharacters: indentCharacters ?? this.indentCharacters,
         paragraphBlankLines: paragraphBlankLines ?? this.paragraphBlankLines,
         fontFamily: fontFamily ?? this.fontFamily,
+        backgroundImage: backgroundImage ?? this.backgroundImage,
+        backgroundDim: backgroundDim ?? this.backgroundDim,
       );
 
   Map<String, Object> toJson() => <String, Object>{
@@ -115,6 +124,8 @@ class ReaderStyle {
         'indentCharacters': indentCharacters,
         'paragraphBlankLines': paragraphBlankLines,
         'fontFamily': fontFamily,
+        'backgroundImage': backgroundImage,
+        'backgroundDim': backgroundDim,
       };
 
   static ReaderStyle fromJson(Object? source, {ReaderStyle fallback = const ReaderStyle()}) {
@@ -148,6 +159,10 @@ class ReaderStyle {
       paragraphBlankLines: integer('paragraphBlankLines', fallback.paragraphBlankLines, 0, 2),
       fontFamily: m['fontFamily'] is String && (m['fontFamily'] as String).length <= 96
           ? m['fontFamily'] as String : fallback.fontFamily,
+      backgroundImage: m['backgroundImage'] is String &&
+              (m['backgroundImage'] as String).length <= 1024
+          ? m['backgroundImage'] as String : fallback.backgroundImage,
+      backgroundDim: number('backgroundDim', fallback.backgroundDim, 0, 0.8),
     );
   }
 
