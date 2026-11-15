@@ -1191,21 +1191,36 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                 onChanged: _seekProgress,
               ),
             ),
-            IconButton(
-              tooltip: '目录',
-              icon: Icon(Icons.list_rounded, color: foreground),
-              onPressed: _showChapters,
-            ),
-            IconButton(
-              tooltip: '书签',
-              icon: Icon(Icons.collections_bookmark_outlined, color: foreground),
-              onPressed: _showBookmarks,
-            ),
-            IconButton(
-              tooltip: '设置',
-              icon: Icon(Icons.text_fields_rounded, color: foreground),
-              onPressed: _openSettings,
-            ),
+            for (final action in _settings.bottomActions)
+              IconButton(
+                tooltip: switch (action) {
+                  'toc' => '目录',
+                  'bookmark' => '书签',
+                  'search' => '书内搜索',
+                  _ => '阅读设置',
+                },
+                icon: Icon(
+                  switch (action) {
+                    'toc' => Icons.list_rounded,
+                    'bookmark' => Icons.collections_bookmark_outlined,
+                    'search' => Icons.search_rounded,
+                    _ => Icons.text_fields_rounded,
+                  },
+                  color: foreground,
+                ),
+                onPressed: () {
+                  switch (action) {
+                    case 'toc':
+                      _showChapters();
+                    case 'bookmark':
+                      _showBookmarks();
+                    case 'search':
+                      _searchInBook();
+                    default:
+                      _openSettings();
+                  }
+                },
+              ),
           ],
         ),
       ),
