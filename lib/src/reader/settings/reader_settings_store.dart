@@ -90,7 +90,7 @@ class ReaderSettingsStore extends ChangeNotifier {
     try {
       final Object? decoded = jsonDecode(raw);
       return decoded is Map<String, dynamic>
-          ? Map<String, Object?>.from(decoded)
+          ? validatedReaderSettingsMap(decoded)
           : <String, Object?>{};
     } catch (_) {
       return <String, Object?>{};
