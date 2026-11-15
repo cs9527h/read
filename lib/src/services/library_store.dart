@@ -49,13 +49,19 @@ class LibraryStore extends ChangeNotifier {
     // Rebuild the index transactionally. A failed reload must not destroy
     // the current in-memory bookshelf or its progress notifiers.
     final loaded = <Book>[];
+    var recoveredCovers = false;
     final String? raw = _prefs!.getString(_metaKey);
     if (raw != null) {
       try {
         final List<dynamic> list = jsonDecode(raw) as List<dynamic>;
         for (final item in list) {
-          final Book? book = await _loadBook(item as Map<String, dynamic>);
+          final metadata = item as Map<String, dynamic>;
+          final priorCover = metadata['coverPath'];
+          final Book? book = await _loadBook(metadata);
           if (book != null) {
+            if (priorCover == null && book.coverPath != null) {
+              recoveredCovers = true;
+            }
             _restoreProgress(book);
             loaded.add(book);
           }
@@ -70,6 +76,12 @@ class LibraryStore extends ChangeNotifier {
       ..addAll(loaded);
     _sortBooks();
     notifyListeners();
+    if (recoveredCovers) {
+      // Failure to persist a derived cover should not block opening books.
+      try {
+        await _persistMeta();
+      } catch (_) {}
+    }
   }
 
   void _sortBooks() {
@@ -100,6 +112,20 @@ class LibraryStore extends ChangeNotifier {
         final ImportedDocument parsed =
             await FormatEngine.importBytes(bytes, path);
         content = parsed.text;
+        // Upgrade books imported before cover extraction existed. This keeps
+        // their original IDs, progress, bookmarks and original EPUB bytes.
+        if (parsed.coverBytes != null &&
+            (meta['coverPath'] == null ||
+                !await File(meta['coverPath'] as String).exists()) &&
+            path.toLowerCase().endsWith('.epub')) {
+          try {
+            final cover = File('${file.parent.path}/$id.cover');
+            await cover.writeAsBytes(parsed.coverBytes!, flush: true);
+            meta['coverPath'] = cover.path;
+          } catch (_) {
+            // A damaged image or full disk must not make the book unreadable.
+          }
+        }
       }
     }
     if (content.isEmpty) {
