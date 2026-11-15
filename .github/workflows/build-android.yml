@@ -53,6 +53,9 @@ jobs:
       - name: 拉取依赖
         run: flutter pub get
 
+      - name: 生成 drift 数据库代码
+        run: dart run build_runner build --delete-conflicting-outputs
+
       - name: 静态检查
         run: flutter analyze --no-fatal-infos
 
