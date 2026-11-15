@@ -309,14 +309,39 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
             label: const Text('导入 TTF / OTF 字体'),
           ),
         ),
-        _slider(
-          '字号',
-          _settings.fontSize,
-          12,
-          34,
-          divisions: 22,
-          label: '${_settings.fontSize.toStringAsFixed(0)} pt',
-          onChanged: (double v) => _update(<String, Object?>{'fontSize': v}),
+        Row(
+          children: <Widget>[
+            IconButton(
+              tooltip: '缩小字号',
+              onPressed: _settings.fontSize <= 12
+                  ? null
+                  : () => _update(<String, Object?>{
+                      'fontSize': (_settings.fontSize - 1).clamp(12.0, 34.0),
+                    }),
+              icon: const Icon(Icons.remove_circle_outline_rounded),
+            ),
+            Expanded(
+              child: _slider(
+                '字号',
+                _settings.fontSize,
+                12,
+                34,
+                divisions: 22,
+                label: '${_settings.fontSize.toStringAsFixed(0)} pt',
+                onChanged: (double v) =>
+                    _update(<String, Object?>{'fontSize': v}),
+              ),
+            ),
+            IconButton(
+              tooltip: '放大字号',
+              onPressed: _settings.fontSize >= 34
+                  ? null
+                  : () => _update(<String, Object?>{
+                      'fontSize': (_settings.fontSize + 1).clamp(12.0, 34.0),
+                    }),
+              icon: const Icon(Icons.add_circle_outline_rounded),
+            ),
+          ],
         ),
         _slider(
           '行距',
