@@ -131,7 +131,7 @@ class ReaderEngine {
     double width,
     double textScale,
   ) {
-    if (s.titleTemplate == 'none' || title.trim().isEmpty) {
+    if (s.titleTemplate == 'none' || title.trim().isEmpty || title.trim() == '全文') {
       return 0;
     }
     final TextStyle style = TextStyle(
@@ -154,7 +154,7 @@ class ReaderEngine {
     return height + s.titleGapTop + s.titleGapBottom + s.chapterStartBlank;
   }
 
-  static DisplayChapter buildDisplay(String source, ReaderSettings s, double textScale) {
+  static DisplayChapter buildDisplay(String source, ReaderSettings s, double textScale, {String? chapterTitle}) {
     final double linePx = math.max(1.0, s.fontSize * s.lineHeight * textScale);
     final int blankAfter = s.paragraphSpacingAfter <= 0
         ? 0
@@ -165,8 +165,21 @@ class ReaderEngine {
 
     // 段落按原文切分，保留原始偏移，保证书签/进度与原文一致。
     final List<List<int>> paragraphs = <List<int>>[]; // [start, end]
+    // A recognized chapter heading is already rendered as a styled title.
+    // Skip its original first line in the display only: offsets still refer
+    // to the unmodified source, so bookmarks and cloud progress stay stable.
     int paragraphStart = 0;
-    for (int i = 0; i <= source.length; i++) {
+    if (chapterTitle != null && chapterTitle.trim().isNotEmpty) {
+      final int firstNewline = source.indexOf('\n');
+      final String firstLine =
+          (firstNewline < 0 ? source : source.substring(0, firstNewline))
+              .replaceFirst('\uFEFF', '')
+              .trim();
+      if (firstLine == chapterTitle.trim()) {
+        paragraphStart = firstNewline < 0 ? source.length : firstNewline + 1;
+      }
+    }
+    for (int i = paragraphStart; i <= source.length; i++) {
       final bool atEnd = i == source.length;
       final int unit = atEnd ? 0x0A : source.codeUnitAt(i);
       if (unit == 0x0A || unit == 0x0D) {
@@ -254,10 +267,15 @@ class ReaderEngine {
     if (!width.isFinite || !height.isFinite || width <= 0 || height <= 0) {
       throw ArgumentError('分页区域必须有正的宽高');
     }
-    final DisplayChapter display = buildDisplay(chapterText, settings, textScale);
     final double titleHeight =
         titleBlockHeight(settings, chapterTitle, width, textScale);
     final bool showTitle = titleHeight > 0;
+    final DisplayChapter display = buildDisplay(
+      chapterText,
+      settings,
+      textScale,
+      chapterTitle: showTitle ? chapterTitle : null,
+    );
 
     if (display.text.isEmpty) {
       return PaginatedChapter(
