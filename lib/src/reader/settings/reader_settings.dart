@@ -310,7 +310,7 @@ class ReaderSettings {
     if (decoded is! Map<String, dynamic>) {
       throw const FormatException('阅读配置不是合法 JSON 对象');
     }
-    return ReaderSettings(decoded);
+    return ReaderSettings(validatedReaderSettingsMap(decoded));
   }
 
   String toJsonString() => jsonEncode(_raw);
