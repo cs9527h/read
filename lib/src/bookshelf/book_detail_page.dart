@@ -4,7 +4,10 @@ import 'package:read/src/model/book.dart';
 import 'package:read/src/reader/pdf_reader_page.dart';
 import 'package:read/src/reader/reader_page.dart';
 import 'package:read/src/reader/widgets/reader_settings_sheet.dart';
+import 'package:read/src/services/bookmark_meta_store.dart';
 import 'package:read/src/services/bookmark_store.dart';
+import 'package:read/src/services/chapter_rule_store.dart';
+import 'package:read/src/services/chapter_splitter.dart';
 import 'package:read/src/services/library_store.dart';
 import 'package:read/src/services/reading_stats_store.dart';
 import 'package:read/src/theme.dart';
@@ -22,6 +25,8 @@ class BookDetailPage extends StatefulWidget {
 class _BookDetailPageState extends State<BookDetailPage> {
   late Book book = widget.book;
   int _bookmarks = 0;
+  List<int> _bookmarkOffsets = <int>[];
+  Map<int, BookmarkMeta> _bookmarkMetas = <int, BookmarkMeta>{};
 
   @override
   void initState() {
@@ -31,7 +36,14 @@ class _BookDetailPageState extends State<BookDetailPage> {
 
   Future<void> _loadBookmarks() async {
     final values = await BookmarkStore.load(book.id);
-    if (mounted) setState(() => _bookmarks = values.length);
+    final metas = await BookmarkMetaStore.load(book.id);
+    if (mounted) {
+      setState(() {
+        _bookmarks = values.length;
+        _bookmarkOffsets = values;
+        _bookmarkMetas = metas;
+      });
+    }
   }
 
   @override
@@ -100,6 +112,27 @@ class _BookDetailPageState extends State<BookDetailPage> {
                         if (finished) _tag('已读完'),
                       ],
                     ),
+                    const SizedBox(height: 14),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: <Widget>[
+                        for (final tag in book.tags)
+                          InputChip(
+                            label: Text(tag, style: const TextStyle(fontSize: 11)),
+                            visualDensity: VisualDensity.compact,
+                            onDeleted: () => _saveTags(
+                              book.tags.where((String t) => t != tag).toList(),
+                            ),
+                          ),
+                        ActionChip(
+                          avatar: const Icon(Icons.add, size: 13),
+                          label: const Text('标签', style: TextStyle(fontSize: 11)),
+                          visualDensity: VisualDensity.compact,
+                          onPressed: _editTags,
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 16),
                     Row(
                       children: <Widget>[
@@ -164,6 +197,36 @@ class _BookDetailPageState extends State<BookDetailPage> {
               book.contentHash == null
                   ? '下次同步时计算'
                   : '${book.contentHash!.substring(0, 16)}…'),
+          if (_bookmarkOffsets.isNotEmpty) ...<Widget>[
+            const SizedBox(height: 20),
+            Text('书签',
+                style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: palette.ink)),
+            const SizedBox(height: 8),
+            for (final offset in _bookmarkOffsets)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.bookmark_rounded, size: 20),
+                title: Text(
+                  _bookmarkPreview(offset),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                subtitle: Text(
+                  [
+                    '位置 ${offset + 1}',
+                    if (_bookmarkMetas[offset]?.note.isNotEmpty ?? false)
+                      _bookmarkMetas[offset]!.note,
+                  ].join(' · '),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                trailing: const Icon(Icons.chevron_right, size: 18),
+                onTap: () => _openAtBookmark(offset),
+              ),
+          ],
           const SizedBox(height: 20),
           Container(
             padding: const EdgeInsets.all(14),
@@ -229,6 +292,43 @@ class _BookDetailPageState extends State<BookDetailPage> {
         ),
       );
 
+  String _bookmarkPreview(int offset) {
+    final source = book.content;
+    int begin = offset.clamp(0, source.length);
+    int end = (begin + 60).clamp(0, source.length);
+    if (begin > 0 &&
+        begin < source.length &&
+        source.codeUnitAt(begin) >= 0xDC00 &&
+        source.codeUnitAt(begin) <= 0xDFFF) {
+      begin++;
+    }
+    if (end > begin &&
+        end < source.length &&
+        source.codeUnitAt(end) >= 0xDC00 &&
+        source.codeUnitAt(end) <= 0xDFFF) {
+      end--;
+    }
+    final text =
+        source.substring(begin, end).replaceAll(RegExp(r'[\r\n]+'), ' ').trim();
+    return text.isEmpty ? '书签位置' : text;
+  }
+
+  Future<void> _openAtBookmark(int offset) async {
+    if (book.format.toUpperCase() == 'PDF') {
+      await _openBook();
+      return;
+    }
+    final rule = await ChapterRuleStore.load(book.id);
+    final chapters = splitChapters(book.content, rule: rule);
+    if (chapters.isEmpty) return;
+    final index = chapters.lastIndexWhere((Chapter c) => c.start <= offset);
+    final chapter = chapters[index < 0 ? 0 : index];
+    book.chapterIndex.value = index < 0 ? 0 : index;
+    book.charOffset.value = (offset - chapter.start).clamp(0, chapter.length);
+    book.pageIndex.value = 0;
+    await _openBook();
+  }
+
   Future<void> _openBook() async {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -241,6 +341,44 @@ class _BookDetailPageState extends State<BookDetailPage> {
     await LibraryStore.instance.touch(book);
     setState(() => book = LibraryStore.instance.bookByHash(book.contentHash ?? '') ?? book);
     await _loadBookmarks();
+  }
+
+  Future<void> _editTags() async {
+    final controller = TextEditingController(text: book.tags.join('、'));
+    final value = await showDialog<String>(
+      context: context,
+      builder: (BuildContext ctx) => AlertDialog(
+        title: const Text('书籍标签'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLines: 3,
+          decoration: const InputDecoration(
+            hintText: '用逗号或顿号分隔，例如：小说、待读、收藏',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: <Widget>[
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (value == null || !mounted) return;
+    await _saveTags(value.split(RegExp(r'[,，、;；\n]')));
+  }
+
+  Future<void> _saveTags(List<String> tags) async {
+    await LibraryStore.instance.updateTags(book, tags);
+    if (!mounted) return;
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('标签已保存（${book.tags.length} 个）')),
+    );
   }
 
   Future<void> _openBookSettings() async {

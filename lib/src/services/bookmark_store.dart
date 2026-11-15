@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'bookmark_meta_store.dart';
+
 /// Stable, absolute UTF-16 character anchors, independent of font/page size.
 /// The original book bytes are never modified.
 class BookmarkStore {
@@ -27,10 +29,16 @@ class BookmarkStore {
     if (absoluteOffset < 0) throw ArgumentError.value(absoluteOffset);
     final prefs = await SharedPreferences.getInstance();
     final positions = (await load(bookId)).toSet();
-    if (!positions.add(absoluteOffset)) positions.remove(absoluteOffset);
+    final adding = positions.add(absoluteOffset);
+    if (!adding) positions.remove(absoluteOffset);
     final sorted = positions.toList()..sort();
     final success = await prefs.setString('$_prefix$bookId', jsonEncode(sorted));
     if (!success) throw StateError('书签保存失败');
+    if (adding) {
+      await BookmarkMetaStore.ensure(bookId, absoluteOffset);
+    } else {
+      await BookmarkMetaStore.remove(bookId, absoluteOffset);
+    }
     return sorted;
   }
 
@@ -45,5 +53,6 @@ class BookmarkStore {
   static Future<void> clearForDeletedBook(String bookId) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('$_prefix$bookId');
+    await BookmarkMetaStore.clearForDeletedBook(bookId);
   }
 }

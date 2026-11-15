@@ -14,6 +14,7 @@ import 'sync_config.dart';
 import 'webdav_store.dart';
 import 'sync_history.dart';
 import '../reader/settings/reader_settings_store.dart';
+import '../services/bookmark_meta_store.dart';
 import '../services/bookmark_store.dart';
 import '../services/library_store.dart';
 import '../services/reading_stats_store.dart';
@@ -107,6 +108,7 @@ class BackupService {
     final archive = Archive();
     final books = <Map<String, Object?>>[];
     final bookmarks = <String, List<int>>{};
+    final bookmarkMeta = <String, List<Map<String, Object?>>>{};
     var totalFileBytes = 0;
 
     for (final book in LibraryStore.instance.books) {
@@ -127,6 +129,11 @@ class BackupService {
       totalFileBytes += bytes.length;
       final offsets = await BookmarkStore.load(book.id);
       bookmarks[hash] = offsets;
+      final metas = await BookmarkMetaStore.load(book.id);
+      bookmarkMeta[hash] = offsets
+          .where((int offset) => metas.containsKey(offset))
+          .map((int offset) => metas[offset]!.toJson())
+          .toList();
       books.add(<String, Object?>{
         'hash': hash,
         'title': book.title,
@@ -136,6 +143,7 @@ class BackupService {
         'file_size': size,
         'chapter_count': book.chapterCount,
         'last_read_at': book.lastReadAt?.millisecondsSinceEpoch ?? 0,
+        'tags': book.tags,
         'file': entryName,
       });
     }
@@ -148,6 +156,7 @@ class BackupService {
       'device': await SyncConfig.instance.deviceId(),
       'books': books,
       'bookmarks': bookmarks,
+      'bookmark_meta': bookmarkMeta,
       'settings': settings,
       'stats': preferences.getString('read.stats.v1'),
       'reader_font_size': preferences.getDouble('read.reader.fontsize'),
@@ -232,6 +241,11 @@ class BackupService {
           author: raw['author'] as String? ?? '',
           chapterCount: (raw['chapter_count'] as num?)?.toInt() ?? 0,
           lastReadAt: _epoch(raw['last_read_at']),
+          tags: (raw['tags'] as List<dynamic>?)
+              ?.whereType<String>()
+              .where((String t) => t.trim().isNotEmpty)
+              .map((String t) => t.trim())
+              .toList(),
         );
         skipped++;
         continue;
@@ -250,6 +264,11 @@ class BackupService {
           format: raw['format'] as String? ?? 'TXT',
           chapterCount: (raw['chapter_count'] as num?)?.toInt() ?? 0,
           lastReadAt: _epoch(raw['last_read_at']),
+          tags: (raw['tags'] as List<dynamic>?)
+              ?.whereType<String>()
+              .where((String t) => t.trim().isNotEmpty)
+              .map((String t) => t.trim())
+              .toList(),
         );
         restored++;
       } catch (_) {
@@ -271,6 +290,20 @@ class BackupService {
           ..sort();
         await BookmarkStore.replaceAll(book.id, offsets);
         bookmarkCount += offsets.length;
+      }
+    }
+    final bookmarkMetaMap = meta['bookmark_meta'];
+    if (bookmarkMetaMap is Map) {
+      for (final entry in bookmarkMetaMap.entries) {
+        final hash = entry.key.toString();
+        final book = LibraryStore.instance.bookByHash(hash);
+        if (book == null || entry.value is! List) continue;
+        final values = <int, BookmarkMeta>{};
+        for (final raw in entry.value as List) {
+          final parsed = BookmarkMeta.fromJson(raw);
+          if (parsed != null) values[parsed.offset] = parsed;
+        }
+        await BookmarkMetaStore.replaceAll(book.id, values);
       }
     }
     final settings = meta['settings'];

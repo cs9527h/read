@@ -14,7 +14,8 @@ class Book {
     this.contentHash,
     this.fileName,
     this.fileSize = 0,
-  });
+    List<String>? tags,
+  }) : tags = tags ?? <String>[];
 
   final String id;
   final String title;
@@ -35,6 +36,9 @@ class Book {
   String? fileName;
   int fileSize;
 
+  /// User-defined tags/categories. Stored locally and synced by content hash.
+  List<String> tags;
+
   /// 阅读进度：章节索引与页索引。
   final ValueNotifier<int> chapterIndex = ValueNotifier<int>(0);
   final ValueNotifier<int> pageIndex = ValueNotifier<int>(0);
@@ -53,6 +57,7 @@ class Book {
         'contentHash': contentHash,
         'fileName': fileName,
         'fileSize': fileSize,
+        'tags': tags,
       };
 
   static Book fromMeta(Map<String, dynamic> m, String content) => Book(
@@ -69,5 +74,11 @@ class Book {
         contentHash: m['contentHash'] as String?,
         fileName: m['fileName'] as String?,
         fileSize: (m['fileSize'] as num?)?.toInt() ?? 0,
+        tags: (m['tags'] as List<dynamic>?)
+            ?.whereType<String>()
+            .where((String t) => t.trim().isNotEmpty)
+            .map((String t) => t.trim())
+            .toSet()
+            .toList(),
       );
 }

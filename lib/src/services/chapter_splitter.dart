@@ -1,10 +1,13 @@
 /// Chapter ranges always refer to the unmodified UTF-16 source string.
 class Chapter {
-  const Chapter(this.title, this.start, this.length);
+  const Chapter(this.title, this.start, this.length, {this.manual = false});
 
   final String title;
   final int start;
   final int length;
+
+  /// True when the boundary was added or renamed by the user.
+  final bool manual;
 
   int get end => start + length;
 

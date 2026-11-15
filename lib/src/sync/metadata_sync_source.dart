@@ -4,6 +4,7 @@ import 'package:path/path.dart' as p;
 
 import '../model/book.dart';
 import '../reader/settings/reader_settings_store.dart';
+import '../services/bookmark_meta_store.dart';
 import '../services/bookmark_store.dart';
 import '../services/highlight_store.dart';
 import '../services/library_store.dart';
@@ -89,18 +90,23 @@ class LocalSyncSource {
         'last_read_at': book.lastReadAt?.millisecondsSinceEpoch ?? 0,
         'progress_chapter': book.chapterIndex.value,
         'progress_page': book.pageIndex.value,
+        'tags': book.tags,
       });
     }
 
     if (includeBookmarks) {
       for (final entry in bookHashes.entries) {
         final offsets = await BookmarkStore.load(entry.key.id);
+        final metas = await BookmarkMetaStore.load(entry.key.id);
         for (final offset in offsets) {
           final id = 'bookmark:${entry.value}:$offset';
           liveIds.add(id);
+          final meta = metas[offset];
           records[id] = stableOrNext(id, 'bookmark', <String, dynamic>{
             'book_hash': entry.value,
             'offset': offset,
+            'created_at': meta?.createdAt ?? 0,
+            'note': meta?.note ?? '',
           });
         }
         final highlights = await HighlightStore.load(entry.key.id);
@@ -239,6 +245,9 @@ class LocalSyncApplier {
     var settingsApplied = false;
 
     final bookmarkSets = <String, Set<int>>{};
+    final bookmarkHashes = <String>{};
+    final bookmarkMetaSets = <String, Map<int, BookmarkMeta>>{};
+    final highlightHashes = <String>{};
     final highlightSets = <String, List<HighlightRecord>>{};
     for (final book in library.books) {
       final hash = book.contentHash;
@@ -275,20 +284,47 @@ class LocalSyncApplier {
           lastReadAt: lastReadRaw is int && lastReadRaw > 0
               ? DateTime.fromMillisecondsSinceEpoch(lastReadRaw)
               : null,
+          tags: record.fields['tags'] is List
+              ? (record.fields['tags'] as List)
+                  .whereType<String>()
+                  .where((String t) => t.trim().isNotEmpty)
+                  .map((String t) => t.trim())
+                  .toList()
+              : null,
         );
         matched++;
       } else if (record.kind == 'bookmark' && includeBookmarks) {
-        final hash = record.fields['book_hash'];
-        final offset = record.fields['offset'];
+        final idParts = record.id.split(':');
+        final hash = record.fields['book_hash'] ??
+            (idParts.length >= 3 ? idParts[1] : null);
+        final offset = record.fields['offset'] ??
+            (idParts.length >= 3 ? int.tryParse(idParts[2]) : null);
         if (hash is! String || offset is! int || offset < 0) continue;
+        bookmarkHashes.add(hash);
         final set = bookmarkSets.putIfAbsent(hash, () => <int>{});
-        if (!record.deleted) set.add(offset);
+        if (!record.deleted) {
+          set.add(offset);
+          final createdAt = (record.fields['created_at'] as num?)?.toInt() ?? 0;
+          final note = record.fields['note'] as String? ?? '';
+          bookmarkMetaSets.putIfAbsent(hash, () => <int, BookmarkMeta>{})[offset] =
+              BookmarkMeta(
+            offset: offset,
+            createdAt: createdAt > 0
+                ? createdAt
+                : DateTime.now().millisecondsSinceEpoch,
+            note: note,
+          );
+        }
       } else if (record.kind == 'highlight' && includeBookmarks) {
+        final idParts = record.id.split(':');
+        final hash = record.fields['book_hash'] ??
+            (idParts.length >= 3 ? idParts[1] : null);
+        if (hash is! String) continue;
+        highlightHashes.add(hash);
         if (record.deleted) continue;
-        final hash = record.fields['book_hash'];
         final start = record.fields['start'];
         final end = record.fields['end'];
-        if (hash is! String || start is! int || end is! int || end <= start) {
+        if (start is! int || end is! int || end <= start) {
           continue;
         }
         highlightSets.putIfAbsent(hash, () => <HighlightRecord>[]).add(
@@ -315,10 +351,18 @@ class LocalSyncApplier {
     if (includeBookmarks) {
       for (final book in library.books) {
         final hash = book.contentHash;
-        if (hash == null || !bookmarkSets.containsKey(hash)) continue;
-        final offsets = bookmarkSets[hash]!.toList()..sort();
+        if (hash == null || !bookmarkHashes.contains(hash)) continue;
+        final offsets = (bookmarkSets[hash] ?? <int>{}).toList()..sort();
         await BookmarkStore.replaceAll(book.id, offsets);
+        await BookmarkMetaStore.replaceAll(
+          book.id,
+          bookmarkMetaSets[hash] ?? <int, BookmarkMeta>{},
+        );
         bookmarkCount += offsets.length;
+      }
+      for (final book in library.books) {
+        final hash = book.contentHash;
+        if (hash == null || !highlightHashes.contains(hash)) continue;
         final notes = highlightSets[hash] ?? <HighlightRecord>[];
         notes.sort((HighlightRecord a, HighlightRecord b) => a.start.compareTo(b.start));
         await HighlightStore.replaceAll(book.id, notes);

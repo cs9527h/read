@@ -423,6 +423,53 @@ class _OptionsTab extends StatefulWidget {
 class _OptionsTabState extends State<_OptionsTab> {
   SyncConfig get _config => SyncConfig.instance;
 
+  int get _intervalValue {
+    const standard = <int>[0, 5, 10, 15, 30, 60, 240, 720];
+    if (standard.contains(_config.intervalMinutes)) {
+      return _config.intervalMinutes;
+    }
+    return -2;
+  }
+
+  Future<void> _editCustomInterval() async {
+    final controller = TextEditingController(
+      text: _config.intervalMinutes == 0
+          ? '45'
+          : _config.intervalMinutes.toString(),
+    );
+    final value = await showDialog<int>(
+      context: context,
+      builder: (BuildContext ctx) => AlertDialog(
+        title: const Text('自定义定时间隔'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+            labelText: '分钟（1–10080）',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: <Widget>[
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          FilledButton(
+            onPressed: () {
+              final minutes = int.tryParse(controller.text.trim());
+              if (minutes == null || minutes < 1 || minutes > 10080) {
+                return;
+              }
+              Navigator.pop(ctx, minutes);
+            },
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (value == null) return;
+    await _update(() async => _config.intervalMinutes = value);
+  }
+
   Future<void> _update(Future<void> Function() change) async {
     widget.onBusyChanged(true);
     try {
@@ -471,18 +518,30 @@ class _OptionsTabState extends State<_OptionsTab> {
               ? '关闭'
               : '每 ${_config.intervalMinutes} 分钟'),
           trailing: DropdownButton<int>(
-            value: <int>[0, 15, 30, 60, 240, 720].contains(_config.intervalMinutes)
-                ? _config.intervalMinutes
-                : 0,
-            items: const <DropdownMenuItem<int>>[
-              DropdownMenuItem<int>(value: 0, child: Text('关闭')),
-              DropdownMenuItem<int>(value: 15, child: Text('15 分钟')),
-              DropdownMenuItem<int>(value: 30, child: Text('30 分钟')),
-              DropdownMenuItem<int>(value: 60, child: Text('1 小时')),
-              DropdownMenuItem<int>(value: 240, child: Text('4 小时')),
-              DropdownMenuItem<int>(value: 720, child: Text('12 小时')),
+            value: _intervalValue,
+            items: <DropdownMenuItem<int>>[
+              const DropdownMenuItem<int>(value: 0, child: Text('关闭')),
+              const DropdownMenuItem<int>(value: 5, child: Text('5 分钟')),
+              const DropdownMenuItem<int>(value: 10, child: Text('10 分钟')),
+              const DropdownMenuItem<int>(value: 15, child: Text('15 分钟')),
+              const DropdownMenuItem<int>(value: 30, child: Text('30 分钟')),
+              const DropdownMenuItem<int>(value: 60, child: Text('1 小时')),
+              const DropdownMenuItem<int>(value: 240, child: Text('4 小时')),
+              const DropdownMenuItem<int>(value: 720, child: Text('12 小时')),
+              if (_intervalValue == -2)
+                DropdownMenuItem<int>(
+                  value: -2,
+                  child: Text('当前 ${_config.intervalMinutes} 分钟'),
+                ),
+              const DropdownMenuItem<int>(value: -1, child: Text('自定义…')),
             ],
-            onChanged: (int? value) => _update(() async => _config.intervalMinutes = value ?? 0),
+            onChanged: (int? value) {
+              if (value == -1) {
+                _editCustomInterval();
+              } else if (value != null && value != -2) {
+                _update(() async => _config.intervalMinutes = value);
+              }
+            },
           ),
         ),
         _section(palette, '同步时机'),
