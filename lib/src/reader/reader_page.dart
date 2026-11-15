@@ -20,7 +20,7 @@ class ReaderPage extends StatefulWidget {
   State<ReaderPage> createState() => _ReaderPageState();
 }
 
-class _ReaderPageState extends State<ReaderPage> {
+class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   late List<Chapter> _chapters;
   ChapterRule _chapterRule = const ChapterRule.automatic();
   late int _chapterIndex;
@@ -33,7 +33,7 @@ class _ReaderPageState extends State<ReaderPage> {
   PageController? _controller;
   List<int> _bookmarks = const <int>[];
 
-  late final DateTime _sessionStart;
+  final Stopwatch _activeReading = Stopwatch();
   late final int _sessionStartChar;
 
   double _fontSize = 18;
@@ -43,6 +43,8 @@ class _ReaderPageState extends State<ReaderPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _activeReading.start();
     _chapters = splitChapters(widget.book.content);
     _chapterIndex = widget.book.chapterIndex.value;
     _openingChapterIndex = widget.book.chapterIndex.value;
@@ -51,7 +53,6 @@ class _ReaderPageState extends State<ReaderPage> {
       _chapterIndex = 0;
     }
     _pageIndex = widget.book.pageIndex.value;
-    _sessionStart = DateTime.now();
     _sessionStartChar = _absoluteChar(_openingChapterIndex, _openingCharOffset);
     widget.book.chapterCount = _chapters.length;
     final LibraryStore store = LibraryStore.instance;
@@ -64,9 +65,21 @@ class _ReaderPageState extends State<ReaderPage> {
 
   @override
   void dispose() {
+    _activeReading.stop();
+    WidgetsBinding.instance.removeObserver(this);
     _recordSession();
     _controller?.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Background time should never inflate reading statistics.
+    if (state == AppLifecycleState.resumed) {
+      _activeReading.start();
+    } else {
+      _activeReading.stop();
+    }
   }
 
   int _absoluteChar(int chapterIndex, int charOffset) {
@@ -76,7 +89,7 @@ class _ReaderPageState extends State<ReaderPage> {
 
   /// 只在真实停留超过阈值时记账，避免打开就退出也产生“阅读时长”。
   void _recordSession() {
-    final int seconds = DateTime.now().difference(_sessionStart).inSeconds;
+    final int seconds = _activeReading.elapsed.inSeconds;
     if (seconds < 10) return;
     final int currentChar = _absoluteChar(_chapterIndex, widget.book.charOffset.value);
     final int chars = currentChar > _sessionStartChar ? currentChar - _sessionStartChar : 0;
