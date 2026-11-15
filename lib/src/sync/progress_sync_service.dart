@@ -1,8 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
-import 'dart:typed_data';
-
 import 'package:crypto/crypto.dart' show sha256;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -80,7 +78,7 @@ class ProgressSyncService {
       password: credentials.webdavPassword,
     );
     final preferences = await SharedPreferences.getInstance();
-    final device = _getOrMakeDeviceId(preferences);
+    final device = await _getOrMakeDeviceId(preferences);
     final baselineKey =
         _baselinePrefix + sha256.convert(utf8.encode(credentials.fileUrl.toString())).toString();
 
@@ -147,6 +145,10 @@ class ProgressSyncService {
         continue;
       }
 
+      if (here.textHash != there.textHash) {
+        throw FormatException('《' + booksByHash[hash]!.first.title +
+            '》两台设备文本解析结果不一致，已停止同步以防止错位');
+      }
       if (here.samePosition(there)) {
         merged[hash] = there;
         continue;
@@ -198,6 +200,13 @@ class ProgressSyncService {
       }
     }
 
+    // Validate all inbound positions before writing any cloud changes.
+    for (final pair in toApply.entries) {
+      for (final book in booksByHash[pair.key] ?? const <Book>[]) {
+        _validateRemote(book, pair.value);
+      }
+    }
+
     // Keep entries for books not imported on this device. They must never be
     // treated as deleted simply because the local library is smaller.
     final hasCloudChanges = !_sameManifest(remote.entries, merged);
@@ -239,7 +248,7 @@ class ProgressSyncService {
     );
   }
 
-  String _getOrMakeDeviceId(SharedPreferences prefs) {
+  Future<String> _getOrMakeDeviceId(SharedPreferences prefs) async {
     final cached = prefs.getString(_deviceKey);
     if (cached != null && cached.length >= 16) return cached;
     final random = Random.secure();
@@ -247,7 +256,9 @@ class ProgressSyncService {
         .map((b) => b.toRadixString(16).padLeft(2, '0'))
         .join();
     // The device id is not an authentication credential.
-    prefs.setString(_deviceKey, value);
+    if (!await prefs.setString(_deviceKey, value)) {
+      throw StateError('无法保存本机设备标识，已停止同步');
+    }
     return value;
   }
 
@@ -273,10 +284,33 @@ class ProgressSyncService {
     return ProgressRecord(
       hash: digest, format: format, offset: absolute,
       page: 0, revision: 0, device: device, updatedAt: now,
+      textHash: sha256.convert(utf8.encode(book.content)).toString(),
     );
   }
 
+  void _validateRemote(Book book, ProgressRecord remote) {
+    if (remote.format != book.format.toUpperCase()) {
+      throw const FormatException('云端书籍格式不匹配');
+    }
+    if (remote.format == 'PDF') return;
+    final text = book.content;
+    if (remote.textHash != sha256.convert(utf8.encode(text)).toString()) {
+      throw const FormatException('云端文本与本地解析结果不一致');
+    }
+    if (remote.offset < 0 || remote.offset > text.length) {
+      throw const FormatException('云端阅读位置超出文本长度');
+    }
+    if (remote.offset > 0 && remote.offset < text.length &&
+        text.codeUnitAt(remote.offset) >= 0xDC00 &&
+        text.codeUnitAt(remote.offset) <= 0xDFFF &&
+        text.codeUnitAt(remote.offset - 1) >= 0xD800 &&
+        text.codeUnitAt(remote.offset - 1) <= 0xDBFF) {
+      throw const FormatException('云端阅读位置落在表情符号的半个字符中');
+    }
+  }
+
   Future<void> _apply(Book book, ProgressRecord remote) async {
+    _validateRemote(book, remote);
     if (book.format.toUpperCase() == 'PDF') {
       await library.applySyncedProgress(
         book, chapterIndex: 0, pageIndex: remote.page, charOffset: -1,
