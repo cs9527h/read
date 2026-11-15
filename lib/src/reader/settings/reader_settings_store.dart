@@ -35,6 +35,23 @@ class ReaderSettingsStore extends ChangeNotifier {
 
   final Map<String, ReaderSettings> _presets = <String, ReaderSettings>{};
 
+  Future<void> _settingWrites = Future<void>.value();
+
+  Future<void> _writeSetting(String key, String? value) {
+    // Keep slider updates in the same order they were issued. Earlier async
+    // writes must not overwrite newer typography changes after a fast drag.
+    final task = _settingWrites.catchError((Object _) {}).then((_) async {
+      final prefs = _prefs;
+      if (prefs == null) throw StateError('阅读配置尚未初始化');
+      final ok = value == null
+          ? await prefs.remove(key)
+          : await prefs.setString(key, value);
+      if (!ok) throw StateError('阅读配置持久化失败');
+    });
+    _settingWrites = task;
+    return task;
+  }
+
   bool _ready = false;
   bool get ready => _ready;
 
@@ -134,7 +151,7 @@ class ReaderSettingsStore extends ChangeNotifier {
     switch (scope) {
       case ReaderScope.global:
         _global = <String, Object?>{..._global, ...changed};
-        await _prefs?.setString(_globalKey, jsonEncode(_global));
+        await _writeSetting(_globalKey, jsonEncode(_global));
       case ReaderScope.theme:
         final String themeId = next.themeId;
         final Map<String, Object?> delta =
@@ -146,7 +163,7 @@ class ReaderSettingsStore extends ChangeNotifier {
           ...(_themeTypo[themeId] ?? const <String, Object?>{}),
           ...delta,
         };
-        await _prefs?.setString('$_themePrefix$themeId', jsonEncode(_themeTypo[themeId]));
+        await _writeSetting('$_themePrefix$themeId', jsonEncode(_themeTypo[themeId]));
       case ReaderScope.book:
         final Map<String, Object?> bookDelta =
             next.diffFrom(ReaderSettings(<String, Object?>{
@@ -154,9 +171,9 @@ class ReaderSettingsStore extends ChangeNotifier {
           ...(_themeTypo[next.themeId] ?? const <String, Object?>{}),
         }));
         _bookOverrides[bookId] = bookDelta;
-        await _prefs?.setString('$_bookPrefix$bookId', jsonEncode(bookDelta));
+        await _writeSetting('$_bookPrefix$bookId', jsonEncode(bookDelta));
         if (bookDelta.isEmpty) {
-          await _prefs?.remove('$_bookPrefix$bookId');
+          await _writeSetting('$_bookPrefix$bookId', null);
           _bookOverrides.remove(bookId);
         }
     }
@@ -167,11 +184,11 @@ class ReaderSettingsStore extends ChangeNotifier {
     switch (scope) {
       case ReaderScope.global:
         _global = <String, Object?>{};
-        await _prefs?.remove(_globalKey);
+        await _writeSetting(_globalKey, null);
       case ReaderScope.theme:
         final String themeId = resolve(bookId).themeId;
         _themeTypo.remove(themeId);
-        await _prefs?.remove('$_themePrefix$themeId');
+        await _writeSetting('$_themePrefix$themeId', null);
       case ReaderScope.book:
         _bookOverrides.remove(bookId);
         await _prefs?.remove('$_bookPrefix$bookId');
