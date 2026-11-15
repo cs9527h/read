@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import 'package:read/src/model/book.dart';
@@ -366,6 +368,24 @@ class _Cover extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Use the book's own embedded cover when available; keep a calm
+    // monochrome fallback for TXT, damaged images and E-Ink.
+    if (!kEink && book.coverPath != null) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(6),
+        child: Image.file(
+          File(book.coverPath!),
+          width: double.infinity,
+          height: double.infinity,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) => _fallback(context),
+        ),
+      );
+    }
+    return _fallback(context);
+  }
+
+  Widget _fallback(BuildContext context) {
     final int hash = book.title.runes.fold<int>(0, (int a, int b) => a + b);
     final List<double> shades = <double>[0.10, 0.18, 0.26, 0.34, 0.44];
     final double shade = shades[hash % shades.length];
