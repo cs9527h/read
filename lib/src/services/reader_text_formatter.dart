@@ -24,7 +24,16 @@ class ReaderTextFormatter {
         out.write(indent);
         atParagraphStart = false;
       }
-      out.writeCharCode(unit);
+      // Emit complete surrogate pairs so emoji and supplementary glyphs
+      // survive presentation formatting without replacement characters.
+      if (unit >= 0xD800 && unit <= 0xDBFF && i + 1 < end &&
+          source.codeUnitAt(i + 1) >= 0xDC00 &&
+          source.codeUnitAt(i + 1) <= 0xDFFF) {
+        out.write(source.substring(i, i + 2));
+        i++;
+      } else {
+        out.write(source.substring(i, i + 1));
+      }
       if (unit == 0x0A) {
         if (style.paragraphBlankLines > 0 &&
             i + 1 < source.length &&
