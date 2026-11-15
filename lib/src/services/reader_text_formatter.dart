@@ -15,7 +15,7 @@ class ReaderTextFormatter {
       return source.substring(start, end);
     }
     final out = StringBuffer();
-    final indent = '\u3000' * style.indentCharacters;
+    final indent = List<String>.filled(style.indentCharacters, '\u3000').join();
     var atParagraphStart = start == 0 ||
         source.codeUnitAt(start - 1) == 0x0A;
     for (var i = start; i < end; i++) {
@@ -29,7 +29,7 @@ class ReaderTextFormatter {
         if (style.paragraphBlankLines > 0 &&
             i + 1 < source.length &&
             source.codeUnitAt(i + 1) != 0x0A) {
-          out.write('\n' * style.paragraphBlankLines);
+          out.write(List<String>.filled(style.paragraphBlankLines, '\n').join());
         }
         atParagraphStart = true;
       }
