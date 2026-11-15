@@ -26,7 +26,7 @@ if "read-preview.jks" not in body:
         "    buildTypes {",
         '''    signingConfigs {
         create("release") {
-            storeFile = file("keystore/read-preview.jks")
+            storeFile = rootProject.file("keystore/read-preview.jks")
             storePassword = "read-preview-2026"
             keyAlias = "read-preview"
             keyPassword = "read-preview-2026"
