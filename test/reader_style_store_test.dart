@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:read/src/services/reader_style_store.dart';
+import 'package:read/src/services/paginator.dart';
 
 void main() {
   test('reading style JSON preserves layout, theme and controls', () {
@@ -61,9 +62,19 @@ void main() {
     expect(style.copyWith(horizontalMargin: 40).layoutKey, isNot(style.layoutKey));
   });
 
-  testWidgets('measured pagination respects accessibility text scale', (tester) async {
-    // TextPainter is only available with an initialized Flutter binding.
-    // The existing paginator tests separately assert exact content coverage.
-    expect(const ReaderStyle().textStyle().fontSize, 18);
+  testWidgets('pagination respects actual accessibility text scaling', (tester) async {
+    final content = List<String>.filled(240, '阅读器中文正文 ').join();
+    const style = TextStyle(fontSize: 18, height: 1.6);
+    final standard = paginateSlices(content, style, 240, 450);
+    final scaled = paginateSlices(
+      content,
+      style,
+      240,
+      450,
+      textScaler: const TextScaler.linear(1.4),
+    );
+    expect(standard.map((slice) => slice.textOf(content)).join(), content);
+    expect(scaled.map((slice) => slice.textOf(content)).join(), content);
+    expect(scaled.length, greaterThan(standard.length));
   });
 }
