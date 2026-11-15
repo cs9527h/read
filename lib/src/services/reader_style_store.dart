@@ -104,12 +104,12 @@ class ReaderStyle {
     double number(String key, double initial, double min, double max) {
       final v = m[key];
       if (v is! num || !v.isFinite) return initial;
-      return v.toDouble().clamp(min, max);
+      return v.toDouble().clamp(min, max).toDouble();
     }
     int integer(String key, int initial, int min, int max) {
       final v = m[key];
       if (v is! num || !v.isFinite) return initial;
-      return v.toInt().clamp(min, max);
+      return v.toInt().clamp(min, max).toInt();
     }
     bool boolean(String key, bool initial) => m[key] is bool ? m[key] as bool : initial;
     return ReaderStyle(
