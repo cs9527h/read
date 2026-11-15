@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import 'package:read/src/model/book.dart';
@@ -364,6 +366,40 @@ class _BookCell extends StatelessWidget {
 class _Cover extends StatelessWidget {
   const _Cover({required this.book});
 
+  final Book book;
+
+  @override
+  Widget build(BuildContext context) {
+    final String? path = book.coverPath;
+    if (path != null && path.isNotEmpty) {
+      final image = Image.file(
+        File(path),
+        fit: BoxFit.cover,
+        width: double.infinity,
+        errorBuilder: (context, error, stackTrace) =>
+            _FallbackCover(book: book),
+      );
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(kEink ? 0 : 6),
+        child: kEink
+            ? ColorFiltered(
+                colorFilter: const ColorFilter.matrix(<double>[
+                  0.2126, 0.7152, 0.0722, 0, 0,
+                  0.2126, 0.7152, 0.0722, 0, 0,
+                  0.2126, 0.7152, 0.0722, 0, 0,
+                  0, 0, 0, 1, 0,
+                ]),
+                child: image,
+              )
+            : image,
+      );
+    }
+    return _FallbackCover(book: book);
+  }
+}
+
+class _FallbackCover extends StatelessWidget {
+  const _FallbackCover({required this.book});
   final Book book;
 
   @override
