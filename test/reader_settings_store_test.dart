@@ -130,4 +130,30 @@ void main() {
     expect(store.hasOverride('book-stale', ReaderScope.book), isFalse);
   });
 
+  test('修改全局参数不应泄漏当前书籍的专属字号边距', () async {
+    final store = ReaderSettingsStore.instance;
+    await store.save(
+      'local-a',
+      store.resolve('local-a').patch(<String, Object?>{
+        'fontSize': 30.0,
+        'marginLeft': 39.0,
+      }),
+      ReaderScope.book,
+    );
+    await store.save(
+      'local-a',
+      store.resolve('local-a').patch(<String, Object?>{'lineHeight': 2.2}),
+      ReaderScope.global,
+    );
+    expect(store.resolve('local-a').fontSize, 30.0);
+    expect(store.resolve('local-a').marginLeft, 39.0);
+    expect(store.resolve('other-b').fontSize, 18.0);
+    expect(store.resolve('other-b').marginLeft, 20.0);
+    expect(store.resolve('other-b').lineHeight, 2.2);
+    await store.init();
+    expect(store.resolve('other-b').fontSize, 18.0);
+    expect(store.resolve('other-b').lineHeight, 2.2);
+    expect(store.resolve('local-a').fontSize, 30.0);
+  });
+
 }
