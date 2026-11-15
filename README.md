@@ -71,6 +71,7 @@ lib/src/reader/          阅读页、分页引擎、设置面板、PDF、原生�
 lib/src/services/        书架、书签、高亮、统计、字体、分章
 lib/src/bookshelf/       书架与书籍详情
 docs/V1_100_STATUS.md    V1.0 100 项逐项状态与证据
+docs/READ_1000_EXECUTION_STATUS.md/.csv  1000 项完整台账（未完成项不冒充通过）
 docs/READER_100_STATUS.md 早期阅读 100 项状态
 test/                    单元与组件测试
 .github/workflows/       Android / Windows / Release
