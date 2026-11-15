@@ -301,7 +301,6 @@ class _BookCell extends StatelessWidget {
   Widget build(BuildContext context) {
     final ReadPalette palette = ReadPalette.of(context);
     final String progress = _progressLabel(book);
-    final bool read = book.lastReadAt != null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -335,8 +334,6 @@ class _BookCell extends StatelessWidget {
                 style: TextStyle(fontSize: 11, color: palette.muted),
               ),
             ),
-            if (read)
-              Icon(Icons.cloud_done_outlined, size: 13, color: palette.muted),
             InkWell(
               onTap: onMenu,
               child: Padding(
