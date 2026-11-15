@@ -237,20 +237,40 @@ class _ReaderPageState extends State<ReaderPage> {
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(24, 4, 24, 20),
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: <Widget>[
-                    Flexible(
-                      child: Text(
-                        chapter.title,
-                        style: TextStyle(fontSize: 12, color: palette.foreground.withValues(alpha: 0.65)),
-                        overflow: TextOverflow.ellipsis,
+                    IconButton(
+                      tooltip: '上一页（上一章）',
+                      icon: Icon(Icons.chevron_left_rounded, color: palette.foreground),
+                      onPressed: _chapterIndex == 0 && _pageIndex == 0
+                          ? null
+                          : () => _turnPage(-1),
+                    ),
+                    Expanded(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          Text(
+                            chapter.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 11, color: palette.foreground.withValues(alpha: 0.65)),
+                          ),
+                          Text(
+                            '${_pageIndex + 1} / ${_pageSlices.length}',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: palette.foreground),
+                          ),
+                        ],
                       ),
                     ),
-                    Text(
-                      '${_pageIndex + 1} / ${_pageSlices.length}',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: palette.foreground.withValues(alpha: 0.65)),
+                    IconButton(
+                      tooltip: '下一页（下一章）',
+                      icon: Icon(Icons.chevron_right_rounded, color: palette.foreground),
+                      onPressed: _chapterIndex == _chapters.length - 1 &&
+                              _pageIndex >= _pageSlices.length - 1
+                          ? null
+                          : () => _turnPage(1),
                     ),
                   ],
                 ),
@@ -302,6 +322,38 @@ class _ReaderPageState extends State<ReaderPage> {
       });
       LibraryStore.instance.saveProgress(widget.book);
     });
+  }
+
+  /// Unlike PageView, this navigates past chapter edges.
+  void _turnPage(int direction) {
+    if (direction == 0 || _pageSlices.isEmpty || _controller == null) return;
+    final target = _pageIndex + direction;
+    if (target >= 0 && target < _pageSlices.length) {
+      if (kEink) {
+        _controller!.jumpToPage(target);
+      } else {
+        _controller!.animateToPage(
+          target,
+          duration: const Duration(milliseconds: 150),
+          curve: Curves.easeOutCubic,
+        );
+      }
+      return;
+    }
+    final nextChapter = _chapterIndex + direction;
+    if (nextChapter < 0 || nextChapter >= _chapters.length) return;
+    setState(() {
+      _chapterIndex = nextChapter;
+      _pageIndex = 0;
+      _pageSlices = const <PageSlice>[];
+      _measureKey = null;
+      widget.book.chapterIndex.value = nextChapter;
+      widget.book.pageIndex.value = 0;
+      widget.book.charOffset.value = direction < 0
+          ? _chapters[nextChapter].length
+          : 0;
+    });
+    LibraryStore.instance.saveProgress(widget.book);
   }
 
   int _absoluteReadingOffset() {
