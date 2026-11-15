@@ -1,16 +1,25 @@
+import 'dart:async';
+import 'dart:io';
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'package:read/src/model/book.dart';
-import 'package:read/src/services/chapter_splitter.dart';
-import 'package:read/src/services/chapter_rule_store.dart';
+import 'package:read/src/reader/engine/reader_engine.dart';
+import 'package:read/src/reader/settings/reader_settings.dart';
+import 'package:read/src/reader/settings/reader_settings_store.dart';
+import 'package:read/src/reader/settings/reader_theme.dart';
+import 'package:read/src/reader/settings/user_font_store.dart';
+import 'package:read/src/reader/widgets/reader_settings_sheet.dart';
 import 'package:read/src/services/book_search.dart';
 import 'package:read/src/services/bookmark_store.dart';
-import 'package:read/src/services/paginator.dart';
+import 'package:read/src/services/chapter_rule_store.dart';
+import 'package:read/src/services/chapter_splitter.dart';
 import 'package:read/src/services/library_store.dart';
 import 'package:read/src/services/reading_stats_store.dart';
-import 'package:read/src/theme.dart';
 
-/// 阅读页：按章节分页，支持目录跳转、字号/行距/背景调整，进度自动保存。
+/// 阅读页：真实排版分页、翻页、菜单、书签、目录与全部阅读设置都从这里生效。
 class ReaderPage extends StatefulWidget {
   const ReaderPage({super.key, required this.book});
 
@@ -21,358 +30,1303 @@ class ReaderPage extends StatefulWidget {
 }
 
 class _ReaderPageState extends State<ReaderPage> {
-  late List<Chapter> _chapters;
-  ChapterRule _chapterRule = const ChapterRule.automatic();
-  late int _chapterIndex;
-  late final int _openingChapterIndex;
-  late final int _openingCharOffset;
+  final ReaderSettingsStore _store = ReaderSettingsStore.instance;
+  ReaderSettings _settings = ReaderSettings();
+
+  List<Chapter> _chapters = const <Chapter>[];
+  ChapterRule _rule = const ChapterRule.automatic();
+  int _chapterIndex = 0;
   int _pageIndex = 0;
 
-  List<PageSlice> _pageSlices = const <PageSlice>[];
-  String? _measureKey;
-  PageController? _controller;
+  PaginatedChapter? _pagination;
+  PageController? _pageController;
+  ScrollController? _scrollController;
   List<int> _bookmarks = const <int>[];
 
-  late final DateTime _sessionStart;
-  late final int _sessionStartChar;
+  bool _menuVisible = false;
+  bool _loading = true;
+  String _layoutKey = '';
+  double _pageWidth = 520;
+  double _pageHeight = 800;
+  int? _anchorOffset;
 
-  double _fontSize = 18;
-  double _lineHeight = 1.7;
-  int _bgIndex = 0;
+  Timer? _autoTurnTimer;
+  Timer? _clockTimer;
+  Timer? _statsTimer;
+  int _sessionSeconds = 0;
+  int _sessionChars = 0;
+  int _lastSavedOffset = 0;
 
   @override
   void initState() {
     super.initState();
-    _chapters = splitChapters(widget.book.content);
-    _chapterIndex = widget.book.chapterIndex.value;
-    _openingChapterIndex = widget.book.chapterIndex.value;
-    _openingCharOffset = widget.book.charOffset.value;
-    if (_chapterIndex < 0 || _chapterIndex >= _chapters.length) {
-      _chapterIndex = 0;
-    }
-    _pageIndex = widget.book.pageIndex.value;
-    _sessionStart = DateTime.now();
-    _sessionStartChar = _absoluteChar(_openingChapterIndex, _openingCharOffset);
-    widget.book.chapterCount = _chapters.length;
-    final LibraryStore store = LibraryStore.instance;
-    _fontSize = store.fontSize;
-    _lineHeight = store.lineHeight;
-    _bgIndex = kEink ? 0 : store.backgroundIndex;
-    _loadBookmarks();
-    _loadChapterRule();
+    _settings = _store.resolve(widget.book.id);
+    _store.addListener(_onStoreChanged);
+    UserFontStore.instance.addListener(_onStoreChanged);
+    _initChapters();
+    _initBookmarks();
+    _applySystemUi();
+    _clockTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) setState(() {});
+    });
+    _statsTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      if (!mounted || _loading) return;
+      _sessionSeconds += 10;
+      _flushStats();
+    });
+    _startAutoTurn();
   }
 
   @override
   void dispose() {
-    _recordSession();
-    _controller?.dispose();
+    _store.removeListener(_onStoreChanged);
+    UserFontStore.instance.removeListener(_onStoreChanged);
+    _autoTurnTimer?.cancel();
+    _clockTimer?.cancel();
+    _statsTimer?.cancel();
+    _flushStats();
+    _pageController?.dispose();
+    _scrollController?.dispose();
+    _restoreSystemUi();
     super.dispose();
   }
 
-  int _absoluteChar(int chapterIndex, int charOffset) {
-    if (chapterIndex < 0 || chapterIndex >= _chapters.length) return 0;
-    return _chapters[chapterIndex].start + (charOffset < 0 ? 0 : charOffset);
+  void _onStoreChanged() {
+    if (!mounted) return;
+    final ReaderSettings next = _store.resolve(widget.book.id);
+    if (next != _settings) {
+      final int anchor = _currentAbsoluteOffset;
+      setState(() {
+        _settings = next;
+        _anchorOffset = anchor;
+        _layoutKey = '';
+        _pagination = null;
+      });
+      _startAutoTurn();
+      _applySystemUi();
+    } else {
+      setState(() {});
+    }
   }
 
-  /// 只在真实停留超过阈值时记账，避免打开就退出也产生“阅读时长”。
-  void _recordSession() {
-    final int seconds = DateTime.now().difference(_sessionStart).inSeconds;
-    if (seconds < 10) return;
-    final int currentChar = _absoluteChar(_chapterIndex, widget.book.charOffset.value);
-    final int chars = currentChar > _sessionStartChar ? currentChar - _sessionStartChar : 0;
+  Future<void> _initChapters() async {
+    final ChapterRule rule = await ChapterRuleStore.load(widget.book.id);
+    if (!mounted) return;
+    final List<Chapter> chapters =
+        splitChapters(widget.book.content, rule: rule);
+    final int savedChapter =
+        widget.book.chapterIndex.value.clamp(0, chapters.length - 1);
+    final int savedOffset = widget.book.charOffset.value;
+    setState(() {
+      _rule = rule;
+      _chapters = chapters;
+      _chapterIndex = savedChapter;
+      _anchorOffset = savedOffset >= 0 ? savedOffset : 0;
+      _loading = false;
+    });
+    LibraryStore.instance.noteChapterCount(widget.book, chapters.length);
+  }
+
+  Future<void> _initBookmarks() async {
+    final List<int> saved = await BookmarkStore.load(widget.book.id);
+    if (mounted) setState(() => _bookmarks = saved);
+  }
+
+  // ---------------------------------------------------------------------------
+  // 系统 UI / 方向
+  // ---------------------------------------------------------------------------
+
+  void _applySystemUi() {
+    final bool hideBars =
+        _settings.immersive && !_settings.showSystemBars;
+    SystemChrome.setEnabledSystemUIMode(
+      hideBars ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge,
+    );
+    _applyOrientation();
+  }
+
+  void _applyOrientation() {
+    switch (_settings.orientation) {
+      case 'portrait':
+        SystemChrome.setPreferredOrientations(<DeviceOrientation>[
+          DeviceOrientation.portraitUp,
+        ]);
+      case 'landscape':
+        SystemChrome.setPreferredOrientations(<DeviceOrientation>[
+          DeviceOrientation.landscapeLeft,
+          DeviceOrientation.landscapeRight,
+        ]);
+      default:
+        SystemChrome.setPreferredOrientations(<DeviceOrientation>[
+          DeviceOrientation.portraitUp,
+          DeviceOrientation.portraitDown,
+          DeviceOrientation.landscapeLeft,
+          DeviceOrientation.landscapeRight,
+        ]);
+    }
+  }
+
+  void _restoreSystemUi() {
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    SystemChrome.setPreferredOrientations(<DeviceOrientation>[
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
+  }
+
+  // ---------------------------------------------------------------------------
+  // 排版 / 分页
+  // ---------------------------------------------------------------------------
+
+  bool get _twoColumns {
+    if (_settings.columns == 'one') return false;
+    if (_settings.columns == 'two') return true;
+    return _pageWidth > 620 && _pageWidth > _pageHeight * 1.05;
+  }
+
+  double get _headerHeight =>
+      _settings.headerShow ? _settings.headerFontSize * 2 + 8 : 0;
+  double get _footerHeight => _settings.footerShow
+      ? _settings.footerFontSize * 2 + (_settings.footerProgressBar ? 8 : 0) + 6
+      : 0;
+
+  double get _textScale {
+    final TextScaler scaler = MediaQuery.textScalerOf(context);
+    return scaler.scale(100) / 100;
+  }
+
+  void _scheduleLayout(double contentWidth, double contentHeight) {
+    if (contentWidth <= 0 || contentHeight <= 0) return;
+    final double bodyHeight = contentHeight - _headerHeight - _footerHeight;
+    final double measureWidth = _twoColumns
+        ? (contentWidth - _settings.columnGap) / 2
+        : contentWidth;
+    final String key = <String>[
+      contentWidth.toStringAsFixed(1),
+      bodyHeight.toStringAsFixed(1),
+      _twoColumns.toString(),
+      _textScale.toStringAsFixed(2),
+      _settings.toJsonString(),
+      _chapterIndex.toString(),
+      _chapterIndex < _chapters.length ? _chapters[_chapterIndex].length.toString() : '0',
+    ].join('|');
+    if (key == _layoutKey) return;
+    if (measureWidth <= 0 || bodyHeight <= 0) return;
+    _layoutKey = key;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _relayout(measureWidth, bodyHeight);
+    });
+  }
+
+  void _relayout(double width, double height) {
+    if (_chapterIndex < 0 || _chapterIndex >= _chapters.length) return;
+    final Chapter chapter = _chapters[_chapterIndex];
+    final int savedOffset = (_anchorOffset ?? widget.book.charOffset.value)
+        .clamp(0, chapter.length);
+    _anchorOffset = null;
+    final PaginatedChapter pagination = ReaderEngine.paginate(
+      chapterText: chapter.slice(widget.book.content),
+      chapterTitle: chapter.title,
+      settings: _settings,
+      width: width,
+      height: height,
+      textScale: _textScale,
+    );
+    final int page = pagination.pageForSourceOffset(savedOffset);
+    _pageWidth = width;
+    _pageHeight = height;
+    setState(() {
+      _pagination = pagination;
+      _pageIndex = page;
+    });
+    _resetControllers(page);
+    widget.book.chapterIndex.value = _chapterIndex;
+    widget.book.pageIndex.value = _renderPageIndex(page);
+    if (pagination.pages.isNotEmpty) {
+      widget.book.charOffset.value =
+          pagination.pages[page.clamp(0, pagination.pages.length - 1)].sourceStart;
+    }
+    _lastSavedOffset = widget.book.charOffset.value;
+    LibraryStore.instance.saveProgress(widget.book);
+  }
+
+  void _resetControllers(int page) {
+    _pageController?.dispose();
+    _pageController = PageController(initialPage: _renderPageIndex(page));
+    _scrollController?.dispose();
+    _scrollController = ScrollController();
+  }
+
+  int get _renderPageCount {
+    final PaginatedChapter? p = _pagination;
+    if (p == null) return 0;
+    return _twoColumns ? (p.pages.length + 1) ~/ 2 : p.pages.length;
+  }
+
+  int _renderPageIndex(int columnPage) =>
+      _twoColumns ? columnPage ~/ 2 : columnPage;
+
+  int get _currentAbsoluteOffset {
+    final PaginatedChapter? p = _pagination;
+    if (p == null || p.pages.isEmpty || _chapterIndex >= _chapters.length) {
+      final int saved = widget.book.charOffset.value;
+      return saved < 0 ? 0 : saved;
+    }
+    final int column = _pageIndex.clamp(0, p.pages.length - 1);
+    return _chapters[_chapterIndex].start + p.pages[column].sourceStart;
+  }
+
+  void _saveProgress() {
+    final PaginatedChapter? p = _pagination;
+    if (p == null || p.pages.isEmpty) return;
+    final int column = _pageIndex.clamp(0, p.pages.length - 1);
+    final int offset = p.pages[column].sourceStart;
+    final int delta = (offset - _lastSavedOffset).abs();
+    if (delta > 0) {
+      _sessionChars += delta;
+      _lastSavedOffset = offset;
+    }
+    widget.book.chapterIndex.value = _chapterIndex;
+    widget.book.pageIndex.value = _renderPageIndex(column);
+    widget.book.charOffset.value = offset;
+    LibraryStore.instance.saveProgress(widget.book);
+    if (_chapters.isNotEmpty) {
+      final double percent =
+          (_chapterIndex + (column / math.max(1, p.pages.length))) /
+              _chapters.length;
+      if (percent >= 0.995) {
+        ReadingStatsStore.instance.markFinished(widget.book.id);
+      }
+    }
+  }
+
+  void _flushStats() {
+    final int seconds = _sessionSeconds;
+    final int chars = _sessionChars;
+    if (seconds <= 0 && chars <= 0) return;
+    _sessionSeconds = 0;
+    _sessionChars = 0;
     ReadingStatsStore.instance.record(
       bookId: widget.book.id,
       seconds: seconds,
       chars: chars,
     );
-    LibraryStore.instance.noteChapterCount(widget.book, _chapters.length);
   }
 
-  _Palette get _palette {
-    if (kEink) return const _Palette(Colors.white, Colors.black);
-    switch (_bgIndex) {
-      case 1:
-        return const _Palette(Color(0xFFF5EFE1), Color(0xFF41382B));
-      case 2:
-        return const _Palette(Color(0xFF121212), Color(0xFFBDBDBD));
-      default:
-        return const _Palette(Color(0xFFFCFCF8), Color(0xFF24332F));
-    }
+  void _startAutoTurn() {
+    _autoTurnTimer?.cancel();
+    if (!_settings.autoTurn || _settings.minimalMode) return;
+    _autoTurnTimer = Timer.periodic(
+      Duration(seconds: _settings.autoTurnSeconds.clamp(3, 600)),
+      (_) {
+        if (!mounted || _menuVisible) return;
+        _turnPage(1);
+      },
+    );
   }
+
+  // ---------------------------------------------------------------------------
+  // 翻页
+  // ---------------------------------------------------------------------------
+
+  bool get _showScroll => _settings.pageTurnMode == 'scroll';
+
+  void _turnPage(int direction) {
+    final int d = _settings.reverseDirection ? -direction : direction;
+    final PaginatedChapter? p = _pagination;
+    if (p == null) return;
+    if (_showScroll) {
+      if (_scrollController?.hasClients != true) return;
+      final ScrollPosition pos = _scrollController!.position;
+      final double target = d > 0
+          ? pos.pixels + pos.viewportDimension * 0.86
+          : pos.pixels - pos.viewportDimension * 0.86;
+      _scrollController!.animateTo(
+        target.clamp(pos.minScrollExtent, pos.maxScrollExtent),
+        duration: Duration(milliseconds: _settings.animationMs),
+        curve: Curves.easeOut,
+      );
+      return;
+    }
+    final int targetColumn = _pageIndex + d;
+    if (targetColumn < 0) {
+      if (_chapterIndex > 0) _gotoChapter(_chapterIndex - 1, atEnd: true);
+      return;
+    }
+    if (targetColumn >= p.pages.length) {
+      if (_chapterIndex < _chapters.length - 1) {
+        _gotoChapter(_chapterIndex + 1);
+      } else {
+        ReadingStatsStore.instance.markFinished(widget.book.id);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('已经是最后一页')),
+        );
+      }
+      return;
+    }
+    final int renderIndex = _renderPageIndex(targetColumn);
+    final PageController? controller = _pageController;
+    if (controller != null && controller.hasClients) {
+      if (_settings.pageTurnMode == 'none') {
+        controller.jumpToPage(renderIndex);
+      } else {
+        controller.animateToPage(
+          renderIndex,
+          duration: Duration(
+            milliseconds: _settings.minimalMode ? 0 : _settings.animationMs,
+          ),
+          curve: Curves.easeOutCubic,
+        );
+      }
+    }
+    setState(() => _pageIndex = targetColumn);
+    _saveProgress();
+  }
+
+  void _onPageChanged(int renderIndex) {
+    final int column = _twoColumns ? renderIndex * 2 : renderIndex;
+    setState(() => _pageIndex = column);
+    _saveProgress();
+  }
+
+  Future<void> _gotoChapter(int index, {bool atEnd = false}) async {
+    if (index < 0 || index >= _chapters.length) return;
+    final Chapter chapter = _chapters[index];
+    setState(() {
+      _chapterIndex = index;
+      _pageIndex = 0;
+      _anchorOffset = atEnd ? math.max(0, chapter.length - 1) : 0;
+      _pagination = null;
+      _layoutKey = '';
+      widget.book.chapterIndex.value = index;
+      widget.book.pageIndex.value = 0;
+      widget.book.charOffset.value = _anchorOffset!;
+    });
+    _lastSavedOffset = _anchorOffset!;
+    await LibraryStore.instance.saveProgress(widget.book);
+  }
+
+  void _jumpToAbsolute(int absoluteOffset) {
+    int chapterIndex = _chapters.length - 1;
+    for (int i = 0; i < _chapters.length; i++) {
+      if (absoluteOffset < _chapters[i].end) {
+        chapterIndex = i;
+        break;
+      }
+    }
+    final Chapter chapter = _chapters[chapterIndex];
+    setState(() {
+      _chapterIndex = chapterIndex;
+      _pageIndex = 0;
+      _anchorOffset = (absoluteOffset - chapter.start).clamp(0, chapter.length);
+      _pagination = null;
+      _layoutKey = '';
+      widget.book.chapterIndex.value = chapterIndex;
+      widget.book.pageIndex.value = 0;
+      widget.book.charOffset.value = _anchorOffset!;
+    });
+    _lastSavedOffset = _anchorOffset!;
+    LibraryStore.instance.saveProgress(widget.book);
+  }
+
+  // ---------------------------------------------------------------------------
+  // 构建
+  // ---------------------------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
-    final _Palette palette = _palette;
-    final Chapter chapter = _chapters[_chapterIndex];
-    final String chapterText = chapter.slice(widget.book.content);
-    final int bookmarkOffset = chapter.start +
-        (_pageSlices.isNotEmpty && _pageIndex < _pageSlices.length
-            ? _pageSlices[_pageIndex].start
-            : widget.book.charOffset.value.clamp(0, chapter.length));
-    final bool bookmarked = _bookmarks.contains(bookmarkOffset);
+    final Brightness brightness = MediaQuery.platformBrightnessOf(context);
+    final ReaderTheme theme = _store.effectiveTheme(_settings, brightness);
+    final Color background = Color(_settings.backgroundColor ?? theme.background);
+    final Color foreground = Color(_settings.textColor ?? theme.foreground);
+    final Color secondary = Color(theme.secondary);
+
     return Scaffold(
-      backgroundColor: palette.background,
-      appBar: AppBar(
-        backgroundColor: palette.background,
-        elevation: 0,
-        surfaceTintColor: Colors.transparent,
-        foregroundColor: palette.foreground,
-        title: Text(
-          widget.book.title,
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: palette.foreground,
-          ),
-          overflow: TextOverflow.ellipsis,
-        ),
-        actions: <Widget>[
-          IconButton(
-            tooltip: bookmarked ? '移除本页书签' : '添加本页书签',
-            icon: Icon(
-              bookmarked ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
-              color: palette.foreground,
-            ),
-            onPressed: _toggleCurrentBookmark,
-          ),
-          PopupMenuButton<String>(
-            tooltip: '阅读工具',
-            icon: Icon(Icons.more_vert_rounded, color: palette.foreground),
-            onSelected: (value) {
-              switch (value) {
-                case 'search':
-                  _searchInBook();
-                case 'bookmarks':
-                  _showBookmarks();
-                case 'chapters':
-                  _showChapters();
-                case 'rules':
-                  _showChapterRules();
-                case 'settings':
-                  _showSettings();
-              }
-            },
-            itemBuilder: (BuildContext context) => const <PopupMenuEntry<String>>[
-              PopupMenuItem<String>(
-                value: 'search',
-                child: ListTile(
-                  leading: Icon(Icons.search_rounded),
-                  title: Text('书内搜索'),
-                  dense: true,
-                ),
-              ),
-              PopupMenuItem<String>(
-                value: 'chapters',
-                child: ListTile(
-                  leading: Icon(Icons.list_rounded),
-                  title: Text('章节目录'),
-                  dense: true,
-                ),
-              ),
-              PopupMenuItem<String>(
-                value: 'bookmarks',
-                child: ListTile(
-                  leading: Icon(Icons.collections_bookmark_outlined),
-                  title: Text('我的书签'),
-                  dense: true,
-                ),
-              ),
-              PopupMenuItem<String>(
-                value: 'rules',
-                child: ListTile(
-                  leading: Icon(Icons.tune_rounded),
-                  title: Text('分章规则'),
-                  dense: true,
-                ),
-              ),
-              PopupMenuItem<String>(
-                value: 'settings',
-                child: ListTile(
-                  leading: Icon(Icons.text_fields_rounded),
-                  title: Text('阅读设置'),
-                  dense: true,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-      body: LayoutBuilder(
-        builder: (BuildContext context, BoxConstraints constraints) {
-          _maybeMeasure(constraints.biggest, chapter);
-          if (_pageSlices.isEmpty) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          return Column(
-            children: <Widget>[
-              Expanded(
-                child: PageView.builder(
-                  controller: _controller,
-                  itemCount: _pageSlices.length,
-                  onPageChanged: (int index) {
-                    _pageIndex = index;
-                    widget.book.chapterIndex.value = _chapterIndex;
-                    widget.book.pageIndex.value = index;
-                    if (index < _pageSlices.length) {
-                      widget.book.charOffset.value = _pageSlices[index].start;
-                    }
-                    LibraryStore.instance.saveProgress(widget.book);
-                    setState(() {});
-                  },
-                  itemBuilder: (BuildContext context, int index) => Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: constraints.maxWidth > 720 ? 64 : 24,
-                      vertical: 12,
-                    ),
-                    child: Text(
-                      _pageSlices[index].textOf(chapterText),
-                      style: TextStyle(
-                        fontSize: _fontSize,
-                        height: _lineHeight,
-                        color: palette.foreground,
-                        letterSpacing: 0.15,
-                      ),
-                    ),
+      backgroundColor: background,
+      body: Stack(
+        children: <Widget>[
+          _buildBackground(background),
+          SafeArea(
+            top: _settings.showSystemBars,
+            bottom: _settings.showSystemBars,
+            child: LayoutBuilder(
+              builder: (BuildContext context, BoxConstraints outer) {
+                return Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    _settings.marginLeft,
+                    _settings.marginTop,
+                    _settings.marginRight,
+                    _settings.marginBottom,
                   ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(24, 4, 24, 20),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: <Widget>[
-                    Flexible(
-                      child: Text(
-                        chapter.title,
-                        style: TextStyle(fontSize: 12, color: palette.foreground.withValues(alpha: 0.65)),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    Text(
-                      '${_pageIndex + 1} / ${_pageSlices.length}',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: palette.foreground.withValues(alpha: 0.65)),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          );
-        },
+                  child: LayoutBuilder(
+                    builder: (BuildContext context, BoxConstraints inner) {
+                      _scheduleLayout(inner.maxWidth, inner.maxHeight);
+                      return Column(
+                        children: <Widget>[
+                          _buildHeader(secondary),
+                          Expanded(
+                            child: _buildPageArea(foreground, secondary),
+                          ),
+                          _buildFooter(secondary),
+                        ],
+                      );
+                    },
+                  ),
+                );
+              },
+            ),
+          ),
+          _buildTapLayer(),
+          _buildMenu(background, foreground, secondary),
+          _buildBrightnessOverlay(),
+        ],
       ),
     );
   }
 
-  void _maybeMeasure(Size size, Chapter chapter) {
-    final String key =
-        '${size.width}x${size.height}-$_fontSize-$_lineHeight-$_chapterIndex';
-    if (key == _measureKey) return;
-    _measureKey = key;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      final double width = size.width - (size.width > 720 ? 128 : 48);
-      final double height = size.height - 56;
-      if (width <= 0 || height <= 0) return;
-      final String chapterText = chapter.slice(widget.book.content);
-      final List<PageSlice> slices = paginateSlices(
-        chapterText,
-        TextStyle(fontSize: _fontSize, height: _lineHeight),
-        width,
-        height,
-      );
-      // An exact source range is more reliable than indexOf(pageText), which
-      // becomes ambiguous when the same paragraph or whitespace repeats.
-      int targetPage = _pageIndex;
-      final int savedOffset = widget.book.charOffset.value;
-      if (savedOffset >= 0) {
-        targetPage = 0;
-        for (int i = 0; i < slices.length; i++) {
-          if (slices[i].start > savedOffset) break;
-          targetPage = i;
-        }
-      }
-      if (!mounted) return;
-      setState(() {
-        _pageSlices = slices;
-        _pageIndex = targetPage.clamp(0, slices.length - 1);
-        _controller?.dispose();
-        _controller = PageController(initialPage: _pageIndex);
-        widget.book.chapterIndex.value = _chapterIndex;
-        widget.book.pageIndex.value = _pageIndex;
-        widget.book.charOffset.value = slices[_pageIndex].start;
-      });
-      LibraryStore.instance.saveProgress(widget.book);
-    });
-  }
-
-  int _absoluteReadingOffset() {
-    final Chapter chapter = _chapters[_chapterIndex];
-    final int local = (_pageSlices.isNotEmpty &&
-            _pageIndex >= 0 &&
-            _pageIndex < _pageSlices.length)
-        ? _pageSlices[_pageIndex].start
-        : widget.book.charOffset.value.clamp(0, chapter.length);
-    return chapter.start + local;
-  }
-
-  void _applyChapterRule(ChapterRule rule, {int? absoluteOverride}) {
-    final int absolute = absoluteOverride ?? _absoluteReadingOffset();
-    final List<Chapter> next =
-        splitChapters(widget.book.content, rule: rule);
-    int index = next.length - 1;
-    for (int i = 0; i < next.length; i++) {
-      if (absolute < next[i].end) {
-        index = i;
-        break;
-      }
+  Widget _buildBackground(Color background) {
+    final String? path = _settings.bgImagePath;
+    final File? file = path == null || path.isEmpty ? null : File(path);
+    if (file == null || !file.existsSync()) {
+      return Positioned.fill(child: ColoredBox(color: background));
     }
-    final Chapter selected = next[index];
-    setState(() {
-      _chapterRule = rule;
-      _chapters = next;
-      _chapterIndex = index;
-      _pageIndex = 0;
-      _pageSlices = const <PageSlice>[];
-      _measureKey = null;
-      widget.book.chapterIndex.value = index;
-      widget.book.pageIndex.value = 0;
-      widget.book.charOffset.value =
-          (absolute - selected.start).clamp(0, selected.length);
-    });
+    BoxFit fit = BoxFit.cover;
+    switch (_settings.bgImageFit) {
+      case 'contain':
+        fit = BoxFit.contain;
+      case 'fill':
+        fit = BoxFit.fill;
+      case 'center':
+        fit = BoxFit.none;
+    }
+    return Positioned.fill(
+      child: Stack(
+        fit: StackFit.expand,
+        children: <Widget>[
+          ColoredBox(color: background),
+          Opacity(
+            opacity: _settings.bgImageOpacity.clamp(0, 1),
+            child: Image.file(file, fit: fit),
+          ),
+          if (_settings.bgImageDim > 0)
+            ColoredBox(
+              color: Colors.black.withValues(alpha: _settings.bgImageDim),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBrightnessOverlay() {
+    final double reduce = _settings.followSystemBrightness
+        ? 0
+        : (1 - _settings.brightness).clamp(0, 0.8);
+    if (reduce <= 0) return const SizedBox.shrink();
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: ColoredBox(color: Colors.black.withValues(alpha: reduce)),
+      ),
+    );
+  }
+
+  Widget _buildHeader(Color secondary) {
+    if (!_settings.headerShow) return const SizedBox.shrink();
+    return SizedBox(
+      height: _headerHeight,
+      child: Row(
+        children: <Widget>[
+          Expanded(
+            flex: 2,
+            child: _templateText(
+              _settings.headerLeft,
+              secondary,
+              _settings.headerFontSize,
+              _settings.headerColor,
+              _settings.headerOpacity,
+              TextAlign.left,
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: _templateText(
+              _settings.headerCenter,
+              secondary,
+              _settings.headerFontSize,
+              _settings.headerColor,
+              _settings.headerOpacity,
+              TextAlign.center,
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: _templateText(
+              _settings.headerRight,
+              secondary,
+              _settings.headerFontSize,
+              _settings.headerColor,
+              _settings.headerOpacity,
+              TextAlign.right,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFooter(Color secondary) {
+    if (!_settings.footerShow) return const SizedBox.shrink();
+    return SizedBox(
+      height: _footerHeight,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Expanded(
+                flex: 2,
+                child: _templateText(
+                  _settings.footerLeft,
+                  secondary,
+                  _settings.footerFontSize,
+                  _settings.footerColor,
+                  _settings.footerOpacity,
+                  TextAlign.left,
+                ),
+              ),
+              Expanded(
+                flex: 3,
+                child: _templateText(
+                  _settings.footerCenter,
+                  secondary,
+                  _settings.footerFontSize,
+                  _settings.footerColor,
+                  _settings.footerOpacity,
+                  TextAlign.center,
+                ),
+              ),
+              Expanded(
+                flex: 2,
+                child: _templateText(
+                  _settings.footerRight,
+                  secondary,
+                  _settings.footerFontSize,
+                  _settings.footerColor,
+                  _settings.footerOpacity,
+                  TextAlign.right,
+                ),
+              ),
+            ],
+          ),
+          if (_settings.footerProgressBar)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: LinearProgressIndicator(
+                value: _overallProgress,
+                minHeight: 2,
+                backgroundColor: secondary.withValues(alpha: 0.12),
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  secondary.withValues(alpha: 0.5),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  double get _overallProgress {
+    final PaginatedChapter? p = _pagination;
+    final int total = _chapters.isEmpty ? 1 : _chapters.length;
+    final double within = p == null || p.pages.isEmpty
+        ? 0
+        : _pageIndex / math.max(1, p.pages.length);
+    return ((_chapterIndex + within) / math.max(1, total)).clamp(0, 1);
+  }
+
+  Widget _templateText(
+    String template,
+    Color fallback,
+    double size,
+    int? color,
+    double opacity,
+    TextAlign align,
+  ) {
+    if (template.trim().isEmpty) return const SizedBox.shrink();
+    final String text = _renderTemplate(template);
+    if (text.trim().isEmpty) return const SizedBox.shrink();
+    return Align(
+      alignment: switch (align) {
+        TextAlign.center => Alignment.center,
+        TextAlign.right => Alignment.centerRight,
+        _ => Alignment.centerLeft,
+      },
+      child: Text(
+        text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        textAlign: align,
+        style: TextStyle(
+          fontSize: size,
+          color: Color(color ?? fallback.toARGB32())
+              .withValues(alpha: opacity.clamp(0, 1)),
+          fontWeight: FontWeight.w400,
+        ),
+      ),
+    );
+  }
+
+  String _renderTemplate(String template) {
+    final PaginatedChapter? p = _pagination;
+    final String chapter =
+        _chapterIndex < _chapters.length ? _chapters[_chapterIndex].title : '';
+    final int totalPages = p?.pages.length ?? 1;
+    final int page = _pageIndex + 1;
+    final double percent = _overallProgress * 100;
+    final DateTime now = DateTime.now();
+    final String time =
+        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+    return template
+        .replaceAll('{book}', widget.book.title)
+        .replaceAll('{author}', widget.book.author)
+        .replaceAll('{chapter}', chapter)
+        .replaceAll('{page}', '$page')
+        .replaceAll('{pages}', '$totalPages')
+        .replaceAll('{percent}', '${percent.toStringAsFixed(1)}%')
+        .replaceAll('{time}', time);
+  }
+
+  Widget _buildPageArea(Color foreground, Color secondary) {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    final PaginatedChapter? p = _pagination;
+    if (p == null || p.pages.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            _chapterIndex < _chapters.length &&
+                    _chapters[_chapterIndex]
+                        .slice(widget.book.content)
+                        .trim()
+                        .isEmpty
+                ? '这一章没有正文内容'
+                : '正在排版…',
+            style: TextStyle(color: secondary),
+          ),
+        ),
+      );
+    }
+    if (_showScroll) return _buildScrollArea(p, foreground);
+    final PageController? controller = _pageController;
+    return PageView.builder(
+      controller: controller,
+      itemCount: _renderPageCount,
+      physics: _settings.pageTurnMode == 'none'
+          ? const NeverScrollableScrollPhysics()
+          : const PageScrollPhysics(),
+      onPageChanged: _onPageChanged,
+      itemBuilder: (BuildContext context, int renderIndex) {
+        final Widget page = _twoColumns
+            ? _buildTwoColumnPage(p, renderIndex, foreground)
+            : _buildSinglePage(p, renderIndex, foreground);
+        final Widget guided = _withGuides(page, secondary);
+        if (_settings.pageTurnMode != 'cover' || controller == null) {
+          return guided;
+        }
+        return AnimatedBuilder(
+          animation: controller,
+          builder: (BuildContext context, Widget? child) {
+            double delta = 0;
+            if (controller.hasClients && controller.position.haveDimensions) {
+              delta = (controller.page ?? renderIndex.toDouble()) - renderIndex;
+            }
+            final double direction = _settings.reverseDirection ? -1 : 1;
+            return Transform.translate(
+              offset: Offset(delta * direction * -_pageWidth * 0.22, 0),
+              child: Transform.scale(
+                scale: 1 - delta.abs() * 0.04,
+                child: Opacity(
+                  opacity: (1 - delta.abs() * 0.25).clamp(0, 1),
+                  child: child,
+                ),
+              ),
+            );
+          },
+          child: guided,
+        );
+      },
+    );
+  }
+
+  Widget _withGuides(Widget child, Color secondary) {
+    if (!_settings.guideShow) return child;
+    return Stack(
+      children: <Widget>[
+        Positioned.fill(child: child),
+        Positioned.fill(
+          child: IgnorePointer(
+            child: CustomPaint(
+              painter: _GuidePainter(
+                settings: _settings,
+                color: Color(_settings.guideColor ?? secondary.toARGB32()),
+                titleHeight: _pagination?.titleHeight ?? 0,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  TextSpan _pageSpan(String text, TextStyle style) {
+    final String pattern = _settings.boldPattern.trim();
+    if (pattern.isEmpty) return TextSpan(text: text, style: style);
+    RegExp regex;
+    try {
+      regex = RegExp(pattern);
+    } catch (_) {
+      return TextSpan(text: text, style: style);
+    }
+    final List<String> lines = text.split('\n');
+    final List<InlineSpan> spans = <InlineSpan>[];
+    for (int i = 0; i < lines.length; i++) {
+      final bool bold = lines[i].trim().isNotEmpty && regex.hasMatch(lines[i]);
+      spans.add(TextSpan(
+        text: lines[i],
+        style: bold ? style.copyWith(fontWeight: FontWeight.w700) : style,
+      ));
+      if (i != lines.length - 1) spans.add(TextSpan(text: '\n', style: style));
+    }
+    return TextSpan(children: spans);
+  }
+
+  Widget _scaledText(Widget child) {
+    if ((_settings.textScaleX - 1).abs() < 0.001) return child;
+    return Transform.scale(
+      scaleX: _settings.textScaleX,
+      alignment: Alignment.topLeft,
+      child: child,
+    );
+  }
+
+  Widget _buildSinglePage(PaginatedChapter p, int index, Color foreground) {
+    if (index < 0 || index >= p.pages.length) return const SizedBox.shrink();
+    final EnginePage page = p.pages[index];
+    final List<Widget> children = <Widget>[];
+    if (index == 0 && p.showTitle) children.add(_buildChapterTitle());
+    final TextStyle style = ReaderEngine.bodyStyle(
+      _settings,
+      color: foreground,
+      textScale: _textScale,
+    );
+    final Widget body = _scaledText(Text.rich(
+      _pageSpan(page.textOf(p.display), style),
+      textAlign: ReaderEngine.textAlignOf(_settings.align),
+    ));
+    children.add(
+      Expanded(
+        child: Align(
+          alignment:
+              _settings.bottomAlign ? Alignment.bottomLeft : Alignment.topLeft,
+          child: body,
+        ),
+      ),
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: children,
+    );
+  }
+
+  Widget _buildTwoColumnPage(
+      PaginatedChapter p, int renderIndex, Color foreground) {
+    final int leftIndex = renderIndex * 2;
+    final int rightIndex = leftIndex + 1;
+    Widget column(int index) {
+      if (index >= p.pages.length) return const SizedBox.shrink();
+      final EnginePage page = p.pages[index];
+      final List<Widget> children = <Widget>[];
+      if (index == 0 && p.showTitle) children.add(_buildChapterTitle());
+      final TextStyle style = ReaderEngine.bodyStyle(
+        _settings,
+        color: foreground,
+        textScale: _textScale,
+      );
+      children.add(
+        Expanded(
+          child: Align(
+            alignment: _settings.bottomAlign
+                ? Alignment.bottomLeft
+                : Alignment.topLeft,
+            child: _scaledText(Text.rich(
+              _pageSpan(page.textOf(p.display), style),
+              textAlign: ReaderEngine.textAlignOf(_settings.align),
+            )),
+          ),
+        ),
+      );
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: children,
+      );
+    }
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Expanded(child: column(leftIndex)),
+        SizedBox(width: _settings.columnGap),
+        Expanded(child: column(rightIndex)),
+      ],
+    );
+  }
+
+  Widget _buildChapterTitle() {
+    final String title =
+        _chapterIndex < _chapters.length ? _chapters[_chapterIndex].title : '';
+    final Color color = Color(
+      _settings.titleColor ?? _settings.textColor ?? 0xFF1A1A1A,
+    );
+    final TextAlign align = switch (_settings.titleAlign) {
+      'center' => TextAlign.center,
+      'right' => TextAlign.right,
+      _ => TextAlign.left,
+    };
+    final double titleHeight = _pagination?.titleHeight ?? 0;
+    final TextStyle style = TextStyle(
+      fontFamily: _settings.titleFontFamily ?? _settings.fontFamily,
+      fontSize: _settings.titleFontSize * _textScale,
+      fontWeight: FontWeight.values[(_settings.titleWeight ~/ 100) - 1],
+      height: 1.3,
+      color: color,
+    );
+    Widget inner;
+    final List<String> parts = _settings.titleNumberNewLine
+        ? ReaderEngine.splitChapterTitle(title)
+        : <String>[title];
+    if (parts.length > 1) {
+      inner = Column(
+        crossAxisAlignment: switch (align) {
+          TextAlign.center => CrossAxisAlignment.center,
+          TextAlign.right => CrossAxisAlignment.end,
+          _ => CrossAxisAlignment.start,
+        },
+        children: <Widget>[
+          Text(parts[0], textAlign: align, style: style),
+          Text(parts[1], textAlign: align, style: style),
+        ],
+      );
+    } else {
+      inner = Text(title, textAlign: align, style: style);
+    }
+    if (_settings.titleTemplate == 'centered') {
+      inner = Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[inner],
+      );
+    } else if (_settings.titleTemplate == 'divider') {
+      inner = Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          inner,
+          const SizedBox(height: 6),
+          Container(height: 0.6, color: color.withValues(alpha: 0.25)),
+        ],
+      );
+    }
+    return SizedBox(
+      height: titleHeight,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          0,
+          _settings.chapterStartBlank + _settings.titleGapTop,
+          0,
+          _settings.titleGapBottom,
+        ),
+        child: Align(
+          alignment: switch (align) {
+            TextAlign.center => Alignment.topCenter,
+            TextAlign.right => Alignment.topRight,
+            _ => Alignment.topLeft,
+          },
+          child: inner,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildScrollArea(PaginatedChapter p, Color foreground) {
+    final ScrollController controller =
+        _scrollController ??= ScrollController();
+    return NotificationListener<ScrollNotification>(
+      onNotification: (ScrollNotification notification) {
+        if (notification is ScrollEndNotification) {
+          _onScrollProgress(p, controller);
+        }
+        return false;
+      },
+      child: SingleChildScrollView(
+        controller: controller,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            _buildChapterTitle(),
+            _scaledText(Text.rich(
+              _pageSpan(
+                p.display.text,
+                ReaderEngine.bodyStyle(
+                  _settings,
+                  color: foreground,
+                  textScale: _textScale,
+                ),
+              ),
+              textAlign: ReaderEngine.textAlignOf(_settings.align),
+            )),
+            const SizedBox(height: 40),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _onScrollProgress(PaginatedChapter p, ScrollController controller) {
+    if (!controller.hasClients) return;
+    final double max = controller.position.maxScrollExtent;
+    final double fraction = max <= 0 ? 1 : (controller.offset / max).clamp(0, 1);
+    final int displayIndex =
+        (fraction * p.display.text.length).clamp(0, p.display.text.length).toInt();
+    final int source = p.display.sourceOffset(displayIndex);
+    final int delta = (source - _lastSavedOffset).abs();
+    if (delta > 0) {
+      _sessionChars += delta;
+      _lastSavedOffset = source;
+    }
+    widget.book.chapterIndex.value = _chapterIndex;
+    widget.book.pageIndex.value = 0;
+    widget.book.charOffset.value = source;
     LibraryStore.instance.saveProgress(widget.book);
   }
 
-  Future<void> _loadChapterRule() async {
-    final rule = await ChapterRuleStore.load(widget.book.id);
-    if (!mounted || rule.mode == ChapterRuleMode.automatic) return;
-    try {
-      // Saved chapter-relative progress belongs to the saved rule, not to
-      // the automatic rule temporarily shown during initialization.
-      final restoredChapters =
-          splitChapters(widget.book.content, rule: rule);
-      final savedChapter = _openingChapterIndex
-          .clamp(0, restoredChapters.length - 1);
-      final restored = restoredChapters[savedChapter];
-      final int savedLocal = _openingCharOffset;
-      final int absolute = restored.start +
-          (savedLocal < 0 ? 0 : savedLocal.clamp(0, restored.length));
-      _applyChapterRule(rule, absoluteOverride: absolute);
-    } on FormatException {
-      // Keep the original setting and original file untouched.
+  // ---------------------------------------------------------------------------
+  // 点击、菜单与手势
+  // ---------------------------------------------------------------------------
+
+  Widget _buildTapLayer() {
+    return Positioned.fill(
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTapUp: (TapUpDetails details) {
+          final double width = MediaQuery.sizeOf(context).width;
+          final double x = details.localPosition.dx;
+          final String action;
+          if (x < width * 0.3) {
+            action = _settings.tapLeft;
+          } else if (x < width * 0.7) {
+            action = _settings.tapCenter;
+          } else {
+            action = _settings.tapRight;
+          }
+          _performTapAction(action);
+        },
+        onLongPress: _showSelectionActions,
+      ),
+    );
+  }
+
+  void _performTapAction(String action) {
+    switch (action) {
+      case 'prev':
+        if (_menuVisible) {
+          setState(() => _menuVisible = false);
+        } else {
+          _turnPage(-1);
+        }
+      case 'next':
+        if (_menuVisible) {
+          setState(() => _menuVisible = false);
+        } else {
+          _turnPage(1);
+        }
+      case 'menu':
+        setState(() => _menuVisible = !_menuVisible);
+      case 'chapters':
+        _showChapters();
+      case 'settings':
+        _openSettings();
+      case 'bookmark':
+        _toggleBookmark();
+      case 'read':
+      case 'none':
+        break;
+    }
+  }
+
+  Widget _buildMenu(Color background, Color foreground, Color secondary) {
+    return Positioned.fill(
+      child: IgnorePointer(
+        ignoring: !_menuVisible,
+        child: Stack(
+          children: <Widget>[
+            AnimatedOpacity(
+              opacity: _menuVisible ? 1 : 0,
+              duration: const Duration(milliseconds: 180),
+              child: GestureDetector(
+                onTap: () => setState(() => _menuVisible = false),
+                child: ColoredBox(
+                  color: foreground.withValues(alpha: 0.16),
+                ),
+              ),
+            ),
+            AnimatedPositioned(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              top: _menuVisible ? 0 : -110,
+              left: 0,
+              right: 0,
+              child: _topBar(background, foreground),
+            ),
+            AnimatedPositioned(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              bottom: _menuVisible ? 0 : -190,
+              left: 0,
+              right: 0,
+              child: _bottomBar(background, foreground, secondary),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _topBar(Color background, Color foreground) {
+    return Container(
+      color: background.withValues(alpha: 0.96),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+      child: Row(
+        children: <Widget>[
+          IconButton(
+            tooltip: '返回',
+            icon: Icon(Icons.arrow_back_ios_new_rounded,
+                size: 20, color: foreground),
+            onPressed: () => Navigator.of(context).maybePop(),
+          ),
+          Expanded(
+            child: GestureDetector(
+              onTap: _showChapters,
+              child: Text(
+                _chapterIndex < _chapters.length
+                    ? _chapters[_chapterIndex].title
+                    : widget.book.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 13, color: foreground),
+              ),
+            ),
+          ),
+          IconButton(
+            tooltip: '书内搜索',
+            icon: Icon(Icons.search_rounded, size: 21, color: foreground),
+            onPressed: _searchInBook,
+          ),
+          IconButton(
+            tooltip: '添加书签',
+            icon: Icon(
+              _bookmarks.contains(_currentAbsoluteOffset)
+                  ? Icons.bookmark_rounded
+                  : Icons.bookmark_border_rounded,
+              size: 21,
+              color: foreground,
+            ),
+            onPressed: _toggleBookmark,
+          ),
+          IconButton(
+            tooltip: '阅读设置',
+            icon: Icon(Icons.tune_rounded, size: 21, color: foreground),
+            onPressed: _openSettings,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _bottomBar(Color background, Color foreground, Color secondary) {
+    return Container(
+      color: background.withValues(alpha: 0.96),
+      padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
+      child: SafeArea(
+        top: false,
+        child: Row(
+          children: <Widget>[
+            Text(
+              '${(_overallProgress * 100).toStringAsFixed(1)}%',
+              style: TextStyle(fontSize: 12, color: secondary),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Slider(
+                value: _overallProgress.clamp(0, 1),
+                onChanged: _seekProgress,
+              ),
+            ),
+            IconButton(
+              tooltip: '目录',
+              icon: Icon(Icons.list_rounded, color: foreground),
+              onPressed: _showChapters,
+            ),
+            IconButton(
+              tooltip: '书签',
+              icon: Icon(Icons.collections_bookmark_outlined, color: foreground),
+              onPressed: _showBookmarks,
+            ),
+            IconButton(
+              tooltip: '设置',
+              icon: Icon(Icons.text_fields_rounded, color: foreground),
+              onPressed: _openSettings,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _seekProgress(double fraction) {
+    if (_chapters.isEmpty) return;
+    final int targetChapter =
+        (fraction * _chapters.length).floor().clamp(0, _chapters.length - 1);
+    _gotoChapter(targetChapter);
+  }
+
+  Future<void> _openSettings() async {
+    setState(() => _menuVisible = false);
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext ctx) => ReaderSettingsSheet(
+        bookId: widget.book.id,
+        onRepaginate: () => setState(() {
+          _layoutKey = '';
+          _pagination = null;
+        }),
+      ),
+    );
+  }
+
+  Future<void> _showSelectionActions() async {
+    final PaginatedChapter? p = _pagination;
+    if (p == null || p.pages.isEmpty) return;
+    final String pageText = p.pages[_pageIndex.clamp(0, p.pages.length - 1)]
+        .textOf(p.display)
+        .trim();
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (BuildContext ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            ListTile(
+              leading: const Icon(Icons.copy_rounded),
+              title: const Text('复制本页文字'),
+              onTap: () async {
+                await Clipboard.setData(ClipboardData(text: pageText));
+                if (ctx.mounted) Navigator.pop(ctx);
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('已复制本页文字')),
+                  );
+                }
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.search_rounded),
+              title: const Text('搜索本页文字'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _searchInBook(
+                  initialQuery:
+                      pageText.length > 24 ? pageText.substring(0, 24) : pageText,
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.bookmark_add_outlined),
+              title: const Text('在当前位置添加书签'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _toggleBookmark();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // 章节调整 / 书签 / 搜索
+  // ---------------------------------------------------------------------------
+
+  Future<void> _showChapters() async {
+    final int? selected = await showModalBottomSheet<int>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (BuildContext ctx) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.72,
+        builder: (BuildContext ctx, ScrollController scroll) => ListView.builder(
+          controller: scroll,
+          itemCount: _chapters.length + 1,
+          itemBuilder: (BuildContext c, int index) {
+            if (index == _chapters.length) {
+              return ListTile(
+                leading: const Icon(Icons.tune_rounded),
+                title: const Text('章节识别规则'),
+                subtitle: const Text('自动 / 整本一章 / 自定义正则'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _showChapterRules();
+                },
+              );
+            }
+            return ListTile(
+              selected: index == _chapterIndex,
+              title: Text(_chapters[index].title,
+                  maxLines: 1, overflow: TextOverflow.ellipsis),
+              onTap: () => Navigator.pop(ctx, index),
+            );
+          },
+        ),
+      ),
+    );
+    if (selected != null && selected != _chapterIndex) {
+      await _gotoChapter(selected);
     }
   }
 
   Future<void> _showChapterRules() async {
-    ChapterRuleMode mode = _chapterRule.mode;
-    final controller = TextEditingController(text: _chapterRule.pattern);
+    ChapterRuleMode mode = _rule.mode;
+    final TextEditingController controller =
+        TextEditingController(text: _rule.pattern);
     String? validationError;
     final ChapterRule? selected = await showModalBottomSheet<ChapterRule>(
       context: context,
       isScrollControlled: true,
-      showDragHandle: !kEink,
+      showDragHandle: true,
       builder: (BuildContext ctx) => StatefulBuilder(
         builder: (BuildContext ctx, StateSetter setSheetState) => Padding(
           padding: EdgeInsets.fromLTRB(
-            20, 4, 20, MediaQuery.viewInsetsOf(ctx).bottom + 24,
+            20,
+            4,
+            20,
+            MediaQuery.viewInsetsOf(ctx).bottom + 24,
           ),
           child: SingleChildScrollView(
             child: Column(
@@ -386,7 +1340,7 @@ class _ReaderPageState extends State<ReaderPage> {
                   title: const Text('自动识别（推荐）'),
                   value: ChapterRuleMode.automatic,
                   groupValue: mode,
-                  onChanged: (value) => setSheetState(() {
+                  onChanged: (ChapterRuleMode? value) => setSheetState(() {
                     mode = value!;
                     validationError = null;
                   }),
@@ -395,7 +1349,7 @@ class _ReaderPageState extends State<ReaderPage> {
                   title: const Text('整本作为一章'),
                   value: ChapterRuleMode.none,
                   groupValue: mode,
-                  onChanged: (value) => setSheetState(() {
+                  onChanged: (ChapterRuleMode? value) => setSheetState(() {
                     mode = value!;
                     validationError = null;
                   }),
@@ -404,7 +1358,7 @@ class _ReaderPageState extends State<ReaderPage> {
                   title: const Text('自定义章节标题正则'),
                   value: ChapterRuleMode.custom,
                   groupValue: mode,
-                  onChanged: (value) => setSheetState(() {
+                  onChanged: (ChapterRuleMode? value) => setSheetState(() {
                     mode = value!;
                     validationError = null;
                   }),
@@ -455,16 +1409,37 @@ class _ReaderPageState extends State<ReaderPage> {
         ),
       ),
     );
-    // The bottom sheet is closed before disposing the field controller.
     controller.dispose();
     if (!mounted || selected == null) return;
     try {
-      // Validate against the actual book before saving; large numbers of
-      // matches are rejected without changing the existing preference.
       splitChapters(widget.book.content, rule: selected);
       await ChapterRuleStore.save(widget.book.id, selected);
       if (!mounted) return;
-      _applyChapterRule(selected);
+      final int absolute = _currentAbsoluteOffset;
+      final List<Chapter> next =
+          splitChapters(widget.book.content, rule: selected);
+      int index = next.length - 1;
+      for (int i = 0; i < next.length; i++) {
+        if (absolute < next[i].end) {
+          index = i;
+          break;
+        }
+      }
+      setState(() {
+        _rule = selected;
+        _chapters = next;
+        _chapterIndex = index;
+        _pageIndex = 0;
+        _anchorOffset =
+            (absolute - next[index].start).clamp(0, next[index].length);
+        _pagination = null;
+        _layoutKey = '';
+        widget.book.chapterIndex.value = index;
+        widget.book.pageIndex.value = 0;
+        widget.book.charOffset.value = _anchorOffset!;
+      });
+      _lastSavedOffset = _anchorOffset!;
+      LibraryStore.instance.saveProgress(widget.book);
     } on FormatException catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -478,21 +1453,17 @@ class _ReaderPageState extends State<ReaderPage> {
     }
   }
 
-  Future<void> _loadBookmarks() async {
-    final saved = await BookmarkStore.load(widget.book.id);
-    if (mounted) setState(() => _bookmarks = saved);
-  }
-
-  Future<void> _toggleCurrentBookmark() async {
-    if (_pageSlices.isEmpty || _pageIndex >= _pageSlices.length) return;
-    final int absolute = _chapters[_chapterIndex].start +
-        _pageSlices[_pageIndex].start;
+  Future<void> _toggleBookmark() async {
     try {
-      final saved = await BookmarkStore.toggle(widget.book.id, absolute);
+      final List<int> saved = await BookmarkStore.toggle(
+        widget.book.id,
+        _currentAbsoluteOffset,
+      );
       if (!mounted) return;
       setState(() => _bookmarks = saved);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(saved.contains(absolute) ? '已添加书签' : '已移除书签'),
+        content:
+            Text(saved.contains(_currentAbsoluteOffset) ? '已添加书签' : '已移除书签'),
         duration: const Duration(seconds: 1),
       ));
     } catch (_) {
@@ -507,7 +1478,7 @@ class _ReaderPageState extends State<ReaderPage> {
     final int? position = await showModalBottomSheet<int>(
       context: context,
       isScrollControlled: true,
-      showDragHandle: !kEink,
+      showDragHandle: true,
       builder: (BuildContext ctx) => SafeArea(
         child: SizedBox(
           height: MediaQuery.sizeOf(ctx).height * 0.65,
@@ -528,24 +1499,29 @@ class _ReaderPageState extends State<ReaderPage> {
                           final String source = widget.book.content;
                           int begin = offset.clamp(0, source.length);
                           int end = (begin + 45).clamp(0, source.length);
-                          // Do not split an emoji's UTF-16 surrogate pair.
-                          if (begin > 0 && begin < source.length &&
+                          if (begin > 0 &&
+                              begin < source.length &&
                               source.codeUnitAt(begin) >= 0xDC00 &&
                               source.codeUnitAt(begin) <= 0xDFFF) {
                             begin++;
                           }
-                          if (end > begin && end < source.length &&
+                          if (end > begin &&
+                              end < source.length &&
                               source.codeUnitAt(end) >= 0xDC00 &&
                               source.codeUnitAt(end) <= 0xDFFF) {
                             end--;
                           }
-                          final preview = source.substring(begin, end)
+                          final String preview = source
+                              .substring(begin, end)
                               .replaceAll(RegExp(r'[\r\n]+'), ' ')
                               .trim();
                           return ListTile(
                             leading: const Icon(Icons.bookmark_rounded),
-                            title: Text(preview.isEmpty ? '书签位置' : preview,
-                                maxLines: 2, overflow: TextOverflow.ellipsis),
+                            title: Text(
+                              preview.isEmpty ? '书签位置' : preview,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                             subtitle: Text('位置 ${offset + 1}'),
                             onTap: () => Navigator.pop(ctx, offset),
                           );
@@ -558,221 +1534,90 @@ class _ReaderPageState extends State<ReaderPage> {
       ),
     );
     if (!mounted || position == null) return;
-    _jumpToAbsoluteOffset(position);
+    _jumpToAbsolute(position);
   }
 
-  void _jumpToAbsoluteOffset(int absoluteOffset) {
-    int chapterIndex = _chapters.length - 1;
-    for (int i = 0; i < _chapters.length; i++) {
-      if (absoluteOffset < _chapters[i].end) {
-        chapterIndex = i;
-        break;
-      }
-    }
-    final chapter = _chapters[chapterIndex];
-    setState(() {
-      _chapterIndex = chapterIndex;
-      _pageIndex = 0;
-      _pageSlices = const <PageSlice>[];
-      _measureKey = null;
-      widget.book.chapterIndex.value = chapterIndex;
-      widget.book.pageIndex.value = 0;
-      widget.book.charOffset.value =
-          (absoluteOffset - chapter.start).clamp(0, chapter.length);
-    });
-    LibraryStore.instance.saveProgress(widget.book);
-  }
-
-  Future<void> _searchInBook() async {
+  Future<void> _searchInBook({String? initialQuery}) async {
     final BookSearchMatch? hit = await showSearch<BookSearchMatch?>(
       context: context,
-      delegate: _BookSearchDelegate(widget.book.content, _chapters),
+      delegate: _BookSearchDelegate(
+        widget.book.content,
+        _chapters,
+        initialQuery: initialQuery,
+      ),
     );
     if (!mounted || hit == null) return;
-    final Chapter target = _chapters[hit.chapterIndex];
-    final int localOffset = hit.start - target.start;
-    setState(() {
-      _chapterIndex = hit.chapterIndex;
-      _pageIndex = 0;
-      widget.book.chapterIndex.value = hit.chapterIndex;
-      widget.book.pageIndex.value = 0;
-      widget.book.charOffset.value = localOffset;
-      _pageSlices = const <PageSlice>[];
-      _measureKey = null;
-    });
-    await LibraryStore.instance.saveProgress(widget.book);
-  }
-
-  Future<void> _showChapters() async {
-    final int? selected = await showModalBottomSheet<int>(
-      context: context,
-      isScrollControlled: true,
-      builder: (BuildContext ctx) => DraggableScrollableSheet(
-        expand: false,
-        initialChildSize: 0.7,
-        builder: (BuildContext ctx, ScrollController scroll) => ListView.builder(
-          controller: scroll,
-          itemCount: _chapters.length,
-          itemBuilder: (BuildContext c, int index) => ListTile(
-            selected: index == _chapterIndex,
-            title: Text(_chapters[index].title, maxLines: 1, overflow: TextOverflow.ellipsis),
-            onTap: () => Navigator.pop(ctx, index),
-          ),
-        ),
-      ),
-    );
-    if (selected != null && selected != _chapterIndex) {
-      setState(() {
-        _chapterIndex = selected;
-        _pageIndex = 0;
-        widget.book.chapterIndex.value = selected;
-        widget.book.pageIndex.value = 0;
-        widget.book.charOffset.value = 0;
-        _pageSlices = const <PageSlice>[];
-        _measureKey = null;
-      });
-      await LibraryStore.instance.saveProgress(widget.book);
-    }
-  }
-
-  Future<void> _showSettings() async {
-    await showModalBottomSheet<void>(
-      context: context,
-      builder: (BuildContext ctx) => StatefulBuilder(
-        builder: (BuildContext c, void Function(void Function()) setSheet) => Padding(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: <Widget>[
-                  Text('字号 ${_fontSize.toStringAsFixed(0)}'),
-                  TextButton(
-                    onPressed: () {
-                      setSheet(() {});
-                      setState(() {
-                        _fontSize = 18;
-                        _pageSlices = const <PageSlice>[];
-                        _measureKey = null;
-                      });
-                      LibraryStore.instance.setFontSize(18);
-                    },
-                    child: const Text('重置'),
-                  ),
-                ],
-              ),
-              Slider(
-                min: 12,
-                max: 32,
-                divisions: 20,
-                value: _fontSize,
-                label: _fontSize.toStringAsFixed(0),
-                onChanged: (double v) {
-                  setSheet(() {});
-                  setState(() {
-                    _fontSize = v;
-                    _pageSlices = const <PageSlice>[];
-                    _measureKey = null;
-                  });
-                  LibraryStore.instance.setFontSize(v);
-                },
-              ),
-              Text('行距 ${_lineHeight.toStringAsFixed(1)}'),
-              Slider(
-                min: 1.2,
-                max: 2.2,
-                divisions: 10,
-                value: _lineHeight,
-                label: _lineHeight.toStringAsFixed(1),
-                onChanged: (double v) {
-                  setSheet(() {});
-                  setState(() {
-                    _lineHeight = v;
-                    _pageSlices = const <PageSlice>[];
-                    _measureKey = null;
-                  });
-                  LibraryStore.instance.setLineHeight(v);
-                },
-              ),
-              if (!kEink) ...<Widget>[
-                const Text('背景'),
-                const SizedBox(height: 8),
-                Row(
-                  children: <Widget>[
-                    _bgButton(setSheet, 0, '白'),
-                    _bgButton(setSheet, 1, '米黄'),
-                    _bgButton(setSheet, 2, '夜间'),
-                  ],
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _bgButton(void Function(void Function()) setSheet, int index, String label) {
-    final bool active = _bgIndex == index;
-    return Padding(
-      padding: const EdgeInsets.only(right: 12),
-      child: OutlinedButton(
-        onPressed: () {
-          setSheet(() {});
-          setState(() {
-            _bgIndex = index;
-          });
-          LibraryStore.instance.setBackgroundIndex(index);
-        },
-        child: Text(
-          active ? '· $label' : label,
-          style: TextStyle(
-            fontWeight: active ? FontWeight.bold : FontWeight.normal,
-            color: active ? Colors.black : null,
-          ),
-        ),
-      ),
-    );
+    _jumpToAbsolute(hit.start);
   }
 }
 
-class _Palette {
-  const _Palette(this.background, this.foreground);
+class _GuidePainter extends CustomPainter {
+  _GuidePainter({
+    required this.settings,
+    required this.color,
+    required this.titleHeight,
+  });
 
-  final Color background;
-  final Color foreground;
+  final ReaderSettings settings;
+  final Color color;
+  final double titleHeight;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final double line = settings.fontSize * settings.lineHeight;
+    final Paint paint = Paint()
+      ..color = color.withValues(alpha: settings.guideOpacity.clamp(0, 1))
+      ..strokeWidth = settings.guideThickness;
+    double y = titleHeight;
+    while (y < size.height) {
+      if (settings.guideStyle == 'dashed') {
+        for (double x = 0; x < size.width; x += 8) {
+          canvas.drawLine(
+            Offset(x, y),
+            Offset(math.min(x + 4, size.width), y),
+            paint,
+          );
+        }
+      } else {
+        canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+      }
+      y += line;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _GuidePainter old) =>
+      old.settings != settings || old.titleHeight != titleHeight;
 }
 
 class _BookSearchDelegate extends SearchDelegate<BookSearchMatch?> {
-  _BookSearchDelegate(this.content, this.chapters);
+  _BookSearchDelegate(this.content, this.chapters, {String? initialQuery})
+      : super(searchFieldLabel: '搜索本书内容') {
+    if (initialQuery != null) query = initialQuery;
+  }
 
   final String content;
   final List<Chapter> chapters;
 
   @override
-  String get searchFieldLabel => '搜索本书内容';
-
-  @override
   List<Widget> buildActions(BuildContext context) => <Widget>[
-    if (query.isNotEmpty)
-      IconButton(
-        tooltip: '清空',
-        icon: const Icon(Icons.clear),
-        onPressed: () {
-          query = '';
-          showSuggestions(context);
-        },
-      ),
-  ];
+        if (query.isNotEmpty)
+          IconButton(
+            tooltip: '清空',
+            icon: const Icon(Icons.clear),
+            onPressed: () {
+              query = '';
+              showSuggestions(context);
+            },
+          ),
+      ];
 
   @override
   Widget buildLeading(BuildContext context) => IconButton(
-    tooltip: '返回',
-    icon: const Icon(Icons.arrow_back),
-    onPressed: () => close(context, null),
-  );
+        tooltip: '返回',
+        icon: const Icon(Icons.arrow_back),
+        onPressed: () => close(context, null),
+      );
 
   @override
   Widget buildSuggestions(BuildContext context) => _results(context);
@@ -784,14 +1629,15 @@ class _BookSearchDelegate extends SearchDelegate<BookSearchMatch?> {
     if (query.trim().isEmpty) {
       return const Center(child: Text('输入关键词搜索当前书籍'));
     }
-    final matches = searchBookText(content, chapters, query);
+    final List<BookSearchMatch> matches =
+        searchBookText(content, chapters, query);
     if (matches.isEmpty) {
       return const Center(child: Text('未找到匹配内容'));
     }
     return ListView.builder(
       itemCount: matches.length,
       itemBuilder: (BuildContext context, int index) {
-        final match = matches[index];
+        final BookSearchMatch match = matches[index];
         return ListTile(
           title: Text(
             chapters[match.chapterIndex].title,

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:read/src/reader/settings/reader_settings_store.dart';
+import 'package:read/src/reader/settings/user_font_store.dart';
 import 'package:read/src/services/appearance_store.dart';
 import 'package:read/src/services/library_store.dart';
 import 'package:read/src/services/reading_stats_store.dart';
@@ -11,6 +13,8 @@ Future<void> main() async {
   await LibraryStore.instance.init();
   await AppearanceStore.instance.init();
   await ReadingStatsStore.instance.init();
+  await ReaderSettingsStore.instance.init();
+  await UserFontStore.instance.init();
   runApp(const ReadApp());
 }
 
