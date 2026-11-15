@@ -29,14 +29,20 @@ void main() {
     final next = find.byTooltip('下一页');
     expect(next, findsOneWidget);
     await tester.tap(next);
+    // Re-entering LayoutBuilder requires a separate frame for measuring page
+    // slices and another for mounting the new PageView (not just animation).
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
     expect(book.chapterIndex.value, 1);
     expect(find.textContaining('第二章 终点', skipOffstage: false), findsWidgets);
 
     await tester.tap(find.byTooltip('上一页'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
     expect(book.chapterIndex.value, 0);
     expect(book.charOffset.value, greaterThanOrEqualTo(0));
   });
