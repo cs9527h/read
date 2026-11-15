@@ -49,4 +49,25 @@ void main() {
       throwsFormatException,
     );
   });
+  test('Windows UTF-16 LE/BE TXT BOM variants are decoded accurately', () async {
+    final le = await FormatEngine.importBytes(
+      Uint8List.fromList(<int>[0xff, 0xfe, 0x2d, 0x4e, 0x87, 0x65]),
+      'little.txt',
+    );
+    final be = await FormatEngine.importBytes(
+      Uint8List.fromList(<int>[0xfe, 0xff, 0x4e, 0x2d, 0x65, 0x87]),
+      'big.txt',
+    );
+    expect(le.text, '中文');
+    expect(be.text, '中文');
+  });
+
+  test('Damaged UTF-16 must fail instead of losing the final byte', () async {
+    expect(
+      () => FormatEngine.importBytes(
+          Uint8List.fromList(<int>[0xff, 0xfe, 0x4e]), 'broken.txt'),
+      throwsFormatException,
+    );
+  });
+
 }
