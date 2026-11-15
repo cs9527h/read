@@ -17,8 +17,8 @@
 
 ## APK
 
-- `read-android.apk`：88,319,595 字节，SHA-256 `f6315a4f79a9328aa82cf69fae9b664b890a07979806fc8954a75b5ef1076f46`
-- `read-eink.apk`：88,237,737 字节，SHA-256 `b03906b37488c826096ff4c4173575715019866f058a31e4194f7e19206fbe20`
+- `read-android.apk`：88,319,125 字节，SHA-256 `f6315a4f79a9328aa82cf69fae9b664b890a07979806fc8954a75b5ef1076f46`
+- `read-eink.apk`：88,253,585 字节，SHA-256 `b03906b37488c826096ff4c4173575715019866f058a31e4194f7e19206fbe20`
 - 包名：`app.readen.read`
 - 新 APK 的 `libapp.so` 已确认包含 `bookmark_meta_store.dart`、`manual_chapter_store.dart`、`read.bookmark_meta.v1.*`、`read.manual_chapters.v1.*`，不是旧包。
 
