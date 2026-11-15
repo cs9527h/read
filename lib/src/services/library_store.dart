@@ -46,24 +46,28 @@ class LibraryStore extends ChangeNotifier {
     _lineHeight = _prefs!.getDouble(_lineKey) ?? 1.7;
     _backgroundIndex = _prefs!.getInt(_bgKey) ?? 0;
 
-    books.clear();
+    // Rebuild the index transactionally. A failed reload must not destroy
+    // the current in-memory bookshelf or its progress notifiers.
+    final loaded = <Book>[];
     final String? raw = _prefs!.getString(_metaKey);
     if (raw != null) {
       try {
         final List<dynamic> list = jsonDecode(raw) as List<dynamic>;
-        for (final dynamic item in list) {
+        for (final item in list) {
           final Book? book = await _loadBook(item as Map<String, dynamic>);
           if (book != null) {
             _restoreProgress(book);
-            books.add(book);
+            loaded.add(book);
           }
         }
       } catch (error) {
-        // A damaged index must not silently be overwritten with sample data.
-        throw StateError('书架索引读取失败。原书籍文件未删除；请备份后修复。$error');
+        throw StateError('书架索引读取失败；现有书架和原始文件均保留。$error');
       }
     }
 
+    books
+      ..clear()
+      ..addAll(loaded);
     _sortBooks();
     notifyListeners();
   }
