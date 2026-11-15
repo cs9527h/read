@@ -23,6 +23,8 @@ class _ReaderPageState extends State<ReaderPage> {
   late List<Chapter> _chapters;
   ChapterRule _chapterRule = const ChapterRule.automatic();
   late int _chapterIndex;
+  late final int _openingChapterIndex;
+  late final int _openingCharOffset;
   int _pageIndex = 0;
 
   List<PageSlice> _pageSlices = const <PageSlice>[];
@@ -39,6 +41,8 @@ class _ReaderPageState extends State<ReaderPage> {
     super.initState();
     _chapters = splitChapters(widget.book.content);
     _chapterIndex = widget.book.chapterIndex.value;
+    _openingChapterIndex = widget.book.chapterIndex.value;
+    _openingCharOffset = widget.book.charOffset.value;
     if (_chapterIndex < 0 || _chapterIndex >= _chapters.length) {
       _chapterIndex = 0;
     }
@@ -283,10 +287,10 @@ class _ReaderPageState extends State<ReaderPage> {
       // the automatic rule temporarily shown during initialization.
       final restoredChapters =
           splitChapters(widget.book.content, rule: rule);
-      final savedChapter = widget.book.chapterIndex.value
+      final savedChapter = _openingChapterIndex
           .clamp(0, restoredChapters.length - 1);
       final restored = restoredChapters[savedChapter];
-      final int savedLocal = widget.book.charOffset.value;
+      final int savedLocal = _openingCharOffset;
       final int absolute = restored.start +
           (savedLocal < 0 ? 0 : savedLocal.clamp(0, restored.length));
       _applyChapterRule(rule, absoluteOverride: absolute);
