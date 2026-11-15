@@ -19,7 +19,11 @@ final RegExp _heading = RegExp(
 
 /// 少于两处标题时视为无章节，整本作为一章返回。
 List<Chapter> splitChapters(String text) {
-  final matches = _heading.allMatches(text).toList();
+  // Avoid interpreting a whole novel paragraph as a chapter title, even if
+  // its first characters accidentally match a heading prefix.
+  final matches = _heading.allMatches(text)
+      .where((match) => match.group(0)!.trim().length <= 100)
+      .toList();
   if (matches.length < 2) {
     return <Chapter>[Chapter('全文', 0, text.length)];
   }
