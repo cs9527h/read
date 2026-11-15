@@ -156,7 +156,14 @@ class LibraryStore extends ChangeNotifier {
       throw const FormatException(
         '当前只支持 TXT、EPUB（文字版）、Markdown、HTML，其余格式开发中');
     }
-    final Uint8List bytes = await File(path).readAsBytes();
+    final File source = File(path);
+    final int fileSize = await source.length();
+    if (fileSize > FormatEngine.maxSourceBytes) {
+      throw const FormatException(
+        '当前单本读取上限为 40MB；超大 TXT 的分块索引仍在开发，'
+        '为避免内存不足，暂不导入。');
+    }
+    final Uint8List bytes = await source.readAsBytes();
     final ImportedDocument parsed =
         await FormatEngine.importBytes(bytes, picked.name);
     final String text = parsed.text;

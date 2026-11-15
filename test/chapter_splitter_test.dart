@@ -32,4 +32,21 @@ void main() {
     }
     expect(chapters.last.end, text.length);
   });
+  test('章节标题不能吞掉前一行的换行符', () {
+    const text = '第一章 开始\n第一段结束。\n\n第二章 后续\n第二段。\n';
+    final chapters = splitChapters(text);
+    expect(chapters.length, 2);
+    expect(chapters.first.end, chapters.last.start);
+    expect(chapters.map((c) => c.slice(text)).join(), text);
+    expect(chapters.last.slice(text).startsWith('第二章'), isTrue);
+  });
+
+  test('超长假标题不是章节，避免误拆 TXT 正文', () {
+    final bogus = '第一章' + List<String>.filled(180, '这仍是正文内容').join();
+    final text = '第一章 真标题\n内容\n' + bogus +
+        '\n第二章 真标题\n结尾';
+    final chapters = splitChapters(text);
+    expect(chapters.length, 2);
+  });
+
 }

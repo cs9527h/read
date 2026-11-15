@@ -29,7 +29,23 @@ class FormatEngine {
     if (bytes.isEmpty) return '';
     if (bytes.length >= 3 &&
         bytes[0] == 0xef && bytes[1] == 0xbb && bytes[2] == 0xbf) {
-      return utf8.decode(bytes.sublist(3), allowMalformed: true);
+      return utf8.decode(bytes.sublist(3));
+    }
+    // Windows-exported TXT frequently uses UTF-16 LE/BE with BOM.
+    if (bytes.length >= 2 &&
+        ((bytes[0] == 0xff && bytes[1] == 0xfe) ||
+         (bytes[0] == 0xfe && bytes[1] == 0xff))) {
+      final bool littleEndian = bytes[0] == 0xff;
+      if ((bytes.length - 2).isOdd) {
+        throw const FormatException('UTF-16 文本长度不完整');
+      }
+      final List<int> units = <int>[];
+      for (int index = 2; index < bytes.length; index += 2) {
+        final int a = bytes[index];
+        final int b = bytes[index + 1];
+        units.add(littleEndian ? a | (b << 8) : (a << 8) | b);
+      }
+      return String.fromCharCodes(units);
     }
     try {
       return utf8.decode(bytes);
