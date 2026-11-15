@@ -11,6 +11,7 @@ ProgressRecord entry(int offset, int revision, String device) =>
       revision: revision,
       device: device,
       updatedAt: 100,
+      textHash: 'b' * 64,
     );
 
 void main() {
@@ -23,6 +24,18 @@ void main() {
     expect(result.entries[item.hash]!.offset, 124);
     expect(result.entries[item.hash]!.revision, 5);
     expect(() => ProgressManifest.decode('{}'), throwsFormatException);
+    expect(
+      () => ProgressRecord.fromJson(<String, dynamic>{
+        ...item.toJson(), 'text_hash': 'bad',
+      }),
+      throwsFormatException,
+    );
+    expect(
+      () => ProgressRecord.fromJson(<String, dynamic>{
+        ...item.toJson(), 'offset': -1,
+      }),
+      throwsFormatException,
+    );
     expect(
       () => ProgressRecord.fromJson(<String, dynamic>{
         ...item.toJson(), 'hash': '../secrets',
