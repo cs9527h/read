@@ -15,9 +15,9 @@ class ProgressSyncPage extends StatefulWidget {
 }
 
 class _ProgressSyncPageState extends State<ProgressSyncPage> {
-  final _url = TextEditingController(
-    text: 'https://dav.jianguoyun.com/dav/read-progress-v1.enc',
-  );
+  // Never pre-fill a real provider URL: entering credentials should not
+  // accidentally send them to a service the user did not select.
+  final _url = TextEditingController();
   final _username = TextEditingController();
   final _webdavPassword = TextEditingController();
   final _encryptionPassword = TextEditingController();
@@ -153,7 +153,8 @@ class _ProgressSyncPageState extends State<ProgressSyncPage> {
                   keyboardType: TextInputType.url,
                   decoration: const InputDecoration(
                     labelText: 'WebDAV 云端文件地址（HTTPS）',
-                    helperText: '目录需已存在，文件可由首次同步创建',
+                    hintText: 'https://您的WebDAV服务/Read/progress.enc',
+                    helperText: '先确认服务商和已有目录，文件可首次创建',
                   ),
                 ),
                 const SizedBox(height: 14),
