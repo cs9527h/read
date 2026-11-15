@@ -89,6 +89,7 @@ const Map<String, Object?> kReaderDefaults = <String, Object?>{
   'brightness': 1.0,
   'followSystemBrightness': true,
   'minimalMode': false,
+  'bottomActions': 'toc,bookmark,settings',
 };
 
 /// Validate untrusted layout JSON before persisting it. The reader uses
@@ -304,6 +305,18 @@ class ReaderSettings {
   double get brightness => (_raw['brightness'] as num).toDouble();
   bool get followSystemBrightness => _raw['followSystemBrightness'] == true;
   bool get minimalMode => _raw['minimalMode'] == true;
+  List<String> get bottomActions {
+    const allowed = <String>{'toc', 'bookmark', 'search', 'settings'};
+    final value = (_raw['bottomActions'] as String?) ?? '';
+    final selected = <String>[];
+    for (final action in value.split(',')) {
+      if (allowed.contains(action) && !selected.contains(action)) {
+        selected.add(action);
+        if (selected.length == 3) break;
+      }
+    }
+    return selected.isEmpty ? <String>['toc', 'bookmark', 'settings'] : selected;
+  }
 
   static ReaderSettings fromJsonString(String raw) {
     final Object? decoded = jsonDecode(raw);
