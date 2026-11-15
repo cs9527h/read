@@ -335,7 +335,11 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
           targetPage = i;
         }
       }
-      if (!mounted) return;
+      // A rapid chapter change, font change, or rotation can supersede
+      // this layout calculation. Never apply stale page slices to the new
+      // chapter, or the stored character anchor may jump unexpectedly.
+      if (!mounted || _measureKey != key ||
+          !identical(_chapters[_chapterIndex], chapter)) return;
       setState(() {
         _pageSlices = slices;
         _pageIndex = targetPage.clamp(0, slices.length - 1);
