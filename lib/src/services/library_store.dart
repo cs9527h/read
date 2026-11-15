@@ -59,7 +59,7 @@ class LibraryStore extends ChangeNotifier {
           final priorCover = metadata['coverPath'];
           final Book? book = await _loadBook(metadata);
           if (book != null) {
-            if (priorCover == null && book.coverPath != null) {
+            if (priorCover != book.coverPath && book.coverPath != null) {
               recoveredCovers = true;
             }
             _restoreProgress(book);
