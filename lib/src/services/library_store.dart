@@ -206,11 +206,7 @@ class LibraryStore extends ChangeNotifier {
           : picked.name;
       final Book book = Book(id: id, title: title, author: '本地 PDF',
           format: 'PDF', content: '', sourcePath: copy.path);
-      books.add(book);
-      _sortBooks();
-      await _persistMeta();
-      notifyListeners();
-      return book;
+      return await _commitImportedBook(book);
     }
     if (!FormatEngine.supported.contains(ext)) {
       throw const FormatException(
@@ -255,11 +251,7 @@ class LibraryStore extends ChangeNotifier {
       content: text,
       sourcePath: target.path,
     );
-    books.add(book);
-    _sortBooks();
-    await _persistMeta();
-    notifyListeners();
-    return book;
+    return await _commitImportedBook(book);
     } finally {
       if (staged != null && await staged.exists()) {
         await staged.delete();
@@ -299,6 +291,28 @@ class LibraryStore extends ChangeNotifier {
     }
   }
 
+
+  Future<Book> _commitImportedBook(Book book) async {
+    books.add(book);
+    _sortBooks();
+    try {
+      await _persistMeta();
+      notifyListeners();
+      return book;
+    } catch (_) {
+      // A storage failure must not leave an unreadable phantom entry.
+      books.removeWhere((item) => item.id == book.id);
+      final owned = book.sourcePath;
+      if (owned != null) {
+        try {
+          final file = File(owned);
+          if (await file.exists()) await file.delete();
+        } catch (_) {}
+      }
+      notifyListeners();
+      rethrow;
+    }
+  }
 
   Future<void> deleteBook(Book book) async {
     books.remove(book);
