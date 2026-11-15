@@ -1391,6 +1391,237 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   // 章节调整 / 书签 / 搜索
   // ---------------------------------------------------------------------------
 
+  Future<({String note, int colorArgb})?> _editAnnotation({
+    required String quote,
+    required String initialNote,
+    required int initialColor,
+    required bool includeNote,
+  }) async {
+    final field = TextEditingController(text: initialNote);
+    int chosen = initialColor;
+    const palette = <int>[
+      0xFFFFDF6D, 0xFFAFDDB9, 0xFFAED6F6, 0xFFECC0DE,
+    ];
+    try {
+      return await showModalBottomSheet<({String note, int colorArgb})>(
+        context: context,
+        isScrollControlled: true,
+        showDragHandle: true,
+        builder: (BuildContext sheet) => StatefulBuilder(
+          builder: (BuildContext sheet, StateSetter refresh) => SafeArea(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(
+                20, 8, 20, MediaQuery.viewInsetsOf(sheet).bottom + 20,
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(includeNote ? '添加阅读笔记' : '划线颜色',
+                        style: Theme.of(sheet).textTheme.titleLarge),
+                    const SizedBox(height: 12),
+                    Text(quote.length > 160
+                        ? '${quote.substring(0, 160)}…' : quote,
+                      maxLines: 4, overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 16),
+                    Wrap(
+                      spacing: 8,
+                      children: <Widget>[
+                        for (final color in palette)
+                          ChoiceChip(
+                            label: const Text('　'),
+                            backgroundColor: Color(color),
+                            selectedColor: Color(color),
+                            selected: chosen == color,
+                            onSelected: (_) => refresh(() => chosen = color),
+                          ),
+                      ],
+                    ),
+                    if (includeNote) ...<Widget>[
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: field,
+                        minLines: 2,
+                        maxLines: 5,
+                        maxLength: 4000,
+                        decoration: const InputDecoration(
+                          labelText: '笔记内容',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: FilledButton(
+                        onPressed: () => Navigator.pop(sheet,
+                          (note: field.text, colorArgb: chosen)),
+                        child: const Text('保存'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    } finally {
+      // The field can remain in the closing sheet during its exit animation.
+      WidgetsBinding.instance.addPostFrameCallback((_) => field.dispose());
+    }
+  }
+
+  Future<void> _annotateSelection({required bool withNote}) async {
+    final range = _selectionRange;
+    if (range == null || range.end <= range.start ||
+        range.end > widget.book.content.length) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('请先长按并选择要划线的文字')),
+        );
+      }
+      return;
+    }
+    final quote = widget.book.content.substring(range.start, range.end);
+    final edit = await _editAnnotation(
+      quote: quote,
+      initialNote: '',
+      initialColor: 0xFFFFDF6D,
+      includeNote: withNote,
+    );
+    if (!mounted || edit == null) return;
+    try {
+      final saved = await ReaderAnnotationStore.instance.add(
+        bookId: widget.book.id,
+        content: widget.book.content,
+        start: range.start,
+        end: range.end,
+        colorArgb: edit.colorArgb,
+        note: edit.note,
+      );
+      if (!mounted) return;
+      setState(() {
+        _annotations = saved;
+        _selectionRange = null;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(withNote ? '阅读笔记已保存' : '文字划线已保存')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('批注保存失败：$error')),
+      );
+    }
+  }
+
+  Future<void> _editExistingAnnotation(ReaderAnnotation item) async {
+    final edit = await _editAnnotation(
+      quote: item.quote,
+      initialNote: item.note,
+      initialColor: item.colorArgb,
+      includeNote: true,
+    );
+    if (!mounted || edit == null) return;
+    try {
+      final saved = await ReaderAnnotationStore.instance.update(
+        widget.book.id,
+        item.id,
+        note: edit.note,
+        colorArgb: edit.colorArgb,
+      );
+      if (mounted) setState(() => _annotations = saved);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('修改批注失败：$error')),
+      );
+    }
+  }
+
+  Future<void> _showAnnotations() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (BuildContext sheet) => StatefulBuilder(
+        builder: (BuildContext sheet, StateSetter refresh) => SafeArea(
+          child: SizedBox(
+            height: MediaQuery.sizeOf(sheet).height * 0.72,
+            child: Column(
+              children: <Widget>[
+                const ListTile(
+                  title: Text('我的划线与笔记'),
+                  subtitle: Text('按原文位置排序，修改排版后仍可跳回对应正文'),
+                ),
+                Expanded(
+                  child: _annotations.isEmpty
+                      ? const Center(child: Text('还没有划线，长按选择文字后即可添加'))
+                      : ListView.builder(
+                          itemCount: _annotations.length,
+                          itemBuilder: (BuildContext itemContext, int index) {
+                            final annotation = _annotations[index];
+                            return ListTile(
+                              leading: Container(
+                                width: 7,
+                                height: 38,
+                                decoration: BoxDecoration(
+                                  color: Color(annotation.colorArgb),
+                                  borderRadius: BorderRadius.circular(3),
+                                ),
+                              ),
+                              title: Text(annotation.quote,
+                                  maxLines: 2, overflow: TextOverflow.ellipsis),
+                              subtitle: annotation.note.isEmpty
+                                  ? Text('位置 ${annotation.start + 1}')
+                                  : Text(annotation.note,
+                                      maxLines: 2, overflow: TextOverflow.ellipsis),
+                              onTap: () {
+                                Navigator.pop(sheet);
+                                _jumpToAbsolute(annotation.start);
+                              },
+                              trailing: PopupMenuButton<String>(
+                                tooltip: '编辑或删除批注',
+                                onSelected: (value) async {
+                                  if (value == 'edit') {
+                                    await _editExistingAnnotation(annotation);
+                                  } else {
+                                    try {
+                                      final saved = await ReaderAnnotationStore.instance
+                                          .delete(widget.book.id, annotation.id);
+                                      if (mounted) setState(() => _annotations = saved);
+                                    } catch (error) {
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text('删除批注失败：$error')),
+                                        );
+                                      }
+                                    }
+                                  }
+                                  if (sheet.mounted) refresh(() {});
+                                },
+                                itemBuilder: (ctx) => const <PopupMenuEntry<String>>[
+                                  PopupMenuItem<String>(
+                                      value: 'edit', child: Text('编辑笔记和颜色')),
+                                  PopupMenuItem<String>(
+                                      value: 'delete', child: Text('删除划线')),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _showChapters() async {
     final int? selected = await showModalBottomSheet<int>(
       context: context,
