@@ -34,6 +34,9 @@ class ReaderStyle {
     this.customBackgroundArgb = 0,
     this.headerTemplate = '{book}',
     this.footerTemplate = '{chapter} · {page}/{pages} · {progress}%',
+    this.chapterTitleSize = 24,
+    this.chapterTitleWeightIndex = 6,
+    this.chapterTitleColorArgb = 0,
   });
 
   final double fontSize;
@@ -74,6 +77,9 @@ class ReaderStyle {
   final int customBackgroundArgb;
   final String headerTemplate;
   final String footerTemplate;
+  final double chapterTitleSize;
+  final int chapterTitleWeightIndex;
+  final int chapterTitleColorArgb;
 
   FontWeight get fontWeight => FontWeight.values[fontWeightIndex];
   TextAlign get textAlign => switch (textAlignIndex) {
@@ -119,6 +125,9 @@ class ReaderStyle {
     int? customBackgroundArgb,
     String? headerTemplate,
     String? footerTemplate,
+    double? chapterTitleSize,
+    int? chapterTitleWeightIndex,
+    int? chapterTitleColorArgb,
   }) =>
       ReaderStyle(
         fontSize: fontSize ?? this.fontSize,
@@ -147,6 +156,9 @@ class ReaderStyle {
         customBackgroundArgb: customBackgroundArgb ?? this.customBackgroundArgb,
         headerTemplate: headerTemplate ?? this.headerTemplate,
         footerTemplate: footerTemplate ?? this.footerTemplate,
+        chapterTitleSize: chapterTitleSize ?? this.chapterTitleSize,
+        chapterTitleWeightIndex: chapterTitleWeightIndex ?? this.chapterTitleWeightIndex,
+        chapterTitleColorArgb: chapterTitleColorArgb ?? this.chapterTitleColorArgb,
       );
 
   Map<String, Object> toJson() => <String, Object>{
@@ -177,6 +189,9 @@ class ReaderStyle {
         'customBackgroundArgb': customBackgroundArgb,
         'headerTemplate': headerTemplate,
         'footerTemplate': footerTemplate,
+        'chapterTitleSize': chapterTitleSize,
+        'chapterTitleWeightIndex': chapterTitleWeightIndex,
+        'chapterTitleColorArgb': chapterTitleColorArgb,
       };
 
   static ReaderStyle fromJson(Object? source, {ReaderStyle fallback = const ReaderStyle()}) {
@@ -225,6 +240,9 @@ class ReaderStyle {
           ? m['headerTemplate'] as String : fallback.headerTemplate,
       footerTemplate: m['footerTemplate'] is String && (m['footerTemplate'] as String).length <= 200
           ? m['footerTemplate'] as String : fallback.footerTemplate,
+      chapterTitleSize: number('chapterTitleSize', fallback.chapterTitleSize, 14, 48),
+      chapterTitleWeightIndex: integer('chapterTitleWeightIndex', fallback.chapterTitleWeightIndex, 0, 8),
+      chapterTitleColorArgb: integer('chapterTitleColorArgb', fallback.chapterTitleColorArgb, 0, 0xFFFFFFFF),
     );
   }
 
@@ -235,6 +253,7 @@ class ReaderStyle {
         leftMarginOverride, rightMarginOverride,
         topMarginOverride, bottomMarginOverride,
         indentCharacters, paragraphBlankLines, fontFamily,
+        chapterTitleSize, chapterTitleWeightIndex,
       ].join('/');
 }
 
