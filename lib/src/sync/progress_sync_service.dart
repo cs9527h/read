@@ -103,13 +103,15 @@ class ProgressSyncService {
       final file = File(path);
       if (!await file.exists()) continue;
       final digest = (await sha256.bind(file.openRead()).first).toString();
+      // Include unread books as matching targets: they may have no usable
+      // local character anchor yet, but can safely receive cloud progress.
+      booksByHash.putIfAbsent(digest, () => <Book>[]).add(book);
       final position = _snapshot(book, digest, device);
       if (position == null) continue;
       if (local.containsKey(digest) &&
           !local[digest]!.samePosition(position)) {
         throw FormatException('《' + book.title + '》存在内容相同但进度不同的本地副本，请先统一');
       }
-      booksByHash.putIfAbsent(digest, () => <Book>[]).add(book);
       local[digest] = position;
     }
 
@@ -197,6 +199,14 @@ class ProgressSyncService {
             : there;
         toApply[hash] = merged[hash]!;
         if (isConflict) uploads++;
+      }
+    }
+
+    // If this book has never been opened locally, do not invent position 0
+    // or treat it as a conflicting edit. Adopt the matched cloud anchor.
+    for (final pair in remote.entries) {
+      if (!local.containsKey(pair.key) && booksByHash.containsKey(pair.key)) {
+        toApply[pair.key] = pair.value;
       }
     }
 
