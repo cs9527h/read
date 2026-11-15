@@ -1,0 +1,318 @@
+import 'dart:math' as math;
+
+import 'package:flutter/material.dart';
+
+import 'package:read/src/reader/settings/reader_settings.dart';
+
+/// 把章节原文转换成“正文排版串”，同时记录每个显示字符对应的原文字符位置。
+///
+/// 为什么要这一步：
+/// - 首行缩进、段距、空行折叠都会改变实际排版高度，必须进入真实测量；
+/// - 但阅读进度、书签、同步都按原文偏移保存，所以显示串必须能映射回原文。
+class DisplayChapter {
+  const DisplayChapter(this.text, this.map, this.sourceLength);
+
+  final String text;
+
+  /// map[i] = 显示串第 i 个字符对应的章节内原文偏移（0..sourceLength）。
+  final List<int> map;
+  final int sourceLength;
+
+  int sourceOffset(int displayIndex) {
+    if (displayIndex <= 0) return 0;
+    if (displayIndex >= map.length) return sourceLength;
+    return map[displayIndex];
+  }
+
+  /// 反向：找到包含原文偏移 [offset] 的第一个显示位置。
+  int displayOffset(int offset) {
+    for (int i = 0; i < map.length; i++) {
+      if (map[i] >= offset) return i;
+    }
+    return text.length;
+  }
+}
+
+class EnginePage {
+  const EnginePage({
+    required this.displayStart,
+    required this.displayEnd,
+    required this.sourceStart,
+    required this.sourceEnd,
+  });
+
+  final int displayStart;
+  final int displayEnd;
+  final int sourceStart;
+  final int sourceEnd;
+
+  String textOf(DisplayChapter chapter) =>
+      chapter.text.substring(displayStart, displayEnd);
+}
+
+class PaginatedChapter {
+  const PaginatedChapter({
+    required this.display,
+    required this.pages,
+    required this.titleHeight,
+    required this.showTitle,
+  });
+
+  final DisplayChapter display;
+  final List<EnginePage> pages;
+  final double titleHeight;
+  final bool showTitle;
+
+  int pageForSourceOffset(int chapterRelativeOffset) {
+    for (int i = 0; i < pages.length; i++) {
+      if (chapterRelativeOffset < pages[i].sourceEnd) return i;
+    }
+    return pages.isEmpty ? 0 : pages.length - 1;
+  }
+}
+
+/// 阅读引擎：负责正文排版串、真实文本测量和分页。
+class ReaderEngine {
+  const ReaderEngine._();
+
+  /// 把「第一章 风起」拆成序号与标题，供“序号与标题分行显示”使用。
+  static List<String> splitChapterTitle(String title) {
+    final RegExp regex = RegExp(
+      r'^((?:第[0-9零一二三四五六七八九十百千万〇两]+[章回卷节篇集部册])|(?:Chapter\s+[0-9]+))(.+)$',
+    );
+    final Match? match = regex.firstMatch(title.trim());
+    if (match == null) return <String>[title];
+    final String number = match.group(1)!.trim();
+    final String rest = match.group(2)!.trim();
+    if (rest.isEmpty) return <String>[title];
+    return <String>[number, rest];
+  }
+
+  static TextStyle bodyStyle(ReaderSettings s, {Color? color, double textScale = 1.0}) {
+    return TextStyle(
+      fontFamily: s.fontFamily,
+      fontSize: s.fontSize * textScale,
+      fontWeight: FontWeight.values[(s.fontWeight ~/ 100) - 1],
+      height: s.lineHeight,
+      letterSpacing: s.letterSpacing,
+      wordSpacing: s.wordSpacing,
+      color: color,
+    );
+  }
+
+  static TextAlign textAlignOf(String align) => switch (align) {
+        'center' => TextAlign.center,
+        'right' => TextAlign.right,
+        'justify' => TextAlign.justify,
+        _ => TextAlign.left,
+      };
+
+  /// 章节标题块高度（含上下间距）。标题模板为 none 时返回 0。
+  static double titleBlockHeight(
+    ReaderSettings s,
+    String title,
+    double width,
+    double textScale,
+  ) {
+    if (s.titleTemplate == 'none' || title.trim().isEmpty) {
+      return 0;
+    }
+    final TextStyle style = TextStyle(
+      fontFamily: s.titleFontFamily ?? s.fontFamily,
+      fontSize: s.titleFontSize * textScale,
+      fontWeight: FontWeight.values[(s.titleWeight ~/ 100) - 1],
+      height: 1.3,
+    );
+    final List<String> parts = s.titleNumberNewLine
+        ? splitChapterTitle(title)
+        : <String>[title];
+    final String layoutText = parts.length > 1 ? parts.join('\n') : title;
+    final TextPainter painter = TextPainter(
+      text: TextSpan(text: layoutText, style: style),
+      textDirection: TextDirection.ltr,
+      textAlign: textAlignOf(s.titleAlign),
+    )..layout(maxWidth: width);
+    final double height = painter.height;
+    painter.dispose();
+    return height + s.titleGapTop + s.titleGapBottom + s.chapterStartBlank;
+  }
+
+  static DisplayChapter buildDisplay(String source, ReaderSettings s, double textScale) {
+    final double linePx = math.max(1.0, s.fontSize * s.lineHeight * textScale);
+    final int blankAfter = s.paragraphSpacingAfter <= 0
+        ? 0
+        : math.max(1, (s.paragraphSpacingAfter / linePx).round());
+    final int blankBefore = s.paragraphSpacingBefore <= 0
+        ? 0
+        : math.max(1, (s.paragraphSpacingBefore / linePx).round());
+
+    // 段落按原文切分，保留原始偏移，保证书签/进度与原文一致。
+    final List<List<int>> paragraphs = <List<int>>[]; // [start, end]
+    int paragraphStart = 0;
+    for (int i = 0; i <= source.length; i++) {
+      final bool atEnd = i == source.length;
+      final int unit = atEnd ? 0x0A : source.codeUnitAt(i);
+      if (unit == 0x0A || unit == 0x0D) {
+        int end = i;
+        if (unit == 0x0D && i + 1 < source.length && source.codeUnitAt(i + 1) == 0x0A) {
+          i++;
+        }
+        paragraphs.add(<int>[paragraphStart, end]);
+        paragraphStart = i + 1;
+      }
+    }
+    if (paragraphStart <= source.length &&
+        (paragraphs.isEmpty || paragraphs.last[1] < paragraphStart)) {
+      paragraphs.add(<int>[paragraphStart, source.length]);
+    }
+
+    final StringBuffer out = StringBuffer();
+    final List<int> map = <int>[];
+    bool firstContent = true;
+    int blankRun = 0;
+
+    void append(String text, int sourceOffset, {bool advance = true}) {
+      out.write(text);
+      for (int i = 0; i < text.length; i++) {
+        map.add(advance ? sourceOffset + i : sourceOffset);
+      }
+    }
+
+    void blankLines(int count, int sourceOffset) {
+      for (int i = 0; i < count; i++) {
+        append('\n', sourceOffset, advance: false);
+      }
+    }
+
+    for (final List<int> range in paragraphs) {
+      final int start = range[0];
+      final int end = range[1];
+      final String text = source.substring(start, end);
+      final bool blank = text.trim().isEmpty;
+      if (blank) {
+        if (s.preserveBlankLines && !s.ignoreExtraBlankLines) {
+          blankRun++;
+          if (blankRun <= 2) append('\n', start, advance: false);
+        }
+        continue;
+      }
+      if (!firstContent && blankBefore > 0) blankLines(blankBefore, start);
+      if (s.indentMode != 'none') {
+        final int units = math.max(1, s.indentChars.round());
+        // fixed = 半角空格（视觉约 0.5 字宽/个）；em = 全角空格（1 字宽/个）。
+        append(
+          s.indentMode == 'em' ? '\u3000' * units : ' ' * units,
+          start,
+          advance: false,
+        );
+      }
+      append(text, start);
+      append('\n', end, advance: false);
+      if (blankAfter > 0) blankLines(blankAfter, end);
+      firstContent = false;
+      blankRun = 0;
+    }
+
+    // 去掉末尾多余换行，避免最后一页整页空白。
+    while (map.isNotEmpty && map.length == out.length &&
+        out.toString().endsWith('\n')) {
+      final String current = out.toString();
+      out.clear();
+      out.write(current.substring(0, current.length - 1));
+      map.removeLast();
+    }
+
+    return DisplayChapter(out.toString(), map, source.length);
+  }
+
+  /// 真实分页：按实际字体、行高、宽度、高度测量，不按固定字数切页。
+  static PaginatedChapter paginate({
+    required String chapterText,
+    required String chapterTitle,
+    required ReaderSettings settings,
+    required double width,
+    required double height,
+    required double textScale,
+  }) {
+    if (!width.isFinite || !height.isFinite || width <= 0 || height <= 0) {
+      throw ArgumentError('分页区域必须有正的宽高');
+    }
+    final DisplayChapter display = buildDisplay(chapterText, settings, textScale);
+    final double titleHeight =
+        titleBlockHeight(settings, chapterTitle, width, textScale);
+    final bool showTitle = titleHeight > 0;
+
+    if (display.text.isEmpty) {
+      return PaginatedChapter(
+        display: display,
+        pages: const <EnginePage>[EnginePage(displayStart: 0, displayEnd: 0, sourceStart: 0, sourceEnd: 0)],
+        titleHeight: titleHeight,
+        showTitle: showTitle,
+      );
+    }
+
+    final TextStyle style = bodyStyle(settings, textScale: textScale);
+    final TextPainter painter = TextPainter(
+      textDirection: TextDirection.ltr,
+      textAlign: textAlignOf(settings.align),
+    );
+    bool fits(int start, int count, double maxHeight) {
+      final int end = start + count;
+      int safe = count;
+      if (safe > 0 &&
+          end < display.text.length &&
+          _isHighSurrogate(display.text.codeUnitAt(end - 1)) &&
+          _isLowSurrogate(display.text.codeUnitAt(end))) {
+        safe--;
+      }
+      if (safe <= 0) return false;
+      painter.text = TextSpan(text: display.text.substring(start, start + safe), style: style);
+      painter.layout(maxWidth: width);
+      return painter.height <= maxHeight + 0.5;
+    }
+
+    final List<EnginePage> pages = <EnginePage>[];
+    int start = 0;
+    while (start < display.text.length) {
+      final double pageHeight = (pages.isEmpty && showTitle)
+          ? math.max(1, height - titleHeight)
+          : height;
+      int low = 1;
+      int high = display.text.length - start;
+      while (low < high) {
+        final int mid = (low + high + 1) ~/ 2;
+        if (fits(start, mid, pageHeight)) {
+          low = mid;
+        } else {
+          high = mid - 1;
+        }
+      }
+      int end = start + low;
+      if (end < display.text.length &&
+          _isHighSurrogate(display.text.codeUnitAt(end - 1)) &&
+          _isLowSurrogate(display.text.codeUnitAt(end))) {
+        end--;
+        if (end == start) end = math.min(display.text.length, start + 2);
+      }
+      final int sourceStart = display.sourceOffset(start);
+      final int sourceEnd = display.sourceOffset(end);
+      pages.add(EnginePage(
+        displayStart: start,
+        displayEnd: end,
+        sourceStart: sourceStart,
+        sourceEnd: math.max(sourceStart, sourceEnd),
+      ));
+      start = end;
+    }
+    painter.dispose();
+    return PaginatedChapter(
+      display: display,
+      pages: pages,
+      titleHeight: titleHeight,
+      showTitle: showTitle,
+    );
+  }
+
+  static bool _isHighSurrogate(int unit) => unit >= 0xD800 && unit <= 0xDBFF;
+  static bool _isLowSurrogate(int unit) => unit >= 0xDC00 && unit <= 0xDFFF;
+}
