@@ -10,11 +10,14 @@ import 'package:path/path.dart' as p;
 import 'package:xml/xml.dart';
 
 class ImportedDocument {
-  const ImportedDocument(this.text, this.format, {this.title, this.author});
+  const ImportedDocument(this.text, this.format, {this.title, this.author, this.coverBytes, this.coverExtension});
   final String text;
   final String format;
   final String? title;
   final String? author;
+  /// Original EPUB cover bytes; never fetches remote resources.
+  final Uint8List? coverBytes;
+  final String? coverExtension;
 }
 
 /// Text-mode EPUB, Markdown and HTML import. Does not execute remote HTML.
@@ -182,16 +185,56 @@ class FormatEngine {
     }
 
     final manifest = <String, String>{};
+    final imageItems = <String, String>{};
+    String? coverId;
+    String? coverPath;
     for (final item in opf.findAllElements('item')) {
       final id = item.getAttribute('id');
       final href = item.getAttribute('href');
       final type = item.getAttribute('media-type') ?? '';
       final property = item.getAttribute('properties') ?? '';
-      if (id == null || href == null || property.split(' ').contains('nav')) {
-        continue;
+      if (id == null || href == null) continue;
+      if (type == 'image/jpeg' || type == 'image/png') {
+        imageItems[id] = _resolve(p.posix.dirname(opfPath), href);
+        if (property.split(' ').contains('cover-image')) {
+          coverId = id;
+        }
       }
+      if (property.split(' ').contains('nav')) continue;
       if (type == 'application/xhtml+xml' || type == 'text/html') {
         manifest[id] = _resolve(p.posix.dirname(opfPath), href);
+      }
+    }
+    // EPUB2 defines cover by <meta name="cover" content="id" />.
+    if (coverId == null) {
+      for (final item in opf.findAllElements('meta')) {
+        if (item.getAttribute('name') == 'cover') {
+          final candidate = item.getAttribute('content');
+          if (candidate != null && imageItems.containsKey(candidate)) {
+            coverId = candidate;
+          }
+          break;
+        }
+      }
+    }
+    if (coverId != null) coverPath = imageItems[coverId!];
+    Uint8List? coverBytes;
+    String? coverExtension;
+    if (coverPath != null) {
+      final entry = entries[coverPath];
+      if (entry != null && entry.size > 0 && entry.size <= 3 * 1024 * 1024) {
+        final bytes = entry.readBytes();
+        if (bytes != null && bytes.length >= 8) {
+          final jpeg = bytes[0] == 0xff && bytes[1] == 0xd8 &&
+              bytes[2] == 0xff;
+          final png = bytes[0] == 0x89 && bytes[1] == 0x50 &&
+              bytes[2] == 0x4e && bytes[3] == 0x47 &&
+              bytes[4] == 0x0d && bytes[5] == 0x0a;
+          if (jpeg || png) {
+            coverBytes = Uint8List.fromList(bytes);
+            coverExtension = png ? 'png' : 'jpg';
+          }
+        }
       }
     }
     final sections = <String>[];
@@ -214,6 +257,8 @@ class FormatEngine {
       sections.join('\n\n'), 'EPUB',
       title: titles.isEmpty ? null : titles.first.innerText.trim(),
       author: authors.isEmpty ? null : authors.first.innerText.trim(),
+      coverBytes: coverBytes,
+      coverExtension: coverExtension,
     );
   }
 }
