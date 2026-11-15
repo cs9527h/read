@@ -15,6 +15,10 @@ class ReaderStyle {
     this.textAlignIndex = 0,
     this.horizontalMargin = 24,
     this.verticalMargin = 16,
+    this.leftMarginOverride = -1,
+    this.rightMarginOverride = -1,
+    this.topMarginOverride = -1,
+    this.bottomMarginOverride = -1,
     this.backgroundIndex = 0,
     this.showHeader = false,
     this.showFooter = true,
@@ -41,6 +45,15 @@ class ReaderStyle {
   final int textAlignIndex;
   final double horizontalMargin;
   final double verticalMargin;
+  /// -1 keeps legacy symmetrical margins; otherwise use that edge value.
+  final double leftMarginOverride;
+  final double rightMarginOverride;
+  final double topMarginOverride;
+  final double bottomMarginOverride;
+  double get leftMargin => leftMarginOverride < 0 ? horizontalMargin : leftMarginOverride;
+  double get rightMargin => rightMarginOverride < 0 ? horizontalMargin : rightMarginOverride;
+  double get topMargin => topMarginOverride < 0 ? verticalMargin : topMarginOverride;
+  double get bottomMargin => bottomMarginOverride < 0 ? verticalMargin : bottomMarginOverride;
   final int backgroundIndex;
   final bool showHeader;
   final bool showFooter;
@@ -87,6 +100,10 @@ class ReaderStyle {
     int? textAlignIndex,
     double? horizontalMargin,
     double? verticalMargin,
+    double? leftMarginOverride,
+    double? rightMarginOverride,
+    double? topMarginOverride,
+    double? bottomMarginOverride,
     int? backgroundIndex,
     bool? showHeader,
     bool? showFooter,
@@ -111,6 +128,10 @@ class ReaderStyle {
         textAlignIndex: textAlignIndex ?? this.textAlignIndex,
         horizontalMargin: horizontalMargin ?? this.horizontalMargin,
         verticalMargin: verticalMargin ?? this.verticalMargin,
+        leftMarginOverride: leftMarginOverride ?? this.leftMarginOverride,
+        rightMarginOverride: rightMarginOverride ?? this.rightMarginOverride,
+        topMarginOverride: topMarginOverride ?? this.topMarginOverride,
+        bottomMarginOverride: bottomMarginOverride ?? this.bottomMarginOverride,
         backgroundIndex: backgroundIndex ?? this.backgroundIndex,
         showHeader: showHeader ?? this.showHeader,
         showFooter: showFooter ?? this.showFooter,
@@ -137,6 +158,10 @@ class ReaderStyle {
         'textAlignIndex': textAlignIndex,
         'horizontalMargin': horizontalMargin,
         'verticalMargin': verticalMargin,
+        'leftMarginOverride': leftMarginOverride,
+        'rightMarginOverride': rightMarginOverride,
+        'topMarginOverride': topMarginOverride,
+        'bottomMarginOverride': bottomMarginOverride,
         'backgroundIndex': backgroundIndex,
         'showHeader': showHeader,
         'showFooter': showFooter,
@@ -176,6 +201,10 @@ class ReaderStyle {
       textAlignIndex: integer('textAlignIndex', fallback.textAlignIndex, 0, 3),
       horizontalMargin: number('horizontalMargin', fallback.horizontalMargin, 8, 80),
       verticalMargin: number('verticalMargin', fallback.verticalMargin, 4, 80),
+      leftMarginOverride: number('leftMarginOverride', fallback.leftMarginOverride, -1, 120),
+      rightMarginOverride: number('rightMarginOverride', fallback.rightMarginOverride, -1, 120),
+      topMarginOverride: number('topMarginOverride', fallback.topMarginOverride, -1, 120),
+      bottomMarginOverride: number('bottomMarginOverride', fallback.bottomMarginOverride, -1, 120),
       backgroundIndex: integer('backgroundIndex', fallback.backgroundIndex, 0, 5),
       showHeader: boolean('showHeader', fallback.showHeader),
       showFooter: boolean('showFooter', fallback.showFooter),
@@ -203,6 +232,8 @@ class ReaderStyle {
   String get layoutKey => [
         fontSize, lineHeight, letterSpacing, fontWeightIndex,
         textAlignIndex, horizontalMargin, verticalMargin, showFooter,
+        leftMarginOverride, rightMarginOverride,
+        topMarginOverride, bottomMarginOverride,
         indentCharacters, paragraphBlankLines, fontFamily,
       ].join('/');
 }
