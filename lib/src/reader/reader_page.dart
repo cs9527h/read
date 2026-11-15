@@ -43,6 +43,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   ReaderStyle _style = const ReaderStyle();
   bool _bookSpecificStyle = false;
   bool _showChrome = false;
+  bool _styleLoaded = false;
 
   @override
   void initState() {
@@ -137,6 +138,9 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    if (!_styleLoaded) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
     final _Palette palette = _palette;
     final Chapter chapter = _chapters[_chapterIndex];
     final String chapterText = chapter.slice(widget.book.content);
@@ -755,15 +759,21 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
 
 
   Future<void> _loadStyle() async {
-    final legacy = _style;
-    final selection = await ReaderStyleStore.instance.load(widget.book.id, legacy);
-    if (!mounted) return;
-    setState(() {
-      _style = kEink ? selection.style.copyWith(backgroundIndex: 0) : selection.style;
-      _bookSpecificStyle = selection.bookSpecific;
-      _pageSlices = const <PageSlice>[];
-      _measureKey = null;
-    });
+    try {
+      final selection = await ReaderStyleStore.instance.load(widget.book.id, _style);
+      if (!mounted) return;
+      setState(() {
+        _style = kEink
+            ? selection.style.copyWith(backgroundIndex: 0)
+            : selection.style;
+        _bookSpecificStyle = selection.bookSpecific;
+        _styleLoaded = true;
+        _measureKey = null;
+      });
+    } catch (_) {
+      // Never strand the reader on a loading screen when a preference fails.
+      if (mounted) setState(() => _styleLoaded = true);
+    }
   }
 
   void _updateStyle(ReaderStyle next) {
