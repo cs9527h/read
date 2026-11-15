@@ -62,6 +62,7 @@ lib/src/stats/                阅读统计
 lib/src/profile/              我的 / 我的阅读 / 应用外观 / 存储管理 / 关于
 lib/src/reader/               阅读页、分页引擎、阅读设置与主题
 docs/READER_100_STATUS.md     100 项需求逐条状态表
+docs/screenshots/             阅读页与设置面板渲染截图（Flutter 测试环境，非真机）
 lib/src/model/                数据模型
 test/                         单元测试
 .github/workflows/            CI 构建

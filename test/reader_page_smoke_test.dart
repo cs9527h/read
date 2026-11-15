@@ -30,6 +30,8 @@ void main() {
     expect(find.byType(PageView), findsOneWidget);
     expect(book.chapterIndex.value, 0);
     expect(book.charOffset.value, greaterThanOrEqualTo(0));
+    // 章节标题只出现一次：标题块渲染后，正文里的重复标题行被移除。
+    expect(find.textContaining('第一章 起'), findsOneWidget);
 
     // 点击屏幕中央呼出菜单，顶部出现章节标题入口。
     await tester.tapAt(const Offset(400, 300));

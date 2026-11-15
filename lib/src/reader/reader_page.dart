@@ -44,6 +44,7 @@ class _ReaderPageState extends State<ReaderPage> {
   List<int> _bookmarks = const <int>[];
 
   bool _menuVisible = false;
+  int _chapterContentBase = 0;
   bool _loading = true;
   String _layoutKey = '';
   double _pageWidth = 520;
@@ -224,12 +225,29 @@ class _ReaderPageState extends State<ReaderPage> {
   void _relayout(double width, double height) {
     if (_chapterIndex < 0 || _chapterIndex >= _chapters.length) return;
     final Chapter chapter = _chapters[_chapterIndex];
-    final int savedOffset = (_anchorOffset ?? widget.book.charOffset.value)
-        .clamp(0, chapter.length);
+    final String raw = chapter.slice(widget.book.content);
+    final String trimmedTitle = chapter.title.trim();
+    int contentBase = 0;
+    if (trimmedTitle.isNotEmpty) {
+      final int newline = raw.indexOf('\n');
+      final String firstLine =
+          (newline < 0 ? raw : raw.substring(0, newline)).trim();
+      if (firstLine == trimmedTitle) {
+        contentBase = newline < 0 ? raw.length : newline + 1;
+      }
+    }
+    _chapterContentBase = contentBase;
+    final String chapterText = raw.substring(contentBase);
+    final int savedAbsolute = _anchorOffset ??
+        (chapter.start + widget.book.charOffset.value.clamp(0, chapter.length));
+    final int savedOffset =
+        (savedAbsolute - chapter.start - contentBase).clamp(0, chapterText.length);
     _anchorOffset = null;
+    final bool singleUnnamed =
+        _chapters.length == 1 && chapter.title == '全文';
     final PaginatedChapter pagination = ReaderEngine.paginate(
-      chapterText: chapter.slice(widget.book.content),
-      chapterTitle: chapter.title,
+      chapterText: chapterText,
+      chapterTitle: singleUnnamed ? '' : chapter.title,
       settings: _settings,
       width: width,
       height: height,
@@ -246,7 +264,7 @@ class _ReaderPageState extends State<ReaderPage> {
     widget.book.chapterIndex.value = _chapterIndex;
     widget.book.pageIndex.value = _renderPageIndex(page);
     if (pagination.pages.isNotEmpty) {
-      widget.book.charOffset.value =
+      widget.book.charOffset.value = contentBase +
           pagination.pages[page.clamp(0, pagination.pages.length - 1)].sourceStart;
     }
     _lastSavedOffset = widget.book.charOffset.value;
@@ -276,14 +294,16 @@ class _ReaderPageState extends State<ReaderPage> {
       return saved < 0 ? 0 : saved;
     }
     final int column = _pageIndex.clamp(0, p.pages.length - 1);
-    return _chapters[_chapterIndex].start + p.pages[column].sourceStart;
+    return _chapters[_chapterIndex].start +
+        _chapterContentBase +
+        p.pages[column].sourceStart;
   }
 
   void _saveProgress() {
     final PaginatedChapter? p = _pagination;
     if (p == null || p.pages.isEmpty) return;
     final int column = _pageIndex.clamp(0, p.pages.length - 1);
-    final int offset = p.pages[column].sourceStart;
+    final int offset = _chapterContentBase + p.pages[column].sourceStart;
     final int delta = (offset - _lastSavedOffset).abs();
     if (delta > 0) {
       _sessionChars += delta;
@@ -398,12 +418,15 @@ class _ReaderPageState extends State<ReaderPage> {
     setState(() {
       _chapterIndex = index;
       _pageIndex = 0;
-      _anchorOffset = atEnd ? math.max(0, chapter.length - 1) : 0;
+      _anchorOffset = atEnd
+          ? math.max(chapter.start, chapter.end - 1)
+          : chapter.start;
       _pagination = null;
       _layoutKey = '';
       widget.book.chapterIndex.value = index;
       widget.book.pageIndex.value = 0;
-      widget.book.charOffset.value = _anchorOffset!;
+      widget.book.charOffset.value =
+          atEnd ? math.max(0, chapter.length - 1) : 0;
     });
     _lastSavedOffset = _anchorOffset!;
     await LibraryStore.instance.saveProgress(widget.book);
@@ -421,12 +444,13 @@ class _ReaderPageState extends State<ReaderPage> {
     setState(() {
       _chapterIndex = chapterIndex;
       _pageIndex = 0;
-      _anchorOffset = (absoluteOffset - chapter.start).clamp(0, chapter.length);
+      _anchorOffset = absoluteOffset;
       _pagination = null;
       _layoutKey = '';
       widget.book.chapterIndex.value = chapterIndex;
       widget.book.pageIndex.value = 0;
-      widget.book.charOffset.value = _anchorOffset!;
+      widget.book.charOffset.value =
+          (absoluteOffset - chapter.start).clamp(0, chapter.length);
     });
     _lastSavedOffset = _anchorOffset!;
     LibraryStore.instance.saveProgress(widget.book);
@@ -680,8 +704,11 @@ class _ReaderPageState extends State<ReaderPage> {
 
   String _renderTemplate(String template) {
     final PaginatedChapter? p = _pagination;
-    final String chapter =
-        _chapterIndex < _chapters.length ? _chapters[_chapterIndex].title : '';
+    final String chapter = _chapterIndex < _chapters.length
+        ? (_chapters.length == 1 && _chapters[_chapterIndex].title == '全文'
+            ? widget.book.title
+            : _chapters[_chapterIndex].title)
+        : '';
     final int totalPages = p?.pages.length ?? 1;
     final int page = _pageIndex + 1;
     final double percent = _overallProgress * 100;
@@ -1430,13 +1457,13 @@ class _ReaderPageState extends State<ReaderPage> {
         _chapters = next;
         _chapterIndex = index;
         _pageIndex = 0;
-        _anchorOffset =
-            (absolute - next[index].start).clamp(0, next[index].length);
+        _anchorOffset = absolute;
         _pagination = null;
         _layoutKey = '';
         widget.book.chapterIndex.value = index;
         widget.book.pageIndex.value = 0;
-        widget.book.charOffset.value = _anchorOffset!;
+        widget.book.charOffset.value =
+            (absolute - next[index].start).clamp(0, next[index].length);
       });
       _lastSavedOffset = _anchorOffset!;
       LibraryStore.instance.saveProgress(widget.book);

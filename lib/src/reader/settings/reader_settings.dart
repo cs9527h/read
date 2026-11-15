@@ -15,7 +15,7 @@ const Map<String, Object?> kReaderDefaults = <String, Object?>{
   'paragraphSpacingAfter': 8.0,
   'indentMode': 'fixed', // none | fixed | em
   'indentChars': 2.0,
-  'align': 'left', // left | center | right | justify
+  'align': 'justify', // left | center | right | justify
   'preserveBlankLines': true,
   'ignoreExtraBlankLines': false,
   'boldPattern': '',
