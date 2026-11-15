@@ -20,6 +20,8 @@ class ReaderStyle {
     this.showFooter = true,
     this.tapZone = 0.28,
     this.turnDurationMs = 150,
+    this.indentCharacters = 0,
+    this.paragraphBlankLines = 0,
   });
 
   final double fontSize;
@@ -36,6 +38,10 @@ class ReaderStyle {
   final bool showFooter;
   final double tapZone;
   final int turnDurationMs;
+  /// Visual first-line fullwidth spaces, source text and anchors are unchanged.
+  final int indentCharacters;
+  /// Optional visual blank lines inserted after a source newline.
+  final int paragraphBlankLines;
 
   FontWeight get fontWeight => FontWeight.values[fontWeightIndex];
   TextAlign get textAlign => switch (textAlignIndex) {
@@ -66,6 +72,8 @@ class ReaderStyle {
     bool? showFooter,
     double? tapZone,
     int? turnDurationMs,
+    int? indentCharacters,
+    int? paragraphBlankLines,
   }) =>
       ReaderStyle(
         fontSize: fontSize ?? this.fontSize,
@@ -80,6 +88,8 @@ class ReaderStyle {
         showFooter: showFooter ?? this.showFooter,
         tapZone: tapZone ?? this.tapZone,
         turnDurationMs: turnDurationMs ?? this.turnDurationMs,
+        indentCharacters: indentCharacters ?? this.indentCharacters,
+        paragraphBlankLines: paragraphBlankLines ?? this.paragraphBlankLines,
       );
 
   Map<String, Object> toJson() => <String, Object>{
@@ -96,6 +106,8 @@ class ReaderStyle {
         'showFooter': showFooter,
         'tapZone': tapZone,
         'turnDurationMs': turnDurationMs,
+        'indentCharacters': indentCharacters,
+        'paragraphBlankLines': paragraphBlankLines,
       };
 
   static ReaderStyle fromJson(Object? source, {ReaderStyle fallback = const ReaderStyle()}) {
@@ -125,6 +137,8 @@ class ReaderStyle {
       showFooter: boolean('showFooter', fallback.showFooter),
       tapZone: number('tapZone', fallback.tapZone, 0.15, 0.42),
       turnDurationMs: integer('turnDurationMs', fallback.turnDurationMs, 0, 400),
+      indentCharacters: integer('indentCharacters', fallback.indentCharacters, 0, 4),
+      paragraphBlankLines: integer('paragraphBlankLines', fallback.paragraphBlankLines, 0, 2),
     );
   }
 
@@ -132,6 +146,7 @@ class ReaderStyle {
   String get layoutKey => [
         fontSize, lineHeight, letterSpacing, fontWeightIndex,
         textAlignIndex, horizontalMargin, verticalMargin, showFooter,
+        indentCharacters, paragraphBlankLines,
       ].join('/');
 }
 
