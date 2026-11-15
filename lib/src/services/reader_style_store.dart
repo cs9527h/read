@@ -245,4 +245,84 @@ class ReaderStyleStore {
           throw StateError('无法清除本书阅读样式');
         }
       });
+  static const String _presetsKey = 'read.reader.style.presets.v1';
+
+  Future<Map<String, ReaderStyle>> loadPresets() async {
+    final prefs = await _prefs();
+    final raw = prefs.getString(_presetsKey);
+    if (raw == null) return <String, ReaderStyle>{};
+    try {
+      final obj = jsonDecode(raw);
+      if (obj is! Map) return <String, ReaderStyle>{};
+      return <String, ReaderStyle>{
+        for (final entry in obj.entries)
+          if (entry.key is String &&
+              (entry.key as String).trim().isNotEmpty &&
+              (entry.key as String).length <= 32)
+            entry.key as String: ReaderStyle.fromJson(entry.value),
+      };
+    } catch (_) {
+      return <String, ReaderStyle>{};
+    }
+  }
+
+  Future<void> savePreset(String name, ReaderStyle style) async {
+    final label = name.trim();
+    if (label.isEmpty || label.length > 32) {
+      throw const FormatException('预设名称需要 1–32 个字符');
+    }
+    await _enqueue((prefs) async {
+      final presets = await loadPresets();
+      if (!presets.containsKey(label) && presets.length >= 30) {
+        throw const FormatException('最多保存 30 套阅读预设');
+      }
+      presets[label] = style;
+      final data = <String, dynamic>{
+        for (final entry in presets.entries) entry.key: entry.value.toJson(),
+      };
+      if (!await prefs.setString(_presetsKey, jsonEncode(data))) {
+        throw StateError('阅读预设保存失败');
+      }
+    });
+  }
+
+  Future<void> deletePreset(String name) async {
+    await _enqueue((prefs) async {
+      final presets = await loadPresets();
+      if (presets.remove(name) == null) return;
+      final data = <String, dynamic>{
+        for (final entry in presets.entries) entry.key: entry.value.toJson(),
+      };
+      if (!await prefs.setString(_presetsKey, jsonEncode(data))) {
+        throw StateError('阅读预设删除失败');
+      }
+    });
+  }
+
+  String exportStyle(ReaderStyle style) => jsonEncode(<String, Object>{
+        'format': 'read.reader.style',
+        'version': 1,
+        'style': style.toJson(),
+      });
+
+  ReaderStyle importStyle(String raw) {
+    if (raw.length > 16 * 1024) {
+      throw const FormatException('阅读样式文件超过允许大小');
+    }
+    try {
+      final obj = jsonDecode(raw);
+      if (obj is! Map ||
+          obj['format'] != 'read.reader.style' ||
+          obj['version'] != 1 ||
+          obj['style'] is! Map) {
+        throw const FormatException('不是兼容的 Read 阅读排版配置');
+      }
+      return ReaderStyle.fromJson(obj['style']);
+    } on FormatException {
+      rethrow;
+    } catch (_) {
+      throw const FormatException('阅读排版配置 JSON 格式错误');
+    }
+  }
+
 }
