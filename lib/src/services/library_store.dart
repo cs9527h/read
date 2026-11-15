@@ -190,7 +190,7 @@ class LibraryStore extends ChangeNotifier {
       staged = await _stageDocumentStream(picked);
       path = staged.path;
     }
-    final String readablePath = path!;
+    final String readablePath = path;
     try {
     final String ext = picked.name.split('.').last.toLowerCase();
     if (ext == 'pdf') {
