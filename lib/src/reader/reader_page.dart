@@ -253,7 +253,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                   min: 0,
                   max: (_pageSlices.length - 1).clamp(1, 1000000).toDouble(),
                   value: _pageIndex.clamp(0, (_pageSlices.length - 1).clamp(1, 1000000)).toDouble(),
-                  onChanged: (value) {
+                  onChanged: _pageSlices.length <= 1 ? null : (value) {
                     if (_controller?.hasClients ?? false) {
                       _controller!.jumpToPage(value.round());
                     }
