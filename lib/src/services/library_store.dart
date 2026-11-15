@@ -28,6 +28,10 @@ class LibraryStore extends ChangeNotifier {
   final List<Book> books = <Book>[];
   SharedPreferences? _prefs;
 
+  // Serialize page-turn writes so an earlier async save cannot overwrite a
+  // newer chapter/character anchor when the reader is flipped rapidly.
+  Future<void> _progressWrites = Future<void>.value();
+
   double _fontSize = 18;
   double _lineHeight = 1.7;
   int _backgroundIndex = 0;
@@ -113,11 +117,17 @@ class LibraryStore extends ChangeNotifier {
   Future<void> saveProgress(Book book) async {
     final SharedPreferences? p = _prefs;
     if (p == null) return;
-    final saved = await p.setString(
-      '$_progressPrefix${book.id}',
-      '${book.chapterIndex.value}:${book.pageIndex.value}:${book.charOffset.value}',
-    );
-    if (!saved) throw StateError('阅读进度保存失败');
+    final key = '$_progressPrefix${book.id}';
+    final snapshot =
+        '${book.chapterIndex.value}:${book.pageIndex.value}:${book.charOffset.value}';
+    // Recover the queue from prior I/O failures so future turns still save.
+    final task = _progressWrites.catchError((Object _) {}).then((_) async {
+      if (!await p.setString(key, snapshot)) {
+        throw StateError('阅读进度保存失败');
+      }
+    });
+    _progressWrites = task;
+    await task;
   }
 
   /// Apply validated remote progress without altering the imported file.
