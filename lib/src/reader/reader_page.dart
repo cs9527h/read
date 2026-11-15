@@ -11,6 +11,7 @@ import 'package:read/src/services/paginator.dart';
 import 'package:read/src/services/library_store.dart';
 import 'package:read/src/services/reader_style_store.dart';
 import 'package:read/src/services/reader_text_formatter.dart';
+import 'package:read/src/services/reader_font_store.dart';
 import 'package:read/src/services/reading_stats_store.dart';
 import 'package:read/src/theme.dart';
 
@@ -811,8 +812,17 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
 
   Future<void> _loadStyle() async {
     try {
-      final selection = await ReaderStyleStore.instance.load(widget.book.id, _style);
+      var selection = await ReaderStyleStore.instance.load(widget.book.id, _style);
       if (!mounted) return;
+      if (selection.style.fontFamily.isNotEmpty) {
+        final loaded = await ReaderFontStore.instance.load(selection.style.fontFamily);
+        if (!mounted) return;
+        if (!loaded) {
+          // Missing font must not block a previously imported book.
+          selection = ReaderStyleSelection(
+            selection.style.copyWith(fontFamily: ''), selection.bookSpecific);
+        }
+      }
       setState(() {
         _style = kEink
             ? selection.style.copyWith(backgroundIndex: 0)
@@ -861,6 +871,9 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
         lineHeight: store.lineHeight,
         backgroundIndex: store.backgroundIndex,
       ));
+      if (global.fontFamily.isNotEmpty) {
+        await ReaderFontStore.instance.load(global.fontFamily);
+      }
       if (!mounted) return;
       setState(() {
         _bookSpecificStyle = false;
@@ -868,6 +881,61 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
         _pageSlices = const <PageSlice>[];
         _measureKey = null;
       });
+    }
+  }
+
+  Future<String?> _selectFont() async {
+    try {
+      final fonts = await ReaderFontStore.instance.list();
+      if (!mounted) return null;
+      return await showModalBottomSheet<String>(
+        context: context,
+        showDragHandle: !kEink,
+        builder: (ctx) => SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            children: <Widget>[
+              const ListTile(title: Text('阅读字体')),
+              ListTile(
+                leading: const Icon(Icons.text_fields_outlined),
+                title: const Text('使用系统默认字体'),
+                onTap: () => Navigator.pop(ctx, ''),
+              ),
+              for (final font in fonts)
+                ListTile(
+                  title: Text(font.displayName),
+                  trailing: _style.fontFamily == font.family
+                      ? const Icon(Icons.check_rounded) : null,
+                  onTap: () => Navigator.pop(ctx, font.family),
+                ),
+              ListTile(
+                leading: const Icon(Icons.add_rounded),
+                title: const Text('导入字体文件'),
+                subtitle: const Text('TTF / OTF，大小不超过 12MB'),
+                onTap: () async {
+                  try {
+                    final imported = await ReaderFontStore.instance.importFromPicker();
+                    if (!ctx.mounted || imported == null) return;
+                    Navigator.pop(ctx, imported.family);
+                  } catch (error) {
+                    if (!ctx.mounted) return;
+                    ScaffoldMessenger.of(ctx).showSnackBar(
+                      SnackBar(content: Text('字体导入失败：$error')),
+                    );
+                  }
+                },
+              ),
+            ],
+          ),
+        ),
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('无法读取自定义字体，请检查存储权限')),
+        );
+      }
+      return null;
     }
   }
 
@@ -949,6 +1017,20 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                     },
                   ),
                   section('文字'),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.font_download_outlined),
+                    title: Text(_style.fontFamily.isEmpty
+                        ? '系统默认字体' : '已选择自定义字体'),
+                    subtitle: const Text('支持导入本地 TTF / OTF 文件'),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () async {
+                      final chosen = await _selectFont();
+                      if (!mounted || !ctx.mounted || chosen == null) return;
+                      refresh(() => _updateStyle(
+                        _style.copyWith(fontFamily: chosen)));
+                    },
+                  ),
                   _styleSlider('字号', _style.fontSize, 12, 42, 30,
                       (v) => change(_style.copyWith(fontSize: v)), digits: 0),
                   _styleSlider('行高', _style.lineHeight, 1, 2.8, 18,
