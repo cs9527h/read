@@ -389,7 +389,10 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   bool get _twoColumns {
     if (_settings.columns == 'one') return false;
     if (_settings.columns == 'two') return true;
-    return _pageWidth > 620 && _pageWidth > _pageHeight * 1.05;
+    // _pageWidth is the measured width of a single column after pagination.
+    // It must not be used to decide whether landscape needs two columns.
+    final size = MediaQuery.sizeOf(context);
+    return size.width > 720 && size.width > size.height * 1.05;
   }
 
   double get _headerHeight => _settings.minimalMode || !_settings.headerShow
@@ -1369,8 +1372,13 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   Widget _buildChapterTitle() {
     final String title =
         _chapterIndex < _chapters.length ? _chapters[_chapterIndex].title : '';
+    if (title == '全文' || title.isEmpty) return const SizedBox.shrink();
+    final ReaderTheme theme = _store.effectiveTheme(
+      _settings,
+      MediaQuery.platformBrightnessOf(context),
+    );
     final Color color = Color(
-      _settings.titleColor ?? _settings.textColor ?? 0xFF1A1A1A,
+      _settings.titleColor ?? _settings.textColor ?? theme.foreground,
     );
     final TextAlign align = switch (_settings.titleAlign) {
       'center' => TextAlign.center,
@@ -1668,15 +1676,17 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
       padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
       child: SafeArea(
         top: false,
-        child: Row(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Text(
-              '${(_overallProgress * 100).toStringAsFixed(1)}%',
-              style: TextStyle(fontSize: 12, color: secondary),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Slider(
+            Row(children: <Widget>[
+              Text(
+                '${(_overallProgress * 100).toStringAsFixed(1)}%',
+                style: TextStyle(fontSize: 12, color: secondary),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Slider(
                 value: _overallProgress.clamp(0, 1),
                 onChanged: widget.book.content.isEmpty
                     ? null
@@ -1687,6 +1697,10 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                 },
               ),
             ),
+            ]),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: <Widget>[
             for (final action in _settings.bottomActions)
               IconButton(
                 tooltip: switch (action) {
@@ -1717,6 +1731,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                   }
                 },
               ),
+              ],
+            ),
           ],
         ),
       ),
