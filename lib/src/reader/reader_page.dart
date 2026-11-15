@@ -495,7 +495,9 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                         children: <Widget>[
                           _buildHeader(secondary),
                           Expanded(
-                            child: _buildPageArea(foreground, secondary),
+                            child: _buildTapLayer(
+                              _buildPageArea(foreground, secondary),
+                            ),
                           ),
                           _buildFooter(secondary),
                         ],
@@ -506,7 +508,6 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
               },
             ),
           ),
-          _buildTapLayer(),
           _buildMenu(background, foreground, secondary),
           _buildBrightnessOverlay(),
         ],
@@ -1054,25 +1055,23 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   // 点击、菜单与手势
   // ---------------------------------------------------------------------------
 
-  Widget _buildTapLayer() {
-    return Positioned.fill(
-      child: GestureDetector(
-        behavior: HitTestBehavior.translucent,
-        onTapUp: (TapUpDetails details) {
-          final double width = MediaQuery.sizeOf(context).width;
-          final double x = details.localPosition.dx;
-          final String action;
-          if (x < width * 0.3) {
-            action = _settings.tapLeft;
-          } else if (x < width * 0.7) {
-            action = _settings.tapCenter;
-          } else {
-            action = _settings.tapRight;
-          }
-          _performTapAction(action);
-        },
-        // Long press now belongs to SelectionArea for range selection.
-      ),
+  /// The tap recognizer must wrap the actual page rather than sit above it
+  /// as a full-screen Stack overlay. Overlays intercept hit testing and make
+  /// PageView swipes and long-press text selection impossible.
+  Widget _buildTapLayer(Widget page) {
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTapUp: (details) {
+        final width = _pageWidth > 0 ? _pageWidth : MediaQuery.sizeOf(context).width;
+        final x = details.localPosition.dx;
+        final action = x < width * 0.3
+            ? _settings.tapLeft
+            : x > width * 0.7
+                ? _settings.tapRight
+                : _settings.tapCenter;
+        _performTapAction(action);
+      },
+      child: page,
     );
   }
 
