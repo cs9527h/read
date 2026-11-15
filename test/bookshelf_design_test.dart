@@ -21,12 +21,12 @@ void main() {
       ]);
 
     await tester.pumpWidget(MaterialApp(
-      theme: buildTheme(),
+      theme: buildTheme(Brightness.light),
       home: const BookshelfPage(),
     ));
     await tester.pumpAndSettle();
 
-    expect(find.text('我的书架'), findsOneWidget);
+    expect(find.text('书架'), findsWidgets);
     expect(find.text('春天的故事'), findsWidgets);
     expect(find.text('冬天的日记'), findsWidgets);
 

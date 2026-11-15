@@ -10,6 +10,7 @@ class Book {
     this.format = 'TXT',
     this.sourcePath,
     this.lastReadAt,
+    this.chapterCount = 0,
   });
 
   final String id;
@@ -21,6 +22,9 @@ class Book {
   /// 导入文件的绝对路径（内置样章为 null）。
   final String? sourcePath;
   final DateTime? lastReadAt;
+
+  /// 章节总数缓存（由阅读页写入，用于书架显示粗略进度）。
+  int chapterCount;
 
   /// 阅读进度：章节索引与页索引。
   final ValueNotifier<int> chapterIndex = ValueNotifier<int>(0);
@@ -36,6 +40,7 @@ class Book {
         'format': format,
         'sourcePath': sourcePath,
         'lastReadAt': lastReadAt?.millisecondsSinceEpoch,
+        'chapterCount': chapterCount,
       };
 
   static Book fromMeta(Map<String, dynamic> m, String content) => Book(
@@ -48,5 +53,6 @@ class Book {
             ? null
             : DateTime.fromMillisecondsSinceEpoch(m['lastReadAt'] as int),
         content: content,
+        chapterCount: (m['chapterCount'] as int?) ?? 0,
       );
 }
