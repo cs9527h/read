@@ -22,6 +22,7 @@ class ReaderStyle {
     this.turnDurationMs = 150,
     this.indentCharacters = 0,
     this.paragraphBlankLines = 0,
+    this.fontFamily = '',
   });
 
   final double fontSize;
@@ -42,6 +43,8 @@ class ReaderStyle {
   final int indentCharacters;
   /// Optional visual blank lines inserted after a source newline.
   final int paragraphBlankLines;
+  /// Empty selects the system font. Other values reference app-owned fonts.
+  final String fontFamily;
 
   FontWeight get fontWeight => FontWeight.values[fontWeightIndex];
   TextAlign get textAlign => switch (textAlignIndex) {
@@ -57,6 +60,7 @@ class ReaderStyle {
         letterSpacing: letterSpacing,
         fontWeight: fontWeight,
         color: color,
+        fontFamily: fontFamily.isEmpty ? null : fontFamily,
       );
 
   ReaderStyle copyWith({
@@ -74,6 +78,7 @@ class ReaderStyle {
     int? turnDurationMs,
     int? indentCharacters,
     int? paragraphBlankLines,
+    String? fontFamily,
   }) =>
       ReaderStyle(
         fontSize: fontSize ?? this.fontSize,
@@ -90,6 +95,7 @@ class ReaderStyle {
         turnDurationMs: turnDurationMs ?? this.turnDurationMs,
         indentCharacters: indentCharacters ?? this.indentCharacters,
         paragraphBlankLines: paragraphBlankLines ?? this.paragraphBlankLines,
+        fontFamily: fontFamily ?? this.fontFamily,
       );
 
   Map<String, Object> toJson() => <String, Object>{
@@ -108,6 +114,7 @@ class ReaderStyle {
         'turnDurationMs': turnDurationMs,
         'indentCharacters': indentCharacters,
         'paragraphBlankLines': paragraphBlankLines,
+        'fontFamily': fontFamily,
       };
 
   static ReaderStyle fromJson(Object? source, {ReaderStyle fallback = const ReaderStyle()}) {
@@ -139,6 +146,8 @@ class ReaderStyle {
       turnDurationMs: integer('turnDurationMs', fallback.turnDurationMs, 0, 400),
       indentCharacters: integer('indentCharacters', fallback.indentCharacters, 0, 4),
       paragraphBlankLines: integer('paragraphBlankLines', fallback.paragraphBlankLines, 0, 2),
+      fontFamily: m['fontFamily'] is String && (m['fontFamily'] as String).length <= 96
+          ? m['fontFamily'] as String : fallback.fontFamily,
     );
   }
 
@@ -146,7 +155,7 @@ class ReaderStyle {
   String get layoutKey => [
         fontSize, lineHeight, letterSpacing, fontWeightIndex,
         textAlignIndex, horizontalMargin, verticalMargin, showFooter,
-        indentCharacters, paragraphBlankLines,
+        indentCharacters, paragraphBlankLines, fontFamily,
       ].join('/');
 }
 
