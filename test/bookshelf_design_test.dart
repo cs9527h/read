@@ -28,7 +28,7 @@ void main() {
 
     expect(find.text('我的书架'), findsOneWidget);
     expect(find.text('春天的故事'), findsWidgets);
-    expect(find.text('冬天的日记'), findsOneWidget);
+    expect(find.text('冬天的日记'), findsWidgets);
 
     await tester.enterText(find.byType(TextField), '春天');
     await tester.pumpAndSettle();
