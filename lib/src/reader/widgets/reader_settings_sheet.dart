@@ -294,9 +294,16 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
           alignment: Alignment.centerLeft,
           child: TextButton.icon(
             onPressed: () async {
-              final UserFont? font = await UserFontStore.instance.importFont();
-              if (font == null) return;
-              _update(<String, Object?>{'fontFamily': font.family});
+              try {
+                final UserFont? font = await UserFontStore.instance.importFont();
+                if (!mounted || font == null) return;
+                _update(<String, Object?>{'fontFamily': font.family});
+              } catch (error) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('字体导入失败：$error')),
+                );
+              }
             },
             icon: const Icon(Icons.upload_file_rounded),
             label: const Text('导入 TTF / OTF 字体'),
