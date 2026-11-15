@@ -113,10 +113,11 @@ class LibraryStore extends ChangeNotifier {
   Future<void> saveProgress(Book book) async {
     final SharedPreferences? p = _prefs;
     if (p == null) return;
-    await p.setString(
+    final saved = await p.setString(
       '$_progressPrefix${book.id}',
       '${book.chapterIndex.value}:${book.pageIndex.value}:${book.charOffset.value}',
     );
+    if (!saved) throw StateError('阅读进度保存失败');
   }
 
   /// Apply validated remote progress without altering the imported file.
@@ -165,16 +166,23 @@ class LibraryStore extends ChangeNotifier {
   /// 导入 TXT：把内容复制到应用目录，元数据写入本地存储。
   Future<Book?> importBook() async {
     final FilePickerResult? result = await FilePicker.platform.pickFiles(
-      type: FileType.any,
+      type: FileType.custom,
+      allowedExtensions: const <String>['txt', 'epub', 'pdf', 'md', 'markdown', 'html', 'htm'],
+      withData: false,
     );
     if (result == null || result.files.isEmpty) return null;
     final PlatformFile picked = result.files.first;
     final String? path = picked.path;
-    if (path == null) return null;
+    if (path == null || path.isEmpty) {
+      throw const FormatException('系统没有返回可读取的文件路径。请先将电子书下载到手机本地，再从文件管理器选择。');
+    }
 
     final String ext = picked.name.split('.').last.toLowerCase();
     if (ext == 'pdf') {
       final File source = File(path);
+      if (!await source.exists()) {
+        throw const FormatException('无法读取所选 PDF 文件，请先将文件下载到本地。');
+      }
       await PdfFormat.verifyHeader(source);
       final Directory base = await getApplicationDocumentsDirectory();
       final Directory dir = Directory(base.path + '/books');
@@ -188,7 +196,13 @@ class LibraryStore extends ChangeNotifier {
           format: 'PDF', content: '', sourcePath: copy.path);
       books.add(book);
       _sortBooks();
-      await _persistMeta();
+      try {
+        await _persistMeta();
+      } catch (_) {
+        books.remove(book);
+        if (await copy.exists()) await copy.delete();
+        rethrow;
+      }
       notifyListeners();
       return book;
     }
@@ -197,6 +211,9 @@ class LibraryStore extends ChangeNotifier {
         '当前支持 TXT、EPUB（文字版）、PDF、Markdown、HTML，其余格式开发中');
     }
     final File source = File(path);
+    if (!await source.exists()) {
+      throw const FormatException('无法读取所选文件，请先将文件下载到本地。');
+    }
     final int fileSize = await source.length();
     if (fileSize > FormatEngine.maxSourceBytes) {
       throw const FormatException(
@@ -237,25 +254,39 @@ class LibraryStore extends ChangeNotifier {
     );
     books.add(book);
     _sortBooks();
-    await _persistMeta();
+    try {
+      await _persistMeta();
+    } catch (_) {
+      books.remove(book);
+      if (await target.exists()) await target.delete();
+      rethrow;
+    }
     notifyListeners();
     return book;
   }
 
   Future<void> deleteBook(Book book) async {
+    final originalBooks = List<Book>.of(books);
     books.remove(book);
+    try {
+      // Commit the new index before deleting the only local book copy.
+      // A failed write leaves the existing book and file recoverable.
+      await _persistMeta();
+    } catch (_) {
+      books
+        ..clear()
+        ..addAll(originalBooks);
+      rethrow;
+    }
+    notifyListeners();
     final String? path = book.sourcePath;
     if (path != null) {
-      final File file = File(path);
-      if (await file.exists()) {
-        await file.delete();
-      }
+      final file = File(path);
+      if (await file.exists()) await file.delete();
     }
     await _prefs?.remove('$_progressPrefix${book.id}');
     await BookmarkStore.clearForDeletedBook(book.id);
     await ChapterRuleStore.clearForDeletedBook(book.id);
-    await _persistMeta();
-    notifyListeners();
   }
 
   /// 缓存章节总数（书架显示进度用）。不触发通知，避免在路由退出时重建界面。
@@ -292,7 +323,9 @@ class LibraryStore extends ChangeNotifier {
     final SharedPreferences? p = _prefs;
     if (p == null) return;
     final String raw = jsonEncode(books.map((Book b) => b.toMeta()).toList());
-    await p.setString(_metaKey, raw);
+    if (!await p.setString(_metaKey, raw)) {
+      throw StateError('书架索引保存失败，未完成操作');
+    }
   }
 
   /// Kept for backwards compatibility with import tests and older callers.
