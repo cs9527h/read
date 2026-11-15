@@ -99,4 +99,23 @@ void main() {
     expect(restored.style.fontSize, 21);
   });
 
+  test('named presets and import/export survive restart-style reload', () async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    final store = ReaderStyleStore.instance;
+    const style = ReaderStyle(
+      fontSize: 23,
+      indentCharacters: 2,
+      paragraphBlankLines: 1,
+      backgroundDim: 0.4,
+    );
+    await store.savePreset('我的排版', style);
+    final saved = await store.loadPresets();
+    expect(saved['我的排版']?.toJson(), style.toJson());
+    final imported = store.importStyle(store.exportStyle(style));
+    expect(imported.toJson(), style.toJson());
+    expect(() => store.importStyle('{"foo":"bar"}'), throwsFormatException);
+    await store.deletePreset('我的排版');
+    expect((await store.loadPresets()).containsKey('我的排版'), isFalse);
+  });
+
 }
