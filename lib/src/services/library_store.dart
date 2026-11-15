@@ -7,7 +7,6 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../data/sample_book.dart';
 import '../model/book.dart';
 import '../formats/format_engine.dart';
 import '../formats/pdf_format.dart';
@@ -61,17 +60,6 @@ class LibraryStore extends ChangeNotifier {
       }
     }
 
-    if (books.isEmpty) {
-      books.add(
-        Book(
-          id: kSampleBookId,
-          title: kSampleTitle,
-          author: kSampleAuthor,
-          content: kSampleContent,
-        ),
-      );
-      if (raw == null) await _persistMeta();
-    }
     _sortBooks();
     notifyListeners();
   }
@@ -87,8 +75,9 @@ class LibraryStore extends ChangeNotifier {
   Future<Book?> _loadBook(Map<String, dynamic> meta) async {
     final String? id = meta['id'] as String?;
     if (id == null) return null;
-    if (id == kSampleBookId) {
-      return Book.fromMeta(meta, kSampleContent);
+    if (id == 'sample-1') {
+      // 旧版本内置样章不再载入：直接跳过并让下一次持久化把它从索引里清掉。
+      return null;
     }
     final String? path = meta['sourcePath'] as String?;
     if ((meta['format'] as String?)?.toUpperCase() == 'PDF') {
@@ -269,6 +258,13 @@ class LibraryStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 缓存章节总数（书架显示进度用）。不触发通知，避免在路由退出时重建界面。
+  Future<void> noteChapterCount(Book book, int count) async {
+    if (book.chapterCount == count) return;
+    book.chapterCount = count;
+    await _persistMeta();
+  }
+
   Future<void> touch(Book book) async {
     final Book updated = Book(
       id: book.id,
@@ -278,6 +274,7 @@ class LibraryStore extends ChangeNotifier {
       format: book.format,
       sourcePath: book.sourcePath,
       lastReadAt: DateTime.now(),
+      chapterCount: book.chapterCount,
     );
     updated.chapterIndex.value = book.chapterIndex.value;
     updated.pageIndex.value = book.pageIndex.value;

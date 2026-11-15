@@ -1,6 +1,6 @@
 # read
 
-> **状态（2026-11-15）**：GitHub 仓库现已公开；项目仍在积极开发中。`main` 支持基础 TXT、EPUB（仅文本抽取）、Markdown、HTML 阅读及 TXT 改良分页。PDF、加密 WebDAV、SQLite、Windows 构建和新版 UI 均在独立 PR 中，不能作为已发布功能。正式 APK 发布前仍需验证构建、签名、升级与真实设备安装。
+> **状态（2026-11-15）**：GitHub 仓库现已公开；项目仍在积极开发中。书架/统计/我的三栏新版 UI 在 PR #17（v0.3.0-preview）中重做，已移除内置示例书。PDF、加密 WebDAV、SQLite、Windows 构建仍待独立验证，不能作为已发布功能。正式 APK 发布前仍需验证构建、签名、升级与真实设备安装。
 
 
 极简全平台电子书阅读器。目标：**阅读相关功能完整保留 + 多端同步**，去掉主题商店、装饰特效、社交与会员广告。
@@ -25,7 +25,7 @@
 | 标注、笔记、导出卡片 | 未开始 |
 | 查词、翻译、AI 助手 | 未开始 |
 | 听书（TTS）、跟读高亮 | 未开始 |
-| 统计（时长/字数/热力图） | 未开始 |
+| 统计（时长/字数/天数/速度/趋势） | **开发分支已实现**：阅读页埋点，页面版本待真机验证；热力图未做 |
 | 多端同步 | **仅开发分支新增了纯内存 rev/墓碑冲突合并逻辑**；WebDAV、加密、数据库、云端双向同步均未实现 |
 | Windows 客户端 | 未开始 |
 | SQLite（drift）数据层 | 未开始；目前使用 JSON / SharedPreferences |
@@ -34,7 +34,7 @@
 
 ## 版本与发布
 
-当前预览版：**v0.2.0 preview**（`version: 0.2.0+2`）。打 `v*` 标签会触发 `.github/workflows/release.yml`，自动构建两个 APK 并附到 GitHub Release，同时上传 `APK_SHA256.txt`。
+当前预览版：**v0.3.0 preview**（`version: 0.3.0+3`，新版三栏 UI）。打 `v*` 标签会触发 `.github/workflows/release.yml`，自动构建两个 APK 并附到 GitHub Release，同时上传 `APK_SHA256.txt`。
 
 CI 使用内部测试签名，不是正式发布签名；正式覆盖升级前必须换成固定的 keystore。
 
@@ -50,7 +50,10 @@ CI 使用内部测试签名，不是正式发布签名；正式覆盖升级前�
 ```
 lib/main.dart                 入口
 lib/src/theme.dart            主题（含墨水屏分支）
-lib/src/bookshelf/            书架
+lib/src/shell/                底部三栏主壳
+lib/src/bookshelf/            书架（3 列封面网格）
+lib/src/stats/                阅读统计
+lib/src/profile/              我的 / 我的阅读 / 应用外观 / 存储管理 / 关于
 lib/src/reader/               阅读页与分页
 lib/src/model/                数据模型
 test/                         单元测试

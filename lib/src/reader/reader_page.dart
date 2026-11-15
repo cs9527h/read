@@ -7,6 +7,7 @@ import 'package:read/src/services/book_search.dart';
 import 'package:read/src/services/bookmark_store.dart';
 import 'package:read/src/services/paginator.dart';
 import 'package:read/src/services/library_store.dart';
+import 'package:read/src/services/reading_stats_store.dart';
 import 'package:read/src/theme.dart';
 
 /// 阅读页：按章节分页，支持目录跳转、字号/行距/背景调整，进度自动保存。
@@ -32,6 +33,9 @@ class _ReaderPageState extends State<ReaderPage> {
   PageController? _controller;
   List<int> _bookmarks = const <int>[];
 
+  late final DateTime _sessionStart;
+  late final int _sessionStartChar;
+
   double _fontSize = 18;
   double _lineHeight = 1.7;
   int _bgIndex = 0;
@@ -47,6 +51,9 @@ class _ReaderPageState extends State<ReaderPage> {
       _chapterIndex = 0;
     }
     _pageIndex = widget.book.pageIndex.value;
+    _sessionStart = DateTime.now();
+    _sessionStartChar = _absoluteChar(_openingChapterIndex, _openingCharOffset);
+    widget.book.chapterCount = _chapters.length;
     final LibraryStore store = LibraryStore.instance;
     _fontSize = store.fontSize;
     _lineHeight = store.lineHeight;
@@ -57,8 +64,28 @@ class _ReaderPageState extends State<ReaderPage> {
 
   @override
   void dispose() {
+    _recordSession();
     _controller?.dispose();
     super.dispose();
+  }
+
+  int _absoluteChar(int chapterIndex, int charOffset) {
+    if (chapterIndex < 0 || chapterIndex >= _chapters.length) return 0;
+    return _chapters[chapterIndex].start + (charOffset < 0 ? 0 : charOffset);
+  }
+
+  /// 只在真实停留超过阈值时记账，避免打开就退出也产生“阅读时长”。
+  void _recordSession() {
+    final int seconds = DateTime.now().difference(_sessionStart).inSeconds;
+    if (seconds < 10) return;
+    final int currentChar = _absoluteChar(_chapterIndex, widget.book.charOffset.value);
+    final int chars = currentChar > _sessionStartChar ? currentChar - _sessionStartChar : 0;
+    ReadingStatsStore.instance.record(
+      bookId: widget.book.id,
+      seconds: seconds,
+      chars: chars,
+    );
+    LibraryStore.instance.noteChapterCount(widget.book, _chapters.length);
   }
 
   _Palette get _palette {
