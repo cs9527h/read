@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:read/src/model/book.dart';
 import 'package:read/src/reader/reader_page.dart';
+import 'package:read/src/reader/pdf_reader_page.dart';
 import 'package:read/src/services/library_store.dart';
 
 class BookshelfPage extends StatelessWidget {
@@ -31,7 +32,9 @@ class BookshelfPage extends StatelessWidget {
                       onTap: () async {
                         await Navigator.of(context).push(
                           MaterialPageRoute<void>(
-                            builder: (_) => ReaderPage(book: book),
+                            builder: (_) => book.format.toUpperCase() == 'PDF'
+                                ? PdfReaderPage(book: book)
+                                : ReaderPage(book: book),
                           ),
                         );
                         await store.touch(book);
