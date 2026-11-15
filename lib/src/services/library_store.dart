@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../data/sample_book.dart';
 import '../model/book.dart';
 import '../formats/format_engine.dart';
+import '../formats/pdf_format.dart';
 
 /// 书架与阅读设置的持久化。
 class LibraryStore extends ChangeNotifier {
@@ -88,6 +89,10 @@ class LibraryStore extends ChangeNotifier {
       return Book.fromMeta(meta, kSampleContent);
     }
     final String? path = meta['sourcePath'] as String?;
+    if ((meta['format'] as String?)?.toUpperCase() == 'PDF') {
+      if (path != null && await File(path).exists()) return Book.fromMeta(meta, '');
+      return null;
+    }
     String content = '';
     if (path != null) {
       final File file = File(path);
@@ -152,9 +157,28 @@ class LibraryStore extends ChangeNotifier {
     if (path == null) return null;
 
     final String ext = picked.name.split('.').last.toLowerCase();
+    if (ext == 'pdf') {
+      final File source = File(path);
+      await PdfFormat.verifyHeader(source);
+      final Directory base = await getApplicationDocumentsDirectory();
+      final Directory dir = Directory(base.path + '/books');
+      await dir.create(recursive: true);
+      final String id = DateTime.now().microsecondsSinceEpoch.toString();
+      final File copy = await source.copy(dir.path + '/' + id + '.pdf');
+      final String title = picked.name.toLowerCase().endsWith('.pdf')
+          ? picked.name.substring(0, picked.name.length - 4)
+          : picked.name;
+      final Book book = Book(id: id, title: title, author: '本地 PDF',
+          format: 'PDF', content: '', sourcePath: copy.path);
+      books.add(book);
+      _sortBooks();
+      await _persistMeta();
+      notifyListeners();
+      return book;
+    }
     if (!FormatEngine.supported.contains(ext)) {
       throw const FormatException(
-        '当前只支持 TXT、EPUB（文字版）、Markdown、HTML，其余格式开发中');
+        '当前支持 TXT、EPUB（文字版）、PDF、Markdown、HTML，其余格式开发中');
     }
     final File source = File(path);
     final int fileSize = await source.length();
