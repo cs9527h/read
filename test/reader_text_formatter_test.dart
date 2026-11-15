@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:read/src/services/paginator.dart';
 import 'package:read/src/services/reader_style_store.dart';
