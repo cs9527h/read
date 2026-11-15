@@ -49,6 +49,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   bool _bookSpecificStyle = false;
   bool _showChrome = false;
   bool _styleLoaded = false;
+  Timer? _autoTurnTimer;
 
   @override
   void initState() {
@@ -78,6 +79,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    _autoTurnTimer?.cancel();
     _activeReading.stop();
     WidgetsBinding.instance.removeObserver(this);
     _recordSession();
@@ -91,6 +93,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       _activeReading.start();
     } else {
+      _autoTurnTimer?.cancel();
+      _autoTurnTimer = null;
       _activeReading.stop();
       _recordSession();
     }
@@ -277,6 +281,13 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                 tooltip: '目录',
                 onPressed: _showChapters,
                 icon: Icon(Icons.list_rounded, color: palette.foreground),
+              ),
+              IconButton(
+                tooltip: _autoTurnTimer == null ? '开始自动翻页' : '暂停自动翻页',
+                onPressed: _toggleAutoTurn,
+                icon: Icon(_autoTurnTimer == null
+                    ? Icons.play_arrow_rounded : Icons.pause_rounded,
+                    color: palette.foreground),
               ),
               IconButton(
                 tooltip: '排版设置',
@@ -466,6 +477,28 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
         ),
       );
     }
+  }
+
+  void _toggleAutoTurn() {
+    if (_autoTurnTimer != null) {
+      _autoTurnTimer!.cancel();
+      setState(() => _autoTurnTimer = null);
+      return;
+    }
+    _autoTurnTimer = Timer.periodic(
+      Duration(seconds: _style.autoTurnSeconds),
+      (_) {
+        if (!mounted || _pageSlices.isEmpty) return;
+        if (_chapterIndex == _chapters.length - 1 &&
+            _pageIndex >= _pageSlices.length - 1) {
+          _autoTurnTimer?.cancel();
+          if (mounted) setState(() => _autoTurnTimer = null);
+          return;
+        }
+        _turnPage(1);
+      },
+    );
+    setState(() {});
   }
 
   /// Unlike PageView, this navigates past chapter edges.
@@ -867,6 +900,11 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   void _updateStyle(ReaderStyle next) {
     if (kEink) next = next.copyWith(backgroundIndex: 0, turnDurationMs: 0);
     final oldLayout = _style.layoutKey;
+    if (_autoTurnTimer != null &&
+        next.autoTurnSeconds != _style.autoTurnSeconds) {
+      _autoTurnTimer?.cancel();
+      _autoTurnTimer = null;
+    }
     setState(() {
       _style = next;
       if (oldLayout != next.layoutKey) {
@@ -1302,6 +1340,10 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                     onChanged: (v) => change(_style.copyWith(showFooter: v)),
                   ),
                   section('翻页交互'),
+                  _styleSlider('自动翻页间隔（秒）',
+                      _style.autoTurnSeconds.toDouble(), 2, 60, 58,
+                      (v) => change(_style.copyWith(autoTurnSeconds: v.round())),
+                      digits: 0),
                   _styleSlider('点击翻页区域比例', _style.tapZone, 0.15, 0.42, 27,
                       (v) => change(_style.copyWith(tapZone: v)), digits: 2),
                   if (!kEink)
