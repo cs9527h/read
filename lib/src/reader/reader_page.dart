@@ -22,6 +22,7 @@ class _ReaderPageState extends State<ReaderPage> {
   int _pageIndex = 0;
 
   List<String> _pages = const <String>[];
+  List<int> _pageOffsets = const <int>[];
   String? _measureKey;
   PageController? _controller;
 
@@ -106,6 +107,9 @@ class _ReaderPageState extends State<ReaderPage> {
                     _pageIndex = index;
                     widget.book.chapterIndex.value = _chapterIndex;
                     widget.book.pageIndex.value = index;
+                    if (index < _pageOffsets.length) {
+                      widget.book.charOffset.value = _pageOffsets[index];
+                    }
                     LibraryStore.instance.saveProgress(widget.book);
                     setState(() {});
                   },
@@ -158,21 +162,41 @@ class _ReaderPageState extends State<ReaderPage> {
       final double width = size.width - 40;
       final double height = size.height - 50;
       if (width <= 0 || height <= 0) return;
+      final String chapterText = chapter.slice(widget.book.content);
       final List<String> pages = paginate(
-        chapter.slice(widget.book.content),
+        chapterText,
         TextStyle(fontSize: _fontSize, height: _lineHeight),
         width,
         height,
       );
+      // Record chapter-local offsets independent from font size and viewport.
+      final List<int> offsets = <int>[];
+      int cursor = 0;
+      for (final String page in pages) {
+        final int found = chapterText.indexOf(page, cursor);
+        final int start = found < 0 ? cursor : found;
+        offsets.add(start);
+        cursor = start + page.length;
+      }
+      int targetPage = _pageIndex;
+      final int savedOffset = widget.book.charOffset.value;
+      if (savedOffset >= 0) {
+        targetPage = 0;
+        for (int i = 0; i < offsets.length; i++) {
+          if (offsets[i] > savedOffset) break;
+          targetPage = i;
+        }
+      }
       if (!mounted) return;
       setState(() {
         _pages = pages;
-        if (_pageIndex >= pages.length) _pageIndex = pages.length - 1;
-        if (_pageIndex < 0) _pageIndex = 0;
+        _pageOffsets = offsets;
+        _pageIndex = targetPage.clamp(0, pages.length - 1);
         _controller?.dispose();
         _controller = PageController(initialPage: _pageIndex);
         widget.book.chapterIndex.value = _chapterIndex;
         widget.book.pageIndex.value = _pageIndex;
+        widget.book.charOffset.value = offsets[_pageIndex];
       });
       LibraryStore.instance.saveProgress(widget.book);
     });
@@ -200,6 +224,7 @@ class _ReaderPageState extends State<ReaderPage> {
       setState(() {
         _chapterIndex = selected;
         _pageIndex = 0;
+        widget.book.charOffset.value = 0;
         _pages = const <String>[];
         _measureKey = null;
       });
