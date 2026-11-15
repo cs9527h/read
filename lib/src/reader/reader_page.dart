@@ -34,7 +34,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   List<int> _bookmarks = const <int>[];
 
   final Stopwatch _activeReading = Stopwatch();
-  late final int _sessionStartChar;
+  late int _lastRecordedChar;
+  int _accountedReadingSeconds = 0;
 
   double _fontSize = 18;
   double _lineHeight = 1.7;
@@ -53,7 +54,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
       _chapterIndex = 0;
     }
     _pageIndex = widget.book.pageIndex.value;
-    _sessionStartChar = _absoluteChar(_openingChapterIndex, _openingCharOffset);
+    _lastRecordedChar = _absoluteChar(_openingChapterIndex, _openingCharOffset);
     widget.book.chapterCount = _chapters.length;
     final LibraryStore store = LibraryStore.instance;
     _fontSize = store.fontSize;
@@ -79,6 +80,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
       _activeReading.start();
     } else {
       _activeReading.stop();
+      _recordSession();
     }
   }
 
@@ -87,15 +89,23 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     return _chapters[chapterIndex].start + (charOffset < 0 ? 0 : charOffset);
   }
 
-  /// 只在真实停留超过阈值时记账，避免打开就退出也产生“阅读时长”。
+  /// Checkpoint on background as well as close. A killed background process
+  /// should not lose an entire session, and a later dispose must not double
+  /// count seconds or pages already checkpointed.
   void _recordSession() {
-    final int seconds = _activeReading.elapsed.inSeconds;
-    if (seconds < 10) return;
-    final int currentChar = _absoluteChar(_chapterIndex, widget.book.charOffset.value);
-    final int chars = currentChar > _sessionStartChar ? currentChar - _sessionStartChar : 0;
+    final elapsed = _activeReading.elapsed.inSeconds;
+    final deltaSeconds = elapsed - _accountedReadingSeconds;
+    if (deltaSeconds < 10) return;
+    final currentChar =
+        _absoluteChar(_chapterIndex, widget.book.charOffset.value);
+    final chars = currentChar > _lastRecordedChar
+        ? currentChar - _lastRecordedChar
+        : 0;
+    _accountedReadingSeconds = elapsed;
+    _lastRecordedChar = currentChar;
     ReadingStatsStore.instance.record(
       bookId: widget.book.id,
-      seconds: seconds,
+      seconds: deltaSeconds,
       chars: chars,
     );
     LibraryStore.instance.noteChapterCount(widget.book, _chapters.length);
