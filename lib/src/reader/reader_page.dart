@@ -108,30 +108,65 @@ class _ReaderPageState extends State<ReaderPage> {
             ),
             onPressed: _toggleCurrentBookmark,
           ),
-          IconButton(
-            tooltip: '查看书签',
-            icon: Icon(Icons.collections_bookmark_outlined, color: palette.foreground),
-            onPressed: _showBookmarks,
-          ),
-          IconButton(
-            tooltip: '书内搜索',
-            icon: Icon(Icons.search, color: palette.foreground),
-            onPressed: _searchInBook,
-          ),
-          IconButton(
-            tooltip: '分章规则',
-            icon: Icon(Icons.tune_rounded, color: palette.foreground),
-            onPressed: _showChapterRules,
-          ),
-          IconButton(
-            tooltip: '目录',
-            icon: Icon(Icons.list, color: palette.foreground),
-            onPressed: _showChapters,
-          ),
-          IconButton(
-            tooltip: '阅读设置',
-            icon: Icon(Icons.text_fields, color: palette.foreground),
-            onPressed: _showSettings,
+          PopupMenuButton<String>(
+            tooltip: '阅读工具',
+            icon: Icon(Icons.more_vert_rounded, color: palette.foreground),
+            onSelected: (value) {
+              switch (value) {
+                case 'search':
+                  _searchInBook();
+                case 'bookmarks':
+                  _showBookmarks();
+                case 'chapters':
+                  _showChapters();
+                case 'rules':
+                  _showChapterRules();
+                case 'settings':
+                  _showSettings();
+              }
+            },
+            itemBuilder: (BuildContext context) => const <PopupMenuEntry<String>>[
+              PopupMenuItem<String>(
+                value: 'search',
+                child: ListTile(
+                  leading: Icon(Icons.search_rounded),
+                  title: Text('书内搜索'),
+                  dense: true,
+                ),
+              ),
+              PopupMenuItem<String>(
+                value: 'chapters',
+                child: ListTile(
+                  leading: Icon(Icons.list_rounded),
+                  title: Text('章节目录'),
+                  dense: true,
+                ),
+              ),
+              PopupMenuItem<String>(
+                value: 'bookmarks',
+                child: ListTile(
+                  leading: Icon(Icons.collections_bookmark_outlined),
+                  title: Text('我的书签'),
+                  dense: true,
+                ),
+              ),
+              PopupMenuItem<String>(
+                value: 'rules',
+                child: ListTile(
+                  leading: Icon(Icons.tune_rounded),
+                  title: Text('分章规则'),
+                  dense: true,
+                ),
+              ),
+              PopupMenuItem<String>(
+                value: 'settings',
+                child: ListTile(
+                  leading: Icon(Icons.text_fields_rounded),
+                  title: Text('阅读设置'),
+                  dense: true,
+                ),
+              ),
+            ],
           ),
         ],
       ),
