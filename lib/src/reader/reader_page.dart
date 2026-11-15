@@ -49,6 +49,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   double _pageWidth = 520;
   double _pageHeight = 800;
   int? _anchorOffset;
+  double? _scrubPreview;
 
   Timer? _autoTurnTimer;
   Timer? _clockTimer;
@@ -289,9 +290,11 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
 
   int get _currentAbsoluteOffset {
     final PaginatedChapter? p = _pagination;
-    if (p == null || p.pages.isEmpty || _chapterIndex >= _chapters.length) {
-      final int saved = widget.book.charOffset.value;
-      return saved < 0 ? 0 : saved;
+    if (_chapters.isEmpty || _chapterIndex >= _chapters.length) return 0;
+    if (p == null || p.pages.isEmpty) {
+      final chapter = _chapters[_chapterIndex];
+      final saved = _anchorOffset ?? widget.book.charOffset.value;
+      return chapter.start + saved.clamp(0, chapter.length);
     }
     final int column = _pageIndex.clamp(0, p.pages.length - 1);
     return _chapters[_chapterIndex].start + p.pages[column].sourceStart;
@@ -662,12 +665,10 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   }
 
   double get _overallProgress {
-    final PaginatedChapter? p = _pagination;
-    final int total = _chapters.isEmpty ? 1 : _chapters.length;
-    final double within = p == null || p.pages.isEmpty
-        ? 0
-        : _pageIndex / math.max(1, p.pages.length);
-    return ((_chapterIndex + within) / math.max(1, total)).clamp(0, 1);
+    if (_scrubPreview != null) return _scrubPreview!.clamp(0, 1);
+    final total = widget.book.content.length;
+    if (total == 0) return 0;
+    return (_currentAbsoluteOffset / total).clamp(0, 1);
   }
 
   Widget _templateText(
@@ -1196,7 +1197,13 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
             Expanded(
               child: Slider(
                 value: _overallProgress.clamp(0, 1),
-                onChanged: _seekProgress,
+                onChanged: widget.book.content.isEmpty
+                    ? null
+                    : (value) => setState(() => _scrubPreview = value),
+                onChangeEnd: widget.book.content.isEmpty ? null : (value) {
+                  setState(() => _scrubPreview = null);
+                  _seekProgress(value);
+                },
               ),
             ),
             for (final action in _settings.bottomActions)
@@ -1236,10 +1243,9 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   }
 
   void _seekProgress(double fraction) {
-    if (_chapters.isEmpty) return;
-    final int targetChapter =
-        (fraction * _chapters.length).floor().clamp(0, _chapters.length - 1);
-    _gotoChapter(targetChapter);
+    if (_chapters.isEmpty || widget.book.content.isEmpty) return;
+    final absolute = (fraction.clamp(0, 1) * widget.book.content.length).round();
+    _jumpToAbsolute(absolute);
   }
 
   Future<void> _openSettings() async {
