@@ -29,7 +29,7 @@ class ReaderPage extends StatefulWidget {
   State<ReaderPage> createState() => _ReaderPageState();
 }
 
-class _ReaderPageState extends State<ReaderPage> {
+class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   final ReaderSettingsStore _store = ReaderSettingsStore.instance;
   ReaderSettings _settings = ReaderSettings();
 
@@ -56,10 +56,12 @@ class _ReaderPageState extends State<ReaderPage> {
   int _sessionSeconds = 0;
   int _sessionChars = 0;
   int _lastSavedOffset = 0;
+  bool _isReadingActive = true;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _settings = _store.resolve(widget.book.id);
     _store.addListener(_onStoreChanged);
     UserFontStore.instance.addListener(_onStoreChanged);
@@ -70,7 +72,7 @@ class _ReaderPageState extends State<ReaderPage> {
       if (mounted) setState(() {});
     });
     _statsTimer = Timer.periodic(const Duration(seconds: 10), (_) {
-      if (!mounted || _loading) return;
+      if (!mounted || _loading || !_isReadingActive) return;
       _sessionSeconds += 10;
       _flushStats();
     });
@@ -79,6 +81,7 @@ class _ReaderPageState extends State<ReaderPage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _store.removeListener(_onStoreChanged);
     UserFontStore.instance.removeListener(_onStoreChanged);
     _autoTurnTimer?.cancel();
@@ -89,6 +92,21 @@ class _ReaderPageState extends State<ReaderPage> {
     _scrollController?.dispose();
     _restoreSystemUi();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final active = state == AppLifecycleState.resumed;
+    if (_isReadingActive == active) return;
+    _isReadingActive = active;
+    if (active) {
+      _startAutoTurn();
+    } else {
+      _autoTurnTimer?.cancel();
+      _autoTurnTimer = null;
+      _flushStats();
+      _saveProgress();
+    }
   }
 
   void _onStoreChanged() {
@@ -318,11 +336,11 @@ class _ReaderPageState extends State<ReaderPage> {
 
   void _startAutoTurn() {
     _autoTurnTimer?.cancel();
-    if (!_settings.autoTurn || _settings.minimalMode) return;
+    if (!_settings.autoTurn || _settings.minimalMode || !_isReadingActive) return;
     _autoTurnTimer = Timer.periodic(
       Duration(seconds: _settings.autoTurnSeconds.clamp(3, 600)),
       (_) {
-        if (!mounted || _menuVisible) return;
+        if (!mounted || !_isReadingActive || _menuVisible) return;
         _turnPage(1);
       },
     );
