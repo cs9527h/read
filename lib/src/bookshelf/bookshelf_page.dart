@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import 'package:read/src/model/book.dart';
+import 'package:read/src/reader/pdf_reader_page.dart';
 import 'package:read/src/reader/reader_page.dart';
 import 'package:read/src/services/library_store.dart';
+import 'package:read/src/sync/progress_sync_page.dart';
 import 'package:read/src/theme.dart';
 
 /// A calm, responsive bookshelf: no account, decorations store or fake data.
@@ -61,6 +63,18 @@ class _BookshelfPageState extends State<BookshelfPage> {
               ],
             ),
             actions: <Widget>[
+              IconButton(
+                tooltip: 'WebDAV 阅读进度同步',
+                icon: Icon(
+                  Icons.cloud_sync_outlined,
+                  color: kEink ? Colors.black : ReadColors.ink,
+                ),
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const ProgressSyncPage(),
+                  ),
+                ),
+              ),
               Padding(
                 padding: const EdgeInsets.only(right: 22),
                 child: Center(
@@ -204,7 +218,9 @@ class _BookshelfPageState extends State<BookshelfPage> {
   Future<void> _openBook(Book book) async {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (BuildContext context) => ReaderPage(book: book),
+        builder: (BuildContext context) => book.format.toUpperCase() == 'PDF'
+            ? PdfReaderPage(book: book)
+            : ReaderPage(book: book),
       ),
     );
     if (!mounted) return;
