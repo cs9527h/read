@@ -34,6 +34,7 @@ List<PageSlice> paginateSlices(
   double maxHeight, {
   TextScaler textScaler = TextScaler.noScaling,
   String Function(String source, int start, int end)? formatPage,
+  TextSpan Function(String source, int start, int end, TextStyle style)? richPage,
 }) {
   if (!maxWidth.isFinite || !maxHeight.isFinite ||
       maxWidth <= 0 || maxHeight <= 0) {
@@ -57,11 +58,12 @@ List<PageSlice> paginateSlices(
       safeCount--;
     }
     if (safeCount <= 0) return false;
-    painter.text = TextSpan(
-      text: formatPage?.call(text, start, start + safeCount) ??
-          text.substring(start, start + safeCount),
-      style: style,
-    );
+    painter.text = richPage?.call(text, start, start + safeCount, style) ??
+        TextSpan(
+          text: formatPage?.call(text, start, start + safeCount) ??
+              text.substring(start, start + safeCount),
+          style: style,
+        );
     painter.layout(maxWidth: maxWidth);
     return painter.height <= maxHeight + 0.5;
   }
