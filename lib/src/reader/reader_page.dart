@@ -21,8 +21,7 @@ class _ReaderPageState extends State<ReaderPage> {
   late int _chapterIndex;
   int _pageIndex = 0;
 
-  List<String> _pages = const <String>[];
-  List<int> _pageOffsets = const <int>[];
+  List<PageSlice> _pageSlices = const <PageSlice>[];
   String? _measureKey;
   PageController? _controller;
 
@@ -94,7 +93,7 @@ class _ReaderPageState extends State<ReaderPage> {
       body: LayoutBuilder(
         builder: (BuildContext context, BoxConstraints constraints) {
           _maybeMeasure(constraints.biggest, chapter);
-          if (_pages.isEmpty) {
+          if (_pageSlices.isEmpty) {
             return const Center(child: CircularProgressIndicator());
           }
           return Column(
@@ -102,13 +101,13 @@ class _ReaderPageState extends State<ReaderPage> {
               Expanded(
                 child: PageView.builder(
                   controller: _controller,
-                  itemCount: _pages.length,
+                  itemCount: _pageSlices.length,
                   onPageChanged: (int index) {
                     _pageIndex = index;
                     widget.book.chapterIndex.value = _chapterIndex;
                     widget.book.pageIndex.value = index;
-                    if (index < _pageOffsets.length) {
-                      widget.book.charOffset.value = _pageOffsets[index];
+                    if (index < _pageSlices.length) {
+                      widget.book.charOffset.value = _pageSlices[index].start;
                     }
                     LibraryStore.instance.saveProgress(widget.book);
                     setState(() {});
@@ -116,7 +115,7 @@ class _ReaderPageState extends State<ReaderPage> {
                   itemBuilder: (BuildContext context, int index) => Padding(
                     padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
                     child: Text(
-                      _pages[index],
+                      _pageSlices[index].textOf(chapter.slice(widget.book.content)),
                       style: TextStyle(
                         fontSize: _fontSize,
                         height: _lineHeight,
@@ -139,7 +138,7 @@ class _ReaderPageState extends State<ReaderPage> {
                       ),
                     ),
                     Text(
-                      '${_pageIndex + 1} / ${_pages.length}',
+                      '${_pageIndex + 1} / ${_pageSlices.length}',
                       style: TextStyle(fontSize: 12, color: palette.foreground.withOpacity(0.6)),
                     ),
                   ],
@@ -163,40 +162,32 @@ class _ReaderPageState extends State<ReaderPage> {
       final double height = size.height - 50;
       if (width <= 0 || height <= 0) return;
       final String chapterText = chapter.slice(widget.book.content);
-      final List<String> pages = paginate(
+      final List<PageSlice> slices = paginateSlices(
         chapterText,
         TextStyle(fontSize: _fontSize, height: _lineHeight),
         width,
         height,
       );
-      // Record chapter-local offsets independent from font size and viewport.
-      final List<int> offsets = <int>[];
-      int cursor = 0;
-      for (final String page in pages) {
-        final int found = chapterText.indexOf(page, cursor);
-        final int start = found < 0 ? cursor : found;
-        offsets.add(start);
-        cursor = start + page.length;
-      }
+      // An exact source range is more reliable than indexOf(pageText), which
+      // becomes ambiguous when the same paragraph or whitespace repeats.
       int targetPage = _pageIndex;
       final int savedOffset = widget.book.charOffset.value;
       if (savedOffset >= 0) {
         targetPage = 0;
-        for (int i = 0; i < offsets.length; i++) {
-          if (offsets[i] > savedOffset) break;
+        for (int i = 0; i < slices.length; i++) {
+          if (slices[i].start > savedOffset) break;
           targetPage = i;
         }
       }
       if (!mounted) return;
       setState(() {
-        _pages = pages;
-        _pageOffsets = offsets;
-        _pageIndex = targetPage.clamp(0, pages.length - 1);
+        _pageSlices = slices;
+        _pageIndex = targetPage.clamp(0, slices.length - 1);
         _controller?.dispose();
         _controller = PageController(initialPage: _pageIndex);
         widget.book.chapterIndex.value = _chapterIndex;
         widget.book.pageIndex.value = _pageIndex;
-        widget.book.charOffset.value = offsets[_pageIndex];
+        widget.book.charOffset.value = slices[_pageIndex].start;
       });
       LibraryStore.instance.saveProgress(widget.book);
     });
@@ -225,7 +216,7 @@ class _ReaderPageState extends State<ReaderPage> {
         _chapterIndex = selected;
         _pageIndex = 0;
         widget.book.charOffset.value = 0;
-        _pages = const <String>[];
+        _pageSlices = const <PageSlice>[];
         _measureKey = null;
       });
     }
@@ -250,7 +241,7 @@ class _ReaderPageState extends State<ReaderPage> {
                       setSheet(() {});
                       setState(() {
                         _fontSize = 18;
-                        _pages = const <String>[];
+                        _pageSlices = const <PageSlice>[];
                         _measureKey = null;
                       });
                       LibraryStore.instance.setFontSize(18);
@@ -269,7 +260,7 @@ class _ReaderPageState extends State<ReaderPage> {
                   setSheet(() {});
                   setState(() {
                     _fontSize = v;
-                    _pages = const <String>[];
+                    _pageSlices = const <PageSlice>[];
                     _measureKey = null;
                   });
                   LibraryStore.instance.setFontSize(v);
@@ -286,7 +277,7 @@ class _ReaderPageState extends State<ReaderPage> {
                   setSheet(() {});
                   setState(() {
                     _lineHeight = v;
-                    _pages = const <String>[];
+                    _pageSlices = const <PageSlice>[];
                     _measureKey = null;
                   });
                   LibraryStore.instance.setLineHeight(v);
