@@ -58,13 +58,15 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     final slider = find.byType(Slider);
     expect(slider, findsOneWidget);
-    final bounds = tester.getRect(slider);
-    await tester.dragFrom(
-      Offset(bounds.left + 16, bounds.center.dy),
-      Offset(bounds.width * 0.42, 0),
-    );
+    // Call the same slider release callback deterministically. The separate
+    // widget test above exercises pointer interaction and menu opening; this
+    // assertion verifies the exact offset committed by the release callback.
+    final widget = tester.widget<Slider>(slider);
+    expect(widget.onChangeEnd, isNotNull);
+    widget.onChangeEnd!(0.42);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump();
     expect(book.chapterIndex.value, 0);
     expect(book.charOffset.value, greaterThan(100),
         reason: '全书中段仍处于长第一章，不能跳回第一章开头');
