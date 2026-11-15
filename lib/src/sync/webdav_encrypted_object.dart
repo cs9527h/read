@@ -95,6 +95,8 @@ class WebDavEncryptedObject {
   }
 
   void _authorize(HttpClientRequest request) {
+    // Never follow a redirect with cloud credentials attached.
+    request.followRedirects = false;
     final value = base64Encode(utf8.encode(username + ':' + password));
     request.headers.set(HttpHeaders.authorizationHeader, 'Basic ' + value);
   }
