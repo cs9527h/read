@@ -335,8 +335,8 @@ class _BookCell extends StatelessWidget {
                 style: TextStyle(fontSize: 11, color: palette.muted),
               ),
             ),
-            if (read)
-              Icon(Icons.cloud_done_outlined, size: 13, color: palette.muted),
+            // Opening a book does not mean its progress reached WebDAV.
+            // Do not display a successful cloud status without a sync receipt.
             InkWell(
               onTap: onMenu,
               child: Padding(
