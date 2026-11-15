@@ -851,9 +851,11 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
       color: foreground,
       textScale: _textScale,
     );
-    final Widget body = _scaledText(Text.rich(
-      _pageSpan(page.textOf(p.display), style),
-      textAlign: ReaderEngine.textAlignOf(_settings.align),
+    final Widget body = _scaledText(SelectionArea(
+      child: Text.rich(
+        _pageSpan(page.textOf(p.display), style),
+        textAlign: ReaderEngine.textAlignOf(_settings.align),
+      ),
     ));
     children.add(
       Expanded(
@@ -890,9 +892,11 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
             alignment: _settings.bottomAlign
                 ? Alignment.bottomLeft
                 : Alignment.topLeft,
-            child: _scaledText(Text.rich(
-              _pageSpan(page.textOf(p.display), style),
-              textAlign: ReaderEngine.textAlignOf(_settings.align),
+            child: _scaledText(SelectionArea(
+              child: Text.rich(
+                _pageSpan(page.textOf(p.display), style),
+                textAlign: ReaderEngine.textAlignOf(_settings.align),
+              ),
             )),
           ),
         ),
@@ -1003,16 +1007,18 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
             _buildChapterTitle(),
-            _scaledText(Text.rich(
-              _pageSpan(
-                p.display.text,
-                ReaderEngine.bodyStyle(
-                  _settings,
-                  color: foreground,
-                  textScale: _textScale,
+            _scaledText(SelectionArea(
+              child: Text.rich(
+                _pageSpan(
+                  p.display.text,
+                  ReaderEngine.bodyStyle(
+                    _settings,
+                    color: foreground,
+                    textScale: _textScale,
+                  ),
                 ),
+                textAlign: ReaderEngine.textAlignOf(_settings.align),
               ),
-              textAlign: ReaderEngine.textAlignOf(_settings.align),
             )),
             const SizedBox(height: 40),
           ],
@@ -1060,7 +1066,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
           }
           _performTapAction(action);
         },
-        onLongPress: _showSelectionActions,
+        // Long press now belongs to SelectionArea for range selection.
       ),
     );
   }
