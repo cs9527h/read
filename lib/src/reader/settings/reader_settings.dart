@@ -132,10 +132,20 @@ Map<String, Object?> validatedReaderSettingsMap(Map<String, dynamic> input) {
       }
       result[key] = value;
     } else {
-      // Nullable fields are font/image paths or ARGB colors.
-      if (value is int && value >= 0 && value <= 0xFFFFFFFF) {
+      // Nullable defaults need key-specific checking; a string in
+      // textColor is as dangerous as a string in fontSize.
+      const colorKeys = <String>{
+        'textColor', 'backgroundColor', 'headerColor', 'footerColor',
+        'titleColor', 'guideColor',
+      };
+      const pathKeys = <String>{
+        'fontFamily', 'titleFontFamily', 'bgImagePath',
+      };
+      if (colorKeys.contains(key) &&
+          value is int && value >= 0 && value <= 0xFFFFFFFF) {
         result[key] = value;
-      } else if (value is String && value.length <= 1024) {
+      } else if (pathKeys.contains(key) &&
+          value is String && value.length <= 1024) {
         result[key] = value;
       } else {
         throw FormatException('配置 $key 类型不支持');
