@@ -39,8 +39,23 @@ class ReaderSettingsStore extends ChangeNotifier {
   bool get ready => _ready;
 
   Future<void> init() async {
+    _ready = false;
     _prefs = await SharedPreferences.getInstance();
+    // Reinitialize from the persisted snapshot, not stale singleton state.
+    // A book's private layout must survive app restart and bookshelf reload.
+    _bookOverrides.clear();
+    _themeTypo.clear();
+    _customThemes.clear();
+    _presets.clear();
     _global = _decodeMap(_prefs!.getString(_globalKey));
+    for (final String key in _prefs!.getKeys()) {
+      if (!key.startsWith(_bookPrefix)) continue;
+      final String bookId = key.substring(_bookPrefix.length);
+      if (bookId.isEmpty) continue;
+      final Map<String, Object?> saved =
+          _decodeMap(_prefs!.getString(key));
+      if (saved.isNotEmpty) _bookOverrides[bookId] = saved;
+    }
     final String? themesRaw = _prefs!.getString(_themesKey);
     if (themesRaw != null) {
       try {
