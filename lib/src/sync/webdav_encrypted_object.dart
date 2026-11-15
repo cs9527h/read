@@ -16,7 +16,8 @@ class WebDavEncryptedObject {
     if (fileUrl.scheme != 'https' ||
         fileUrl.userInfo.isNotEmpty ||
         fileUrl.query.isNotEmpty ||
-        fileUrl.fragment.isNotEmpty) {
+        fileUrl.fragment.isNotEmpty ||
+        fileUrl.path.isEmpty || fileUrl.path.endsWith('/')) {
       throw ArgumentError('WebDAV 只能使用不含凭据和参数的 HTTPS 文件地址');
     }
   }
@@ -95,6 +96,8 @@ class WebDavEncryptedObject {
   }
 
   void _authorize(HttpClientRequest request) {
+    // Never follow a redirect with cloud credentials attached.
+    request.followRedirects = false;
     final value = base64Encode(utf8.encode(username + ':' + password));
     request.headers.set(HttpHeaders.authorizationHeader, 'Basic ' + value);
   }

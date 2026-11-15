@@ -4,6 +4,7 @@ import 'package:read/src/model/book.dart';
 import 'package:read/src/reader/reader_page.dart';
 import 'package:read/src/reader/pdf_reader_page.dart';
 import 'package:read/src/services/library_store.dart';
+import 'package:read/src/sync/progress_sync_page.dart';
 
 class BookshelfPage extends StatelessWidget {
   const BookshelfPage({super.key});
@@ -15,7 +16,20 @@ class BookshelfPage extends StatelessWidget {
       builder: (BuildContext context, _) {
         final store = LibraryStore.instance;
         return Scaffold(
-          appBar: AppBar(title: const Text('书架')),
+          appBar: AppBar(
+            title: const Text('书架'),
+            actions: <Widget>[
+              IconButton(
+                tooltip: 'WebDAV 阅读进度同步',
+                icon: const Icon(Icons.cloud_sync_outlined),
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const ProgressSyncPage(),
+                  ),
+                ),
+              ),
+            ],
+          ),
           body: store.books.isEmpty
               ? const Center(child: Text('还没有书，点右下角导入'))
               : ListView.separated(
