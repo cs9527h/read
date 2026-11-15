@@ -250,7 +250,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                     if (index < _pageSlices.length) {
                       widget.book.charOffset.value = _pageSlices[index].start;
                     }
-                    LibraryStore.instance.saveProgress(widget.book);
+                    _persistProgress();
                     setState(() {});
                   },
                   itemBuilder: (BuildContext context, int index) => Padding(
@@ -367,7 +367,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
 
   Future<void> _persistProgress() async {
     try {
-      await _persistProgress();
+      await LibraryStore.instance.saveProgress(widget.book);
       _progressErrorShown = false;
     } catch (_) {
       if (!mounted || _progressErrorShown) return;
