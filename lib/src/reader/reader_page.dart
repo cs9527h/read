@@ -231,7 +231,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
             ],
           ),
         ],
-      ),
+      ) : null,
       body: SafeArea(child: LayoutBuilder(
         builder: (BuildContext context, BoxConstraints constraints) {
           _maybeMeasure(constraints.biggest, chapter);
