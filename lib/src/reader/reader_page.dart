@@ -359,8 +359,25 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
         widget.book.pageIndex.value = _pageIndex;
         widget.book.charOffset.value = slices[_pageIndex].start;
       });
-      LibraryStore.instance.saveProgress(widget.book);
+      _persistProgress();
     });
+  }
+
+  bool _progressErrorShown = false;
+
+  Future<void> _persistProgress() async {
+    try {
+      await _persistProgress();
+      _progressErrorShown = false;
+    } catch (_) {
+      if (!mounted || _progressErrorShown) return;
+      _progressErrorShown = true;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('阅读位置保存失败，请确认设备存储空间后重试'),
+        ),
+      );
+    }
   }
 
   /// Unlike PageView, this navigates past chapter edges.
@@ -392,7 +409,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
           ? _chapters[nextChapter].length
           : 0;
     });
-    LibraryStore.instance.saveProgress(widget.book);
+    _persistProgress();
   }
 
   int _absoluteReadingOffset() {
@@ -429,7 +446,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
       widget.book.charOffset.value =
           (absolute - selected.start).clamp(0, selected.length);
     });
-    LibraryStore.instance.saveProgress(widget.book);
+    _persistProgress();
   }
 
   Future<void> _loadChapterRule() async {
@@ -671,7 +688,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
       widget.book.charOffset.value =
           (absoluteOffset - chapter.start).clamp(0, chapter.length);
     });
-    LibraryStore.instance.saveProgress(widget.book);
+    _persistProgress();
   }
 
   Future<void> _searchInBook() async {
@@ -691,7 +708,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
       _pageSlices = const <PageSlice>[];
       _measureKey = null;
     });
-    await LibraryStore.instance.saveProgress(widget.book);
+    await _persistProgress();
   }
 
   Future<void> _showChapters() async {
@@ -722,7 +739,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
         _pageSlices = const <PageSlice>[];
         _measureKey = null;
       });
-      await LibraryStore.instance.saveProgress(widget.book);
+      await _persistProgress();
     }
   }
 
