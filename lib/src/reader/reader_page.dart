@@ -236,6 +236,49 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
           ),
         ],
       ) : null,
+      bottomNavigationBar: _showChrome ? SafeArea(
+        top: false,
+        child: Container(
+          color: palette.background,
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          child: Row(
+            children: <Widget>[
+              IconButton(
+                tooltip: '上一页',
+                onPressed: () => _turnPage(-1),
+                icon: Icon(Icons.chevron_left_rounded, color: palette.foreground),
+              ),
+              Expanded(
+                child: Slider(
+                  min: 0,
+                  max: (_pageSlices.length - 1).clamp(1, 1000000).toDouble(),
+                  value: _pageIndex.clamp(0, (_pageSlices.length - 1).clamp(1, 1000000)).toDouble(),
+                  onChanged: (value) {
+                    if (_controller?.hasClients ?? false) {
+                      _controller!.jumpToPage(value.round());
+                    }
+                  },
+                ),
+              ),
+              IconButton(
+                tooltip: '下一页',
+                onPressed: () => _turnPage(1),
+                icon: Icon(Icons.chevron_right_rounded, color: palette.foreground),
+              ),
+              IconButton(
+                tooltip: '目录',
+                onPressed: _showChapters,
+                icon: Icon(Icons.list_rounded, color: palette.foreground),
+              ),
+              IconButton(
+                tooltip: '排版设置',
+                onPressed: _showSettings,
+                icon: Icon(Icons.tune_rounded, color: palette.foreground),
+              ),
+            ],
+          ),
+        ),
+      ) : null,
       body: SafeArea(child: LayoutBuilder(
         builder: (BuildContext context, BoxConstraints constraints) {
           _maybeMeasure(constraints.biggest, chapter);
