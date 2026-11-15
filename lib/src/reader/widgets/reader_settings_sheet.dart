@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
@@ -1480,19 +1481,78 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
   }
 
   Future<void> _pickBackgroundImage() async {
-    final FilePickerResult? result = await FilePicker.platform.pickFiles(
-      type: FileType.image,
-    );
-    if (result == null || result.files.length != 1) return;
-    final PlatformFile file = result.files.first;
-    if (file.path == null) return;
-    final Directory docs = await getApplicationDocumentsDirectory();
-    final Directory dir = Directory('${docs.path}/backgrounds');
-    if (!await dir.exists()) await dir.create(recursive: true);
-    final String target =
-        '${dir.path}/bg-${DateTime.now().millisecondsSinceEpoch}${p.extension(file.name).toLowerCase()}';
-    await File(file.path!).copy(target);
-    _update(<String, Object?>{'bgImagePath': target});
+    File? staged;
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        withData: false,
+        withReadStream: true,
+      );
+      if (result == null || result.files.isEmpty) return;
+      final picked = result.files.first;
+      const maxBytes = 8 * 1024 * 1024;
+      if (picked.size <= 0 || picked.size > maxBytes) {
+        throw const FormatException('阅读背景图片不得超过 8MB');
+      }
+      Stream<List<int>>? stream = picked.readStream;
+      if (stream == null && picked.path != null) {
+        final source = File(picked.path!);
+        if (await source.exists()) stream = source.openRead();
+      }
+      if (stream == null) {
+        throw const FormatException('文件提供者未返回图片内容');
+      }
+      final docs = await getApplicationDocumentsDirectory();
+      final dir = Directory(docs.path + '/backgrounds');
+      if (!await dir.exists()) await dir.create(recursive: true);
+      final target = dir.path + '/bg-' +
+          DateTime.now().microsecondsSinceEpoch.toString() +
+          p.extension(picked.name).toLowerCase();
+      staged = File(target);
+      final sink = staged.openWrite();
+      var total = 0;
+      final signature = <int>[];
+      try {
+        await for (final chunk in stream) {
+          total += chunk.length;
+          if (total > maxBytes) {
+            throw const FormatException('阅读背景图片超过 8MB');
+          }
+          if (signature.length < 12) {
+            signature.addAll(chunk.take(12 - signature.length));
+          }
+          sink.add(chunk);
+        }
+        await sink.flush();
+        await sink.close();
+      } catch (_) {
+        await sink.close();
+        rethrow;
+      }
+      final png = signature.length >= 4 &&
+          signature[0] == 0x89 && signature[1] == 0x50 &&
+          signature[2] == 0x4E && signature[3] == 0x47;
+      final jpeg = signature.length >= 2 &&
+          signature[0] == 0xFF && signature[1] == 0xD8;
+      final webp = signature.length >= 12 &&
+          String.fromCharCodes(signature.sublist(0, 4)) == 'RIFF' &&
+          String.fromCharCodes(signature.sublist(8, 12)) == 'WEBP';
+      if (!png && !jpeg && !webp) {
+        throw const FormatException('背景仅支持 JPG、PNG 和 WebP 图片');
+      }
+      if (!mounted) return;
+      _update(<String, Object?>{'bgImagePath': staged.path});
+      staged = null; // The imported image is now owned by the reader.
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('背景导入失败：$error')),
+      );
+    } finally {
+      if (staged != null && await staged.exists()) {
+        await staged.delete();
+      }
+    }
   }
 
   Future<int?> _pickColor(BuildContext context, int initial) async {
