@@ -862,6 +862,19 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
         pagination.pages[page.clamp(0, pagination.pages.length - 1)].sourceStart;
     _lastSavedOffset = widget.book.charOffset.value;
     _pageTick.value++;
+    // A PageView can still be attached to the previous chapter's virtual
+    // neighbor while it is being rebuilt from a swipe. Reaffirm the target
+    // after the new PageView mounts, and guard against stale callbacks.
+    final int chapterEpoch = _controllerEpoch;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _chapterIndex != index ||
+          _controllerEpoch != chapterEpoch) return;
+      final controller = _pageController;
+      if (controller == null || !controller.hasClients) return;
+      controller.jumpToPage(
+        _virtualPrevCount + _renderPageIndex(_pageIndex),
+      );
+    });
     await LibraryStore.instance.saveProgress(widget.book);
     AutoSyncService.instance.scheduleProgress(widget.book);
     _prefetchNeighbors();
