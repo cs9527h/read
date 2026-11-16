@@ -6,14 +6,12 @@ import 'package:read/src/profile/reading_history_page.dart';
 import 'package:read/src/profile/storage_page.dart';
 import 'package:read/src/services/library_store.dart';
 import 'package:read/src/services/reading_stats_store.dart';
-import 'package:read/src/sync/sync_page.dart';
-import 'package:read/src/sync/sync_config.dart';
 import 'package:read/src/theme.dart';
 import 'package:read/src/version.dart';
 
-/// 我的：头像 + 同步状态 + 分区列表。
-class ProfilePage extends StatelessWidget {
-  const ProfilePage({super.key});
+/// 设置：阅读历史、外观、存储、关于。同步独立为底部 Tab。
+class SettingsPage extends StatelessWidget {
+  const SettingsPage({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -31,66 +29,24 @@ class ProfilePage extends StatelessWidget {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
               children: <Widget>[
-                Row(
-                  children: <Widget>[
-                    Container(
-                      width: 52,
-                      height: 52,
-                      decoration: BoxDecoration(
-                        color: palette.ink,
-                        borderRadius: BorderRadius.circular(kEink ? 0 : 12),
-                      ),
-                      child: Icon(
-                        Icons.person_outline_rounded,
-                        color: palette.brightness == Brightness.dark ? Colors.black : Colors.white,
-                        size: 28,
-                      ),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 14),
+                  child: Text(
+                    '设置',
+                    style: TextStyle(
+                      fontSize: 26,
+                      letterSpacing: -0.5,
+                      fontWeight: FontWeight.w700,
+                      color: palette.ink,
                     ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          Text(
-                            '我的书房',
-                            style: TextStyle(
-                              fontSize: 19,
-                              fontWeight: FontWeight.w700,
-                              color: palette.ink,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '读万卷书，行万里路。',
-                            style: TextStyle(fontSize: 12, color: palette.muted),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Icon(Icons.chevron_right_rounded, color: palette.muted, size: 20),
-                  ],
-                ),
-                const SizedBox(height: 20),
-                _Section(
-                  children: <Widget>[
-                    _Row(
-                      icon: Icons.sync_rounded,
-                      title: '同步',
-                      subtitle: SyncConfig.instance.lastSyncAt.isEmpty
-                          ? '全量同步 / 备份 / 历史'
-                          : '上次同步 ${SyncConfig.instance.lastSyncStatus}',
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute<void>(builder: (_) => const SyncPage()),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
                 _SectionTitle(text: '数据管理'),
                 _Section(
                   children: <Widget>[
                     _Row(
                       icon: Icons.menu_book_outlined,
-                      title: '我的阅读',
+                      title: '阅读历史',
                       subtitle: '${LibraryStore.instance.books.length} 本 · 全部/在读/读完',
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute<void>(builder: (_) => const ReadingHistoryPage()),

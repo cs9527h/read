@@ -70,8 +70,38 @@ class ReadPalette {
     icon: Colors.black,
   );
 
-  static ReadPalette of(BuildContext context) =>
-      Theme.of(context).brightness == Brightness.dark ? dark : light;
+  static ReadPalette of(BuildContext context) {
+    if (kEink) return eink;
+    return Theme.of(context).brightness == Brightness.dark ? dark : light;
+  }
+}
+
+/// 一套功能语义相同的图标，但普通版与墨水屏版在笔画密度上明确区分。
+/// 墨水屏使用细线、空心、低刷新率友好的图标；普通版可以使用更完整的轮廓。
+abstract final class ReadIcons {
+  static IconData get shelf =>
+      kEink ? Icons.menu_book_outlined : Icons.auto_stories_rounded;
+  static IconData get stats =>
+      kEink ? Icons.show_chart_rounded : Icons.insights_rounded;
+  static IconData get sync =>
+      kEink ? Icons.cloud_queue_rounded : Icons.cloud_sync_rounded;
+  static IconData get settings =>
+      kEink ? Icons.settings_outlined : Icons.settings_rounded;
+  static IconData get search =>
+      kEink ? Icons.search_outlined : Icons.search_rounded;
+  static IconData get more =>
+      kEink ? Icons.more_vert_rounded : Icons.more_horiz_rounded;
+  static IconData get edit => kEink ? Icons.edit_outlined : Icons.edit_rounded;
+  static IconData get book => kEink ? Icons.book_outlined : Icons.book_rounded;
+  static IconData get cloud =>
+      kEink ? Icons.cloud_outlined : Icons.cloud_done_outlined;
+  static IconData get folder =>
+      kEink ? Icons.folder_outlined : Icons.folder_rounded;
+  static IconData get tag => kEink ? Icons.sell_outlined : Icons.sell_rounded;
+  static IconData get importBook =>
+      kEink ? Icons.note_add_outlined : Icons.note_add_rounded;
+  static IconData get history =>
+      kEink ? Icons.history_rounded : Icons.history_rounded;
 }
 
 /// 无动画路由（墨水屏必须）。
@@ -119,7 +149,8 @@ ThemeData buildTheme(Brightness brightness, {double fontScale = 1.0}) {
       brightness == Brightness.dark ? ReadPalette.dark : ReadPalette.light;
   final TextTheme base = Typography.material2021().black;
 
-  TextStyle scaled(TextStyle style, double size, FontWeight weight, {double height = 1.4}) =>
+  TextStyle scaled(TextStyle style, double size, FontWeight weight,
+          {double height = 1.4}) =>
       style.copyWith(
         fontSize: size * fontScale,
         fontWeight: weight,
@@ -154,7 +185,8 @@ ThemeData buildTheme(Brightness brightness, {double fontScale = 1.0}) {
     iconTheme: IconThemeData(color: palette.icon, size: 22),
     dividerColor: palette.outline,
     textTheme: TextTheme(
-      headlineLarge: scaled(base.headlineLarge!, 30, FontWeight.w700, height: 1.2),
+      headlineLarge:
+          scaled(base.headlineLarge!, 30, FontWeight.w700, height: 1.2),
       headlineMedium: scaled(base.headlineMedium!, 22, FontWeight.w700),
       titleLarge: scaled(base.titleLarge!, 19, FontWeight.w600),
       titleMedium: scaled(base.titleMedium!, 16, FontWeight.w600),

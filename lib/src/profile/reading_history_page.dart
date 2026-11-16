@@ -7,7 +7,7 @@ import 'package:read/src/services/library_store.dart';
 import 'package:read/src/services/reading_stats_store.dart';
 import 'package:read/src/theme.dart';
 
-/// 我的阅读：按阅读状态筛选的书单。
+/// 阅读历史：按阅读状态筛选的书单。
 /// 「搁置」目前没有独立状态字段，因此只提供有真实依据的三档。
 class ReadingHistoryPage extends StatefulWidget {
   const ReadingHistoryPage({super.key});
@@ -36,7 +36,7 @@ class _ReadingHistoryPageState extends State<ReadingHistoryPage> {
         return Scaffold(
           backgroundColor: palette.background,
           appBar: AppBar(
-            title: Text('我的阅读', style: TextStyle(fontSize: 18, color: palette.ink)),
+            title: Text('阅读历史', style: TextStyle(fontSize: 18, color: palette.ink)),
             leading: IconButton(
               icon: Icon(Icons.arrow_back_rounded, color: palette.icon),
               onPressed: () => Navigator.of(context).maybePop(),

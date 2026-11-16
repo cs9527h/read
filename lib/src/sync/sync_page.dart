@@ -1,8 +1,14 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import 'package:read/src/model/book.dart';
+import 'package:read/src/reader/settings/reader_settings_store.dart';
+import 'package:read/src/services/appearance_store.dart';
+import 'package:read/src/services/reading_stats_store.dart';
 import 'package:read/src/services/chapter_splitter.dart';
 import 'package:read/src/services/library_store.dart';
 import 'package:read/src/sync/auto_sync_service.dart';
@@ -31,7 +37,7 @@ class _SyncPageState extends State<SyncPage> {
   Widget build(BuildContext context) {
     final palette = ReadPalette.of(context);
     return DefaultTabController(
-      length: 4,
+      length: 5,
       child: Scaffold(
         backgroundColor: palette.background,
         appBar: AppBar(
@@ -61,6 +67,7 @@ class _SyncPageState extends State<SyncPage> {
               Tab(text: '云存储'),
               Tab(text: '同步选项'),
               Tab(text: '备份'),
+              Tab(text: '数据迁移'),
               Tab(text: '历史'),
             ],
           ),
@@ -70,6 +77,7 @@ class _SyncPageState extends State<SyncPage> {
             _StorageTab(onBusyChanged: _setBusy),
             _OptionsTab(onBusyChanged: _setBusy),
             _BackupTab(onBusyChanged: _setBusy),
+            _TransferTab(onBusyChanged: _setBusy),
             const _HistoryTab(),
           ],
         ),
@@ -183,9 +191,8 @@ class _StorageTabState extends State<_StorageTab> {
         return false;
       }
       _config.webdavUrl = _url.text.trim();
-      _config.webdavDirectory = _directory.text.trim().isEmpty
-          ? 'Read'
-          : _directory.text.trim();
+      _config.webdavDirectory =
+          _directory.text.trim().isEmpty ? 'Read' : _directory.text.trim();
       _config.webdavUsername = _user.text.trim();
     } else {
       if (_endpoint.text.trim().isEmpty ||
@@ -199,9 +206,11 @@ class _StorageTabState extends State<_StorageTab> {
         return false;
       }
       _config.s3Endpoint = _endpoint.text.trim();
-      _config.s3Region = _region.text.trim().isEmpty ? 'auto' : _region.text.trim();
+      _config.s3Region =
+          _region.text.trim().isEmpty ? 'auto' : _region.text.trim();
       _config.s3Bucket = _bucket.text.trim();
-      _config.s3Prefix = _prefix.text.trim().isEmpty ? 'Read' : _prefix.text.trim();
+      _config.s3Prefix =
+          _prefix.text.trim().isEmpty ? 'Read' : _prefix.text.trim();
       _config.s3AccessKey = _accessKey.text.trim();
     }
     if (_encryption.text.isNotEmpty && _encryption.text.length < 12) {
@@ -212,7 +221,8 @@ class _StorageTabState extends State<_StorageTab> {
     widget.onBusyChanged(true);
     try {
       await SyncSecrets().store(
-        webdavPassword: _webdavPassword.text.isEmpty ? null : _webdavPassword.text,
+        webdavPassword:
+            _webdavPassword.text.isEmpty ? null : _webdavPassword.text,
         encryptionPassword: _encryption.text.isEmpty ? null : _encryption.text,
         s3SecretKey: _secretKey.text.isEmpty ? null : _secretKey.text,
       );
@@ -239,7 +249,8 @@ class _StorageTabState extends State<_StorageTab> {
       await AutoSyncService.instance.testConnection();
       if (mounted) {
         setState(() {});
-        _toast(context, '连接成功：${_config.provider == 'webdav' ? _config.webdavUrl : _config.s3Endpoint}');
+        _toast(context,
+            '连接成功：${_config.provider == 'webdav' ? _config.webdavUrl : _config.s3Endpoint}');
       }
     } catch (error) {
       if (mounted) _toast(context, '连接失败：$error');
@@ -280,28 +291,34 @@ class _StorageTabState extends State<_StorageTab> {
         if (webdav) ...<Widget>[
           _field(_url, '服务器地址', hint: 'https://dav.jianguoyun.com/dav/'),
           _field(_user, '账号'),
-          _field(_webdavPassword, '应用密码', obscure: true,
+          _field(_webdavPassword, '应用密码',
+              obscure: true,
               hint: hasWebdavSecret ? '已安全保存，留空不修改' : '不要填写网页登录密码'),
           _field(_directory, '同步目录', hint: 'Read'),
           const SizedBox(height: 8),
           Text('安全说明', style: TextStyle(color: palette.muted, fontSize: 12)),
           const SizedBox(height: 4),
-          Text('密码保存在 Android Keystore/iOS Keychain；所有同步文件使用 AES-256-GCM 加密后再上传。',
-              style: TextStyle(color: palette.muted, fontSize: 12, height: 1.5)),
+          Text(
+              '密码保存在 Android Keystore/iOS Keychain；所有同步文件使用 AES-256-GCM 加密后再上传。',
+              style:
+                  TextStyle(color: palette.muted, fontSize: 12, height: 1.5)),
         ] else ...<Widget>[
           _field(_endpoint, 'S3 Endpoint', hint: 'https://s3.example.com'),
           _field(_region, 'Region', hint: 'auto / us-east-1'),
           _field(_bucket, 'Bucket'),
           _field(_prefix, '前缀目录', hint: 'Read'),
           _field(_accessKey, 'Access Key ID'),
-          _field(_secretKey, 'Secret Access Key', obscure: true,
-              hint: _config.configured ? '已安全保存，留空不修改' : ''),
-          Text('S3 使用 AWS Signature V4、路径式寻址与 If-Match/If-None-Match 条件写入；'
+          _field(_secretKey, 'Secret Access Key',
+              obscure: true, hint: _config.configured ? '已安全保存，留空不修改' : ''),
+          Text(
+              'S3 使用 AWS Signature V4、路径式寻址与 If-Match/If-None-Match 条件写入；'
               '兼容 MinIO、R2、B2 等。未实测的厂商不会在界面标为“已验证”。',
-              style: TextStyle(color: palette.muted, fontSize: 12, height: 1.5)),
+              style:
+                  TextStyle(color: palette.muted, fontSize: 12, height: 1.5)),
         ],
         const SizedBox(height: 12),
-        _field(_encryption, '同步密码（端到端加密）', obscure: true,
+        _field(_encryption, '同步密码（端到端加密）',
+            obscure: true,
             hint: _config.configured ? '已安全保存，留空不修改' : '至少 12 个字符'),
         const SizedBox(height: 16),
         Row(
@@ -401,7 +418,10 @@ class _StatusCard extends StatelessWidget {
               children: <Widget>[
                 Text(
                   configured ? '云端已连接' : '尚未配置云存储',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: palette.ink),
+                  style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: palette.ink),
                 ),
                 const SizedBox(height: 4),
                 Text(
@@ -451,7 +471,8 @@ class _OptionsTabState extends State<_OptionsTab> {
     if (mounted) setState(() {});
   }
 
-  String _positionLine(PendingProgressConflict conflict, ProgressRecord record) {
+  String _positionLine(
+      PendingProgressConflict conflict, ProgressRecord record) {
     final book = LibraryStore.instance.bookByHash(conflict.bookHash);
     var chapter = '';
     var ratio = '';
@@ -460,9 +481,11 @@ class _OptionsTabState extends State<_OptionsTab> {
     } else if (book != null && book.content.isNotEmpty) {
       final chapters = splitChapters(book.content);
       for (var i = 0; i < chapters.length; i++) {
-        if (record.offset >= chapters[i].start && record.offset < chapters[i].end) {
+        if (record.offset >= chapters[i].start &&
+            record.offset < chapters[i].end) {
           chapter = chapters[i].title.trim();
-          ratio = '${(record.offset / book.content.length * 100).toStringAsFixed(1)}%';
+          ratio =
+              '${(record.offset / book.content.length * 100).toStringAsFixed(1)}%';
           break;
         }
       }
@@ -530,7 +553,8 @@ class _OptionsTabState extends State<_OptionsTab> {
           ),
         ),
         actions: <Widget>[
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
           FilledButton(
             onPressed: () {
               final minutes = int.tryParse(controller.text.trim());
@@ -763,7 +787,8 @@ class _OptionsTabState extends State<_OptionsTab> {
 
   Widget _section(ReadPalette palette, String title) => Padding(
         padding: const EdgeInsets.fromLTRB(4, 18, 4, 4),
-        child: Text(title, style: TextStyle(fontSize: 12, color: palette.muted)),
+        child:
+            Text(title, style: TextStyle(fontSize: 12, color: palette.muted)),
       );
 
   Widget _switch(String title, bool value, ValueChanged<bool> onChanged) =>
@@ -776,7 +801,7 @@ class _OptionsTabState extends State<_OptionsTab> {
       );
 
   Widget _slider(String title, double value, double min, double max,
-      {required int divisions, required ValueChanged<double> onChanged}) =>
+          {required int divisions, required ValueChanged<double> onChanged}) =>
       Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
@@ -858,8 +883,12 @@ class _BackupTabState extends State<_BackupTab> {
         title: const Text('恢复此备份？'),
         content: const Text('恢复前会自动创建“恢复前快照”。现有书籍不会被删除，只补充缺失内容并合并书签/设置。'),
         actions: <Widget>[
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('恢复')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('恢复')),
         ],
       ),
     );
@@ -951,7 +980,10 @@ class _BackupTabState extends State<_BackupTab> {
         Text('本地备份', style: TextStyle(fontSize: 12, color: palette.muted)),
         const SizedBox(height: 6),
         if (_loading)
-          const Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator()))
+          const Center(
+              child: Padding(
+                  padding: EdgeInsets.all(20),
+                  child: CircularProgressIndicator()))
         else if (_local.isEmpty)
           Padding(
             padding: const EdgeInsets.all(16),
@@ -962,8 +994,10 @@ class _BackupTabState extends State<_BackupTab> {
             ListTile(
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.archive_outlined, size: 22),
-              title: Text(info.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-              subtitle: Text('${_formatTime(info.createdAt.toIso8601String())} · ${info.bytes ~/ 1024}KB'),
+              title:
+                  Text(info.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+              subtitle: Text(
+                  '${_formatTime(info.createdAt.toIso8601String())} · ${info.bytes ~/ 1024}KB'),
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
@@ -989,15 +1023,18 @@ class _BackupTabState extends State<_BackupTab> {
         if (_cloud.isEmpty)
           Padding(
             padding: const EdgeInsets.all(16),
-            child: Text('没有云端备份（需先配置云存储）', style: TextStyle(color: palette.muted)),
+            child:
+                Text('没有云端备份（需先配置云存储）', style: TextStyle(color: palette.muted)),
           )
         else
           for (final entry in _cloud)
             ListTile(
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.cloud_outlined, size: 22),
-              title: Text(entry.key.split('/').last, maxLines: 1, overflow: TextOverflow.ellipsis),
-              subtitle: Text('${_formatTime(entry.modifiedAt?.toIso8601String() ?? '')} · ${entry.size ~/ 1024}KB'),
+              title: Text(entry.key.split('/').last,
+                  maxLines: 1, overflow: TextOverflow.ellipsis),
+              subtitle: Text(
+                  '${_formatTime(entry.modifiedAt?.toIso8601String() ?? '')} · ${entry.size ~/ 1024}KB'),
               trailing: IconButton(
                 tooltip: '恢复',
                 icon: const Icon(Icons.cloud_download_outlined, size: 20),
@@ -1082,28 +1119,38 @@ class _HistoryTab extends StatelessWidget {
                             Row(
                               children: <Widget>[
                                 Text(_kindLabel(entry.kind),
-                                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: palette.ink)),
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: palette.ink)),
                                 const Spacer(),
                                 Text(_formatTime(entry.at.toIso8601String()),
-                                    style: TextStyle(fontSize: 11, color: palette.muted)),
+                                    style: TextStyle(
+                                        fontSize: 11, color: palette.muted)),
                               ],
                             ),
                             const SizedBox(height: 4),
                             Text(entry.message,
-                                style: TextStyle(fontSize: 12, color: palette.muted, height: 1.4)),
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    color: palette.muted,
+                                    height: 1.4)),
                             if (entry.errorType.isNotEmpty) ...<Widget>[
                               const SizedBox(height: 2),
                               Text('类型：${entry.errorType}',
                                   style: TextStyle(
                                       fontSize: 11,
-                                      color: Theme.of(context).colorScheme.error)),
+                                      color:
+                                          Theme.of(context).colorScheme.error)),
                               Text('处理建议：${entry.suggestion}',
-                                  style: TextStyle(fontSize: 11, color: palette.muted)),
+                                  style: TextStyle(
+                                      fontSize: 11, color: palette.muted)),
                             ],
                             if (entry.conflicts > 0) ...<Widget>[
                               const SizedBox(height: 4),
                               Text('冲突 ${entry.conflicts} 条',
-                                  style: TextStyle(fontSize: 11, color: palette.muted)),
+                                  style: TextStyle(
+                                      fontSize: 11, color: palette.muted)),
                             ],
                           ],
                         ),
@@ -1112,14 +1159,18 @@ class _HistoryTab extends StatelessWidget {
                   ),
                 ),
             const SizedBox(height: 18),
-            Text('云端阅读进度历史', style: TextStyle(fontSize: 12, color: palette.muted)),
+            Text('云端阅读进度历史',
+                style: TextStyle(fontSize: 12, color: palette.muted)),
             const SizedBox(height: 4),
             Text('仅显示真实从云端收到的设备位置；恢复会写入本机进度，不覆盖云端历史。',
-                style: TextStyle(fontSize: 11, color: palette.muted, height: 1.4)),
+                style:
+                    TextStyle(fontSize: 11, color: palette.muted, height: 1.4)),
             const SizedBox(height: 8),
             for (final book in LibraryStore.instance.books.take(12))
               if (book.contentHash != null &&
-                  ProgressHistoryStore.instance.forHash(book.contentHash!).isNotEmpty)
+                  ProgressHistoryStore.instance
+                      .forHash(book.contentHash!)
+                      .isNotEmpty)
                 Container(
                   margin: const EdgeInsets.only(bottom: 8),
                   padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
@@ -1156,7 +1207,8 @@ class _HistoryTab extends StatelessWidget {
                             style: const TextStyle(fontSize: 10),
                           ),
                           trailing: TextButton(
-                            onPressed: () => _restoreCloudPoint(context, book, point),
+                            onPressed: () =>
+                                _restoreCloudPoint(context, book, point),
                             child: const Text('恢复'),
                           ),
                         ),
@@ -1165,7 +1217,8 @@ class _HistoryTab extends StatelessWidget {
                 ),
             if (SyncTaskQueue.instance.tasks.isNotEmpty) ...<Widget>[
               const SizedBox(height: 12),
-              Text('待重试队列', style: TextStyle(fontSize: 12, color: palette.muted)),
+              Text('待重试队列',
+                  style: TextStyle(fontSize: 12, color: palette.muted)),
               const SizedBox(height: 6),
               for (final task in SyncTaskQueue.instance.tasks)
                 ListTile(
@@ -1221,8 +1274,6 @@ class _HistoryTab extends StatelessWidget {
       };
 }
 
-
-
 Future<void> _restoreCloudPoint(
   BuildContext context,
   Book book,
@@ -1258,5 +1309,358 @@ Future<void> _restoreCloudPoint(
     }
   } catch (error) {
     if (context.mounted) _toast(context, '恢复失败：$error');
+  }
+}
+
+class _TransferTab extends StatefulWidget {
+  const _TransferTab({required this.onBusyChanged});
+
+  final ValueChanged<bool> onBusyChanged;
+
+  @override
+  State<_TransferTab> createState() => _TransferTabState();
+}
+
+class _TransferTabState extends State<_TransferTab> {
+  bool _busy = false;
+  DateTime? _remoteCheckedAt;
+  String _remoteError = '';
+
+  Future<void> _run(Future<void> Function() action) async {
+    setState(() => _busy = true);
+    widget.onBusyChanged(true);
+    try {
+      await action();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+      widget.onBusyChanged(false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ReadPalette.of(context);
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+      children: <Widget>[
+        _card(
+          palette,
+          title: '本机设置',
+          children: <Widget>[
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.file_upload_outlined),
+              title: const Text('导出本机设置'),
+              subtitle: const Text('阅读排版、主题、外观与同步偏好；不包含密码'),
+              onTap: _busy ? null : () => unawaited(_run(_exportSettings)),
+            ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.file_download_outlined),
+              title: const Text('导入本机设置'),
+              subtitle: const Text('从 JSON 恢复阅读排版与外观，导入前会校验版本'),
+              onTap: _busy ? null : () => unawaited(_run(_importSettings)),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        _card(
+          palette,
+          title: '跨设备恢复',
+          children: <Widget>[
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.devices_other_outlined),
+              title: const Text('从其他设备恢复'),
+              subtitle: const Text('拉取云端元数据与缺失文件，合并而不是覆盖较新进度'),
+              onTap: _busy ? null : () => unawaited(_run(_restoreFromCloud)),
+            ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.compare_arrows_rounded),
+              title: const Text('云端数据对比'),
+              subtitle: Text(
+                _remoteCheckedAt == null
+                    ? '只读查询云端记录数量，不上传、不覆盖'
+                    : '最近检查：${_fmtTime(_remoteCheckedAt!)}',
+              ),
+              onTap: _busy ? null : () => unawaited(_run(_compareCloud)),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        _card(
+          palette,
+          title: '说明',
+          children: <Widget>[
+            const ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.lock_outline_rounded),
+              title: Text('设置文件不含凭据'),
+              subtitle: Text('WebDAV 密码、S3 密钥与同步加密口令不会进入导出文件。'),
+            ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.info_outline_rounded),
+              title: const Text('云端对比为只读'),
+              subtitle: Text(
+                _remoteError.isEmpty
+                    ? '读取 metadata.enc 后按记录类型计数；无法解密时只报告失败。'
+                    : '上次错误：$_remoteError',
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _card(ReadPalette palette,
+      {required String title, required List<Widget> children}) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
+      decoration: BoxDecoration(
+        color: palette.surface,
+        border: Border.all(color: palette.outline),
+        borderRadius: BorderRadius.circular(kEink ? 0 : 12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(title,
+              style: TextStyle(
+                  fontSize: 12,
+                  color: palette.muted,
+                  fontWeight: FontWeight.w600)),
+          ...children,
+        ],
+      ),
+    );
+  }
+
+  String _fmtTime(DateTime time) =>
+      '${time.year}-${time.month.toString().padLeft(2, '0')}-${time.day.toString().padLeft(2, '0')} '
+      '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+
+  Future<void> _exportSettings() async {
+    try {
+      final reader = jsonDecode(ReaderSettingsStore.instance.exportJson());
+      final data = <String, Object?>{
+        'kind': 'read.local.settings',
+        'version': 1,
+        'exportedAt': DateTime.now().toIso8601String(),
+        'reader': reader,
+        'appearance': <String, Object?>{
+          'themeMode': switch (AppearanceStore.instance.themeMode) {
+            ThemeMode.light => 'light',
+            ThemeMode.dark => 'dark',
+            _ => 'system',
+          },
+          'fontScale': AppearanceStore.instance.fontScale,
+        },
+        'sync': SyncConfig.instance.diagnostics(),
+      };
+      final raw = const JsonEncoder.withIndent('  ').convert(data);
+      final encoded = utf8.encode(raw);
+      final path = await FilePicker.platform.saveFile(
+        dialogTitle: '导出 Read 本机设置',
+        fileName: 'read-settings-${DateTime.now().millisecondsSinceEpoch}.json',
+        bytes: encoded,
+      );
+      if (path == null || !mounted) return;
+      final file = File(path);
+      if (!await file.exists() || (await file.length()) != encoded.length) {
+        await file.writeAsBytes(encoded, flush: true);
+      }
+      _toast(context, '设置已导出：$path');
+    } catch (error) {
+      if (mounted) _toast(context, '导出失败：$error');
+    }
+  }
+
+  Future<void> _importSettings() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: <String>['json'],
+      withData: true,
+    );
+    if (result == null || result.files.isEmpty || !mounted) return;
+    final file = result.files.first;
+    try {
+      String raw;
+      final bytes = file.bytes;
+      if (bytes != null) {
+        raw = utf8.decode(bytes);
+      } else if (file.path != null) {
+        raw = await File(file.path!).readAsString();
+      } else {
+        throw const FormatException('无法读取设置文件');
+      }
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) {
+        throw const FormatException('设置文件不是 JSON 对象');
+      }
+      if (decoded['kind'] != 'read.local.settings' &&
+          decoded['reader'] == null) {
+        throw const FormatException('不是 Read 的设置文件');
+      }
+      final reader = decoded['reader'];
+      if (reader is Map<String, dynamic>) {
+        await ReaderSettingsStore.instance.importJson(jsonEncode(reader));
+      }
+      final appearance = decoded['appearance'];
+      if (appearance is Map<String, dynamic>) {
+        final mode = appearance['themeMode'];
+        if (mode is String) {
+          await AppearanceStore.instance.setThemeMode(switch (mode) {
+            'light' => ThemeMode.light,
+            'dark' => ThemeMode.dark,
+            _ => ThemeMode.system,
+          });
+        }
+        final scale = appearance['fontScale'];
+        if (scale is num)
+          await AppearanceStore.instance.setFontScale(scale.toDouble());
+      }
+      if (mounted) {
+        setState(() {});
+        _toast(context, '本机设置已导入');
+      }
+    } catch (error) {
+      if (mounted) _toast(context, '导入失败：$error');
+    }
+  }
+
+  Future<void> _restoreFromCloud() async {
+    if (!SyncConfig.instance.configured) {
+      _toast(context, '请先在“云存储”配置并保存凭据');
+      return;
+    }
+    final approved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('从其他设备恢复？'),
+        content: const Text('会读取云端 metadata.enc 与缺失文件，按修改时间合并；'
+            '本机更新的进度不会被旧数据覆盖。'),
+        actions: <Widget>[
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('开始恢复')),
+        ],
+      ),
+    );
+    if (approved != true || !mounted) return;
+    try {
+      final report =
+          await AutoSyncService.instance.runFull(downloadMissing: true);
+      if (mounted) {
+        _toast(context, report?.message ?? '没有需要恢复的云端变化');
+        setState(() {});
+      }
+    } catch (error) {
+      if (mounted) _toast(context, '恢复失败：$error');
+    }
+  }
+
+  Future<void> _compareCloud() async {
+    if (!SyncConfig.instance.configured) {
+      _toast(context, '请先在“云存储”配置并保存凭据');
+      return;
+    }
+    setState(() => _remoteError = '');
+    try {
+      final secrets = await SyncSecrets.load();
+      final store = SyncBackendFactory.create(SyncConfig.instance, secrets);
+      final document = await MetadataSyncService().readRemoteSnapshot(
+        store: store,
+        encryptionPassword: secrets.encryptionPassword,
+      );
+      if (!mounted) return;
+      if (document == null) {
+        setState(() {
+          _remoteCheckedAt = DateTime.now();
+        });
+        _toast(context, '云端还没有元数据');
+        return;
+      }
+      final counts = MetadataSyncService.countByKind(document);
+      setState(() {
+        _remoteCheckedAt = DateTime.now();
+      });
+      await _showCompareDialog(counts);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _remoteError = '$error';
+        _remoteCheckedAt = DateTime.now();
+      });
+      _toast(context, '对比失败：$error');
+    }
+  }
+
+  Future<void> _showCompareDialog(Map<String, int> remote) async {
+    final local = <String, int>{
+      'book': LibraryStore.instance.books.length,
+      'settings': 1,
+      'stats': ReadingStatsStore.instance.booksCount,
+    };
+    final kinds = <String>{...remote.keys, ...local.keys};
+    final labels = <String, String>{
+      'book': '书籍',
+      'bookmark': '书签',
+      'settings': '设置',
+      'stats': '阅读统计',
+      'progress': '阅读进度',
+    };
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('云端数据对比'),
+        content: SingleChildScrollView(
+          child: Table(
+            columnWidths: const <int, TableColumnWidth>{
+              0: FlexColumnWidth(1.2),
+              1: FlexColumnWidth(),
+              2: FlexColumnWidth(),
+            },
+            children: <TableRow>[
+              const TableRow(children: <Widget>[
+                Padding(
+                    padding: EdgeInsets.all(6),
+                    child: Text('类型',
+                        style: TextStyle(fontWeight: FontWeight.w600))),
+                Padding(
+                    padding: EdgeInsets.all(6),
+                    child: Text('本机',
+                        style: TextStyle(fontWeight: FontWeight.w600))),
+                Padding(
+                    padding: EdgeInsets.all(6),
+                    child: Text('云端',
+                        style: TextStyle(fontWeight: FontWeight.w600))),
+              ]),
+              for (final kind in kinds.toList()..sort())
+                TableRow(children: <Widget>[
+                  Padding(
+                      padding: const EdgeInsets.all(6),
+                      child: Text(labels[kind] ?? kind)),
+                  Padding(
+                      padding: const EdgeInsets.all(6),
+                      child: Text(local[kind]?.toString() ?? '—')),
+                  Padding(
+                      padding: const EdgeInsets.all(6),
+                      child: Text(remote[kind]?.toString() ?? '0')),
+                ]),
+            ],
+          ),
+        ),
+        actions: <Widget>[
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('关闭')),
+        ],
+      ),
+    );
   }
 }

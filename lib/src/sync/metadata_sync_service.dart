@@ -62,6 +62,31 @@ class MetadataSyncService {
   final SyncBaselineStore _baselines;
   final SyncHistoryStore _history;
 
+  /// 只读云端元数据，供“从其他设备恢复/云端数据对比”使用。
+  /// 不会写入、不会合并、不会覆盖本机记录。
+  Future<SyncDocument?> readRemoteSnapshot({
+    required RemoteObjectStore store,
+    required String encryptionPassword,
+  }) async {
+    final snapshot = await store.read(metadataKey);
+    if (snapshot == null) return null;
+    final plaintext = await EncryptedSyncEnvelope.decrypt(
+      snapshot.bytes,
+      encryptionPassword,
+    );
+    return _decodeDocument(plaintext);
+  }
+
+  /// 云端记录按 kind 的计数，忽略墓碑记录。
+  static Map<String, int> countByKind(SyncDocument document) {
+    final counts = <String, int>{};
+    for (final record in document.records.values) {
+      if (record.deleted) continue;
+      counts[record.kind] = (counts[record.kind] ?? 0) + 1;
+    }
+    return counts;
+  }
+
   Future<MetadataSyncReport> sync({
     required RemoteObjectStore store,
     required String encryptionPassword,
@@ -90,8 +115,8 @@ class MetadataSyncService {
       remoteEtag = null;
       final snapshot = await store.read(metadataKey);
       if (snapshot != null) {
-        final plaintext =
-            await EncryptedSyncEnvelope.decrypt(snapshot.bytes, encryptionPassword);
+        final plaintext = await EncryptedSyncEnvelope.decrypt(
+            snapshot.bytes, encryptionPassword);
         final decoded = _decodeDocument(plaintext);
         remote = decoded;
         remoteEtag = snapshot.etag;
@@ -368,8 +393,6 @@ class MetadataSyncService {
     return parts.join('，');
   }
 }
-
-
 
 /// Builds the configured backend. Credentials are supplied only here, right
 /// before the network call, so UI/state never retain a cloud password globally.

@@ -75,6 +75,7 @@ class LibraryStore extends ChangeNotifier {
 
   void _sortBooks() {
     books.sort((Book a, Book b) {
+      if (a.pinned != b.pinned) return a.pinned ? -1 : 1;
       final int ta = a.lastReadAt?.millisecondsSinceEpoch ?? 0;
       final int tb = b.lastReadAt?.millisecondsSinceEpoch ?? 0;
       return tb.compareTo(ta);
@@ -90,7 +91,8 @@ class LibraryStore extends ChangeNotifier {
     }
     final String? path = meta['sourcePath'] as String?;
     if ((meta['format'] as String?)?.toUpperCase() == 'PDF') {
-      if (path != null && await File(path).exists()) return Book.fromMeta(meta, '');
+      if (path != null && await File(path).exists())
+        return Book.fromMeta(meta, '');
       return null;
     }
     String content = '';
@@ -194,85 +196,143 @@ class LibraryStore extends ChangeNotifier {
     }
     final String readablePath = path;
     try {
-    final String ext = picked.name.split('.').last.toLowerCase();
-    if (ext == 'pdf') {
+      final String ext = picked.name.split('.').last.toLowerCase();
+      if (ext == 'pdf') {
+        final File source = File(readablePath);
+        await PdfFormat.verifyHeader(source);
+        final String hash = await _hashFile(source);
+        final int fileSize = await source.length();
+        final Directory base = await getApplicationDocumentsDirectory();
+        final Directory dir = Directory(base.path + '/books');
+        await dir.create(recursive: true);
+        final String id = DateTime.now().microsecondsSinceEpoch.toString();
+        final File copy = await source.copy(dir.path + '/' + id + '.pdf');
+        final String title = picked.name.toLowerCase().endsWith('.pdf')
+            ? picked.name.substring(0, picked.name.length - 4)
+            : picked.name;
+        final Book book = Book(
+          id: id,
+          title: title,
+          author: '本地 PDF',
+          format: 'PDF',
+          content: '',
+          sourcePath: copy.path,
+          contentHash: hash,
+          fileName: picked.name,
+          fileSize: fileSize,
+        );
+        return await _commitImportedBook(book);
+      }
+      if (!FormatEngine.supported.contains(ext)) {
+        throw const FormatException(
+            '当前支持 TXT、EPUB（文字版）、PDF、Markdown、HTML，其余格式开发中');
+      }
       final File source = File(readablePath);
-      await PdfFormat.verifyHeader(source);
-      final String hash = await _hashFile(source);
       final int fileSize = await source.length();
-      final Directory base = await getApplicationDocumentsDirectory();
-      final Directory dir = Directory(base.path + '/books');
-      await dir.create(recursive: true);
+      if (fileSize > FormatEngine.maxSourceBytes) {
+        throw const FormatException('当前单本读取上限为 40MB；超大 TXT 的分块索引仍在开发，'
+            '为避免内存不足，暂不导入。');
+      }
+      final Uint8List bytes = await source.readAsBytes();
+      final ImportedDocument parsed =
+          await FormatEngine.importBytes(bytes, picked.name);
+      final String text = parsed.text;
+      if (text.trim().isEmpty) {
+        throw const FormatException('文件中没有可以阅读的文字内容');
+      }
+
       final String id = DateTime.now().microsecondsSinceEpoch.toString();
-      final File copy = await source.copy(dir.path + '/' + id + '.pdf');
-      final String title = picked.name.toLowerCase().endsWith('.pdf')
-          ? picked.name.substring(0, picked.name.length - 4)
-          : picked.name;
+      final Directory dir = await getApplicationDocumentsDirectory();
+      final Directory booksDir = Directory('${dir.path}/books');
+      if (!await booksDir.exists()) {
+        await booksDir.create(recursive: true);
+      }
+      final File target = File('${booksDir.path}/$id.$ext');
+      // Preserve the original file, including EPUB structure, for future
+      // richer layout support and content-addressed cloud sync.
+      await target.writeAsBytes(bytes, flush: true);
+
+      final String name = picked.name.substring(
+        0,
+        picked.name.lastIndexOf('.') > 0
+            ? picked.name.lastIndexOf('.')
+            : picked.name.length,
+      );
       final Book book = Book(
         id: id,
-        title: title,
-        author: '本地 PDF',
-        format: 'PDF',
-        content: '',
-        sourcePath: copy.path,
-        contentHash: hash,
+        title: parsed.title?.isNotEmpty == true ? parsed.title! : name,
+        author: parsed.author?.isNotEmpty == true ? parsed.author! : '本地导入',
+        format: parsed.format,
+        content: text,
+        sourcePath: target.path,
+        contentHash: sha256.convert(bytes).toString(),
         fileName: picked.name,
         fileSize: fileSize,
       );
       return await _commitImportedBook(book);
-    }
-    if (!FormatEngine.supported.contains(ext)) {
-      throw const FormatException(
-        '当前支持 TXT、EPUB（文字版）、PDF、Markdown、HTML，其余格式开发中');
-    }
-    final File source = File(readablePath);
-    final int fileSize = await source.length();
-    if (fileSize > FormatEngine.maxSourceBytes) {
-      throw const FormatException(
-        '当前单本读取上限为 40MB；超大 TXT 的分块索引仍在开发，'
-        '为避免内存不足，暂不导入。');
-    }
-    final Uint8List bytes = await source.readAsBytes();
-    final ImportedDocument parsed =
-        await FormatEngine.importBytes(bytes, picked.name);
-    final String text = parsed.text;
-    if (text.trim().isEmpty) {
-      throw const FormatException('文件中没有可以阅读的文字内容');
-    }
-
-    final String id = DateTime.now().microsecondsSinceEpoch.toString();
-    final Directory dir = await getApplicationDocumentsDirectory();
-    final Directory booksDir = Directory('${dir.path}/books');
-    if (!await booksDir.exists()) {
-      await booksDir.create(recursive: true);
-    }
-    final File target = File('${booksDir.path}/$id.$ext');
-    // Preserve the original file, including EPUB structure, for future
-    // richer layout support and content-addressed cloud sync.
-    await target.writeAsBytes(bytes, flush: true);
-
-    final String name = picked.name.substring(
-      0, picked.name.lastIndexOf('.') > 0
-          ? picked.name.lastIndexOf('.')
-          : picked.name.length,
-    );
-    final Book book = Book(
-      id: id,
-      title: parsed.title?.isNotEmpty == true ? parsed.title! : name,
-      author: parsed.author?.isNotEmpty == true ? parsed.author! : '本地导入',
-      format: parsed.format,
-      content: text,
-      sourcePath: target.path,
-      contentHash: sha256.convert(bytes).toString(),
-      fileName: picked.name,
-      fileSize: fileSize,
-    );
-    return await _commitImportedBook(book);
     } finally {
       if (staged != null && await staged.exists()) {
         await staged.delete();
       }
     }
+  }
+
+  /// 供“扫描文件夹/智能导入”使用：从已知路径导入一本书。
+  /// 与文件选择器路径复用同一套校验、复制和哈希流程。
+  Future<Book?> importFileAtPath(String path) async {
+    final File source = File(path);
+    if (!await source.exists()) return null;
+    final String name = path.split(Platform.pathSeparator).last;
+    final String ext =
+        name.contains('.') ? name.split('.').last.toLowerCase() : '';
+    if (!FormatEngine.supported.contains(ext) && ext != 'pdf') return null;
+    final int fileSize = await source.length();
+    if (ext == 'pdf') {
+      await PdfFormat.verifyHeader(source);
+      final String hash = await _hashFile(source);
+      final Directory base = await getApplicationDocumentsDirectory();
+      final Directory dir = Directory('${base.path}/books');
+      await dir.create(recursive: true);
+      final String id = DateTime.now().microsecondsSinceEpoch.toString();
+      final File copy = await source.copy('${dir.path}/$id.pdf');
+      final Book book = Book(
+        id: id,
+        title: name.substring(0, name.length - 4),
+        author: '本地 PDF',
+        format: 'PDF',
+        content: '',
+        sourcePath: copy.path,
+        contentHash: hash,
+        fileName: name,
+        fileSize: fileSize,
+      );
+      return _commitImportedBook(book);
+    }
+    if (fileSize > FormatEngine.maxSourceBytes) return null;
+    final Uint8List bytes = await source.readAsBytes();
+    final ImportedDocument parsed = await FormatEngine.importBytes(bytes, name);
+    if (parsed.text.trim().isEmpty) return null;
+    final String id = DateTime.now().microsecondsSinceEpoch.toString();
+    final Directory base = await getApplicationDocumentsDirectory();
+    final Directory booksDir = Directory('${base.path}/books');
+    await booksDir.create(recursive: true);
+    final File target = File('${booksDir.path}/$id.$ext');
+    await target.writeAsBytes(bytes, flush: true);
+    final Book book = Book(
+      id: id,
+      title: parsed.title?.isNotEmpty == true
+          ? parsed.title!
+          : name.substring(0,
+              name.lastIndexOf('.') > 0 ? name.lastIndexOf('.') : name.length),
+      author: parsed.author?.isNotEmpty == true ? parsed.author! : '本地导入',
+      format: parsed.format,
+      content: parsed.text,
+      sourcePath: target.path,
+      contentHash: sha256.convert(bytes).toString(),
+      fileName: name,
+      fileSize: fileSize,
+    );
+    return _commitImportedBook(book);
   }
 
   Future<File> _stageDocumentStream(PlatformFile selected) async {
@@ -281,11 +341,13 @@ class LibraryStore extends ChangeNotifier {
       throw const FormatException('文件提供者没有提供可读取的内容，请先下载到本地');
     }
     final ext = selected.name.split('.').last.toLowerCase();
-    final limit = ext == 'pdf'
-        ? 256 * 1024 * 1024 : FormatEngine.maxSourceBytes;
+    final limit =
+        ext == 'pdf' ? 256 * 1024 * 1024 : FormatEngine.maxSourceBytes;
     final dir = await getTemporaryDirectory();
-    final staged = File(dir.path + '/read-import-' +
-        DateTime.now().microsecondsSinceEpoch.toString() + '.tmp');
+    final staged = File(dir.path +
+        '/read-import-' +
+        DateTime.now().microsecondsSinceEpoch.toString() +
+        '.tmp');
     final sink = staged.openWrite();
     var bytes = 0;
     try {
@@ -306,7 +368,6 @@ class LibraryStore extends ChangeNotifier {
       rethrow;
     }
   }
-
 
   Future<Book> _commitImportedBook(Book book) async {
     books.add(book);
@@ -363,22 +424,7 @@ class LibraryStore extends ChangeNotifier {
   }
 
   Future<void> touch(Book book) async {
-    final Book updated = Book(
-      id: book.id,
-      title: book.title,
-      author: book.author,
-      content: book.content,
-      format: book.format,
-      sourcePath: book.sourcePath,
-      lastReadAt: DateTime.now(),
-      chapterCount: book.chapterCount,
-      contentHash: book.contentHash,
-      fileName: book.fileName,
-      fileSize: book.fileSize,
-    );
-    updated.chapterIndex.value = book.chapterIndex.value;
-    updated.pageIndex.value = book.pageIndex.value;
-    updated.charOffset.value = book.charOffset.value;
+    final Book updated = book.copyWith(lastReadAt: DateTime.now());
     final int index = books.indexWhere((Book b) => b.id == book.id);
     if (index >= 0) {
       books[index] = updated;
@@ -434,26 +480,59 @@ class LibraryStore extends ChangeNotifier {
     final index = books.indexWhere((Book b) => b.contentHash == hash);
     if (index < 0) return;
     final old = books[index];
-    final replacement = Book(
-      id: old.id,
+    final replacement = old.copyWith(
       title: title.trim().isEmpty ? old.title : title,
       author: author.trim().isEmpty ? old.author : author,
-      content: old.content,
-      format: old.format,
-      sourcePath: old.sourcePath,
       lastReadAt: lastReadAt ?? old.lastReadAt,
       chapterCount: chapterCount,
-      contentHash: old.contentHash,
-      fileName: old.fileName,
-      fileSize: old.fileSize,
       tags: tags ?? old.tags,
     );
-    replacement.chapterIndex.value = old.chapterIndex.value;
-    replacement.pageIndex.value = old.pageIndex.value;
-    replacement.charOffset.value = old.charOffset.value;
     books[index] = replacement;
     _sortBooks();
     await _persistMeta();
+    notifyListeners();
+  }
+
+  /// 编辑信息页的统一写入口：字段一次性提交，持久化成功后再通知 UI。
+  Future<void> updateBookInfo(
+    Book book, {
+    required String title,
+    required String author,
+    required String category,
+    required int rating,
+    required bool pinned,
+    required bool isPrivate,
+    required String readingStatus,
+    required List<String> tags,
+    String? coverPath,
+  }) async {
+    final index = books.indexWhere((Book b) => b.id == book.id);
+    if (index < 0) throw StateError('书籍已不在书架中');
+    final cleanedTags = tags
+        .map((String t) => t.trim())
+        .where((String t) => t.isNotEmpty)
+        .toSet()
+        .toList();
+    final updated = book.copyWith(
+      title: title.trim(),
+      author: author.trim(),
+      category: category.trim(),
+      rating: rating.clamp(0, 5),
+      pinned: pinned,
+      isPrivate: isPrivate,
+      readingStatus: readingStatus,
+      tags: cleanedTags,
+      coverPath: coverPath ?? book.coverPath,
+    );
+    final old = books[index];
+    books[index] = updated;
+    try {
+      await _persistMeta();
+    } catch (_) {
+      books[index] = old;
+      rethrow;
+    }
+    _sortBooks();
     notifyListeners();
   }
 
@@ -531,7 +610,6 @@ class LibraryStore extends ChangeNotifier {
   static Future<String> decodeText(Uint8List bytes) =>
       FormatEngine.decodeText(bytes);
 }
-
 
 class _DigestSink implements Sink<Digest> {
   Digest? value;

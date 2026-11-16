@@ -15,6 +15,12 @@ class Book {
     this.fileName,
     this.fileSize = 0,
     List<String>? tags,
+    this.category = '',
+    this.rating = 0,
+    this.pinned = false,
+    this.isPrivate = false,
+    this.readingStatus = 'unread',
+    this.coverPath,
   }) : tags = tags ?? <String>[];
 
   final String id;
@@ -39,6 +45,55 @@ class Book {
   /// User-defined tags/categories. Stored locally and synced by content hash.
   List<String> tags;
 
+  /// 书架编辑信息：分类、评分、置顶、私密、阅读状态与本地封面。
+  String category;
+  int rating;
+  bool pinned;
+  bool isPrivate;
+  String readingStatus;
+  String? coverPath;
+
+  Book copyWith({
+    String? title,
+    String? author,
+    DateTime? lastReadAt,
+    int? chapterCount,
+    List<String>? tags,
+    String? category,
+    int? rating,
+    bool? pinned,
+    bool? isPrivate,
+    String? readingStatus,
+    String? coverPath,
+    int? fileSize,
+    String? fileName,
+  }) {
+    final Book next = Book(
+      id: id,
+      title: title ?? this.title,
+      author: author ?? this.author,
+      content: content,
+      format: format,
+      sourcePath: sourcePath,
+      lastReadAt: lastReadAt ?? this.lastReadAt,
+      chapterCount: chapterCount ?? this.chapterCount,
+      contentHash: contentHash,
+      fileName: fileName ?? this.fileName,
+      fileSize: fileSize ?? this.fileSize,
+      tags: List<String>.from(tags ?? this.tags),
+      category: category ?? this.category,
+      rating: rating ?? this.rating,
+      pinned: pinned ?? this.pinned,
+      isPrivate: isPrivate ?? this.isPrivate,
+      readingStatus: readingStatus ?? this.readingStatus,
+      coverPath: coverPath ?? this.coverPath,
+    );
+    next.chapterIndex.value = chapterIndex.value;
+    next.pageIndex.value = pageIndex.value;
+    next.charOffset.value = charOffset.value;
+    return next;
+  }
+
   /// 阅读进度：章节索引与页索引。
   final ValueNotifier<int> chapterIndex = ValueNotifier<int>(0);
   final ValueNotifier<int> pageIndex = ValueNotifier<int>(0);
@@ -58,6 +113,12 @@ class Book {
         'fileName': fileName,
         'fileSize': fileSize,
         'tags': tags,
+        'category': category,
+        'rating': rating,
+        'pinned': pinned,
+        'isPrivate': isPrivate,
+        'readingStatus': readingStatus,
+        'coverPath': coverPath,
       };
 
   static Book fromMeta(Map<String, dynamic> m, String content) => Book(
@@ -80,5 +141,12 @@ class Book {
             .map((String t) => t.trim())
             .toSet()
             .toList(),
+        category: (m['category'] as String?) ?? '',
+        rating: ((m['rating'] as num?)?.toInt() ?? 0).clamp(0, 5),
+        pinned: m['pinned'] == true,
+        isPrivate: m['isPrivate'] == true,
+        readingStatus: (m['readingStatus'] as String?) ??
+            (m['lastReadAt'] == null ? 'unread' : 'reading'),
+        coverPath: m['coverPath'] as String?,
       );
 }
