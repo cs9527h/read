@@ -61,7 +61,7 @@ class _SyncPageState extends State<SyncPage> {
                       height: 20,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const Icon(Icons.sync_rounded),
+                  : const ReadIcon(ReadGlyph.sync, size: 20),
             ),
           ],
           bottom: TabBar(
@@ -468,8 +468,8 @@ class _StatusCard extends StatelessWidget {
       ),
       child: Row(
         children: <Widget>[
-          Icon(
-            configured ? Icons.cloud_done_outlined : Icons.cloud_off_outlined,
+          ReadIcon(
+            configured ? ReadGlyph.cloudCheck : ReadGlyph.cloudOff,
             color: palette.ink,
             size: 28,
           ),
@@ -815,7 +815,7 @@ class _OptionsTabState extends State<_OptionsTab> {
         _section(palette, '设备与安全'),
         ListTile(
           dense: true,
-          leading: const Icon(Icons.devices_other_outlined, size: 20),
+          leading: const ReadIcon(ReadGlyph.device, size: 20),
           title: const Text('同步目标'),
           subtitle: Text(
             _config.configured
@@ -832,7 +832,7 @@ class _OptionsTabState extends State<_OptionsTab> {
         ),
         ListTile(
           dense: true,
-          leading: const Icon(Icons.lock_outline_rounded, size: 20),
+          leading: const ReadIcon(ReadGlyph.lock, size: 20),
           title: const Text('凭据'),
           subtitle: const Text('密码只保存在系统安全存储，不写入备份与日志'),
         ),
@@ -1009,7 +1009,7 @@ class _BackupTabState extends State<_BackupTab> {
             Expanded(
               child: FilledButton.icon(
                 onPressed: _create,
-                icon: const Icon(Icons.backup_outlined, size: 18),
+                icon: const ReadIcon(ReadGlyph.export, size: 18),
                 label: const Text('创建本地备份'),
               ),
             ),
@@ -1017,7 +1017,7 @@ class _BackupTabState extends State<_BackupTab> {
             Expanded(
               child: OutlinedButton.icon(
                 onPressed: _uploadCloud,
-                icon: const Icon(Icons.cloud_upload_outlined, size: 18),
+                icon: const ReadIcon(ReadGlyph.cloudUpload, size: 18),
                 label: const Text('上传加密备份'),
               ),
             ),
@@ -1040,7 +1040,7 @@ class _BackupTabState extends State<_BackupTab> {
           for (final info in _local)
             ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.archive_outlined, size: 22),
+              leading: const ReadIcon(ReadGlyph.layers, size: 22),
               title: Text(info.name, maxLines: 1, overflow: TextOverflow.ellipsis),
               subtitle: Text('${_formatTime(info.createdAt.toIso8601String())} · ${info.bytes ~/ 1024}KB'),
               trailing: Row(
@@ -1048,12 +1048,12 @@ class _BackupTabState extends State<_BackupTab> {
                 children: <Widget>[
                   IconButton(
                     tooltip: '恢复',
-                    icon: const Icon(Icons.restore_rounded, size: 20),
+                    icon: const ReadIcon(ReadGlyph.restore, size: 20),
                     onPressed: () => _restore(info),
                   ),
                   IconButton(
                     tooltip: '删除',
-                    icon: const Icon(Icons.delete_outline_rounded, size: 20),
+                    icon: const ReadIcon(ReadGlyph.trash, size: 20),
                     onPressed: () async {
                       await _service.deleteLocal(info.path);
                       await _refresh();
@@ -1074,12 +1074,12 @@ class _BackupTabState extends State<_BackupTab> {
           for (final entry in _cloud)
             ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.cloud_outlined, size: 22),
+              leading: const ReadIcon(ReadGlyph.cloud, size: 22),
               title: Text(entry.key.split('/').last, maxLines: 1, overflow: TextOverflow.ellipsis),
               subtitle: Text('${_formatTime(entry.modifiedAt?.toIso8601String() ?? '')} · ${entry.size ~/ 1024}KB'),
               trailing: IconButton(
                 tooltip: '恢复',
-                icon: const Icon(Icons.cloud_download_outlined, size: 20),
+                icon: const ReadIcon(ReadGlyph.cloudDownload, size: 20),
                 onPressed: () => _restoreCloud(entry),
               ),
             ),
@@ -1144,11 +1144,11 @@ class _HistoryTab extends StatelessWidget {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
-                      Icon(
+                      ReadIcon(
                         switch (entry.status) {
-                          'success' => Icons.check_circle_outline_rounded,
-                          'conflict' => Icons.compare_arrows_rounded,
-                          _ => Icons.error_outline_rounded,
+                          'success' => ReadGlyph.check,
+                          'conflict' => ReadGlyph.compare,
+                          _ => ReadGlyph.info,
                         },
                         size: 18,
                         color: palette.ink,
@@ -1223,7 +1223,7 @@ class _HistoryTab extends StatelessWidget {
                         ListTile(
                           dense: true,
                           contentPadding: EdgeInsets.zero,
-                          leading: const Icon(Icons.history_rounded, size: 16),
+                          leading: const ReadIcon(ReadGlyph.clock, size: 16),
                           title: Text(
                             point.format == 'PDF'
                                 ? '第 ${point.page + 1} 页'
@@ -1250,10 +1250,10 @@ class _HistoryTab extends StatelessWidget {
                 ListTile(
                   dense: true,
                   contentPadding: EdgeInsets.zero,
-                  leading: Icon(
+                  leading: ReadIcon(
                     task.permanentlyFailed
-                        ? Icons.error_outline_rounded
-                        : Icons.schedule_rounded,
+                        ? ReadGlyph.info
+                        : ReadGlyph.clock,
                     size: 18,
                   ),
                   title: Text(

@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:read/src/services/library_store.dart';
 import 'package:read/src/theme.dart';
 import 'package:read/src/theme/ui_mode.dart';
+import 'package:read/src/ui/read_icon.dart';
 
 /// 存储管理：统计书籍目录与缓存目录的真实占用。
 class StoragePage extends StatefulWidget {
@@ -91,13 +92,13 @@ class _StoragePageState extends State<StoragePage> {
       appBar: AppBar(
         title: Text('存储管理', style: TextStyle(fontSize: 18, color: palette.ink)),
         leading: IconButton(
-          icon: Icon(Icons.arrow_back_rounded, color: palette.icon),
+          icon: ReadIcon(ReadGlyph.arrowLeft, size: 20, color: palette.icon),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
         actions: <Widget>[
           IconButton(
             tooltip: '重新统计',
-            icon: Icon(Icons.refresh_rounded, color: palette.icon),
+            icon: ReadIcon(ReadGlyph.refresh, size: 20, color: palette.icon),
             onPressed: _measure,
           ),
         ],
@@ -141,7 +142,7 @@ class _StoragePageState extends State<StoragePage> {
                   alignment: Alignment.centerLeft,
                   child: OutlinedButton.icon(
                     onPressed: _loading ? null : _clearCache,
-                    icon: const Icon(Icons.cleaning_services_outlined, size: 18),
+                    icon: const ReadIcon(ReadGlyph.trash, size: 18),
                     label: const Text('清理缓存'),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: palette.ink,

@@ -9,11 +9,11 @@ const Map<String, Object?> kReaderDefaults = <String, Object?>{
   'letterSpacing': 0.2,
   'wordSpacing': 0.0,
   'textScaleX': 1.0,
-  'lineHeight': 1.75,
+  'lineHeight': 1.6,
   // 段落
   'paragraphSpacingBefore': 0.0,
   'paragraphSpacingAfter': 8.0,
-  'indentMode': 'fixed', // none | fixed | em
+  'indentMode': 'em', // none | fixed | em（em 用全角空格，2 个 = 两个汉字宽）
   'indentChars': 2.0,
   'align': 'left', // left | center | right | justify
   'preserveBlankLines': true,

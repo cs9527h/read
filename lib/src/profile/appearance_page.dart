@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:read/src/services/appearance_store.dart';
 import 'package:read/src/theme.dart';
 import 'package:read/src/theme/ui_mode.dart';
+import 'package:read/src/ui/read_icon.dart';
 
 /// 应用外观：只放真正生效的设置项。
 class AppearancePage extends StatelessWidget {
@@ -20,7 +21,7 @@ class AppearancePage extends StatelessWidget {
           appBar: AppBar(
             title: Text('应用外观', style: TextStyle(fontSize: 18, color: palette.ink)),
             leading: IconButton(
-              icon: Icon(Icons.arrow_back_rounded, color: palette.icon),
+              icon: ReadIcon(ReadGlyph.arrowLeft, size: 20, color: palette.icon),
               onPressed: () => Navigator.of(context).maybePop(),
             ),
           ),

@@ -12,6 +12,7 @@ import 'package:read/src/reader/settings/reader_settings.dart';
 import 'package:read/src/reader/settings/reader_settings_store.dart';
 import 'package:read/src/reader/settings/reader_theme.dart';
 import 'package:read/src/reader/settings/user_font_store.dart';
+import 'package:read/src/ui/read_icon.dart';
 
 /// 阅读设置面板：所有开关都接入真实排版引擎，没有装饰性假开关。
 class ReaderSettingsSheet extends StatefulWidget {
@@ -124,7 +125,7 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
                 ),
                 IconButton(
                   tooltip: '关闭',
-                  icon: Icon(Icons.close_rounded, color: foreground),
+                  icon: ReadIcon(ReadGlyph.close, size: 20, color: foreground),
                   onPressed: () => Navigator.of(context).pop(),
                 ),
               ],
@@ -287,7 +288,7 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
               onTap: () => _update(<String, Object?>{'fontFamily': font.family}),
               trailing: IconButton(
                 tooltip: '删除字体',
-                icon: const Icon(Icons.delete_outline_rounded),
+                icon: const ReadIcon(ReadGlyph.trash, size: 20),
                 onPressed: () => UserFontStore.instance.deleteFont(font),
               ),
             )),
@@ -306,7 +307,7 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
                 );
               }
             },
-            icon: const Icon(Icons.upload_file_rounded),
+            icon: const ReadIcon(ReadGlyph.importFile, size: 20),
             label: const Text('导入 TTF / OTF 字体'),
           ),
         ),
@@ -319,7 +320,7 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
                   : () => _update(<String, Object?>{
                       'fontSize': (_settings.fontSize - 1).clamp(12.0, 34.0),
                     }),
-              icon: const Icon(Icons.remove_circle_outline_rounded),
+              icon: const ReadIcon(ReadGlyph.minus, size: 20),
             ),
             Expanded(
               child: _slider(
@@ -340,7 +341,7 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
                   : () => _update(<String, Object?>{
                       'fontSize': (_settings.fontSize + 1).clamp(12.0, 34.0),
                     }),
-              icon: const Icon(Icons.add_circle_outline_rounded),
+              icon: const ReadIcon(ReadGlyph.plus, size: 20),
             ),
           ],
         ),
@@ -552,7 +553,7 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
           children: <Widget>[
             TextButton.icon(
               onPressed: () => _createTheme(context),
-              icon: const Icon(Icons.add_rounded),
+              icon: const ReadIcon(ReadGlyph.plus, size: 20),
               label: const Text('新建主题'),
             ),
             if (!_store.themeById(_settings.themeId).builtIn) ...<Widget>[
@@ -613,7 +614,7 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
               ),
               if (_settings.bgImagePath != null)
                 IconButton(
-                  icon: const Icon(Icons.clear_rounded),
+                  icon: const ReadIcon(ReadGlyph.close, size: 20),
                   onPressed: () => _update(<String, Object?>{'bgImagePath': null}),
                 ),
             ],
@@ -992,13 +993,13 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
           IconButton(
             tooltip: '上移' + title,
             onPressed: index == 0 ? null : () => _moveQuickAction(action, -1),
-            icon: const Icon(Icons.keyboard_arrow_up_rounded),
+            icon: const ReadIcon(ReadGlyph.arrowUp, size: 20),
           ),
           IconButton(
             tooltip: '下移' + title,
             onPressed: index == selected.length - 1
                 ? null : () => _moveQuickAction(action, 1),
-            icon: const Icon(Icons.keyboard_arrow_down_rounded),
+            icon: const ReadIcon(ReadGlyph.arrowDown, size: 20),
           ),
         ],
       ),
@@ -1164,17 +1165,17 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
           children: <Widget>[
             TextButton.icon(
               onPressed: () => _savePresetDialog(context),
-              icon: const Icon(Icons.bookmark_add_outlined),
+              icon: const ReadIcon(ReadGlyph.bookmark, size: 20),
               label: const Text('存为方案'),
             ),
             TextButton.icon(
               onPressed: () => _exportDialog(context),
-              icon: const Icon(Icons.ios_share_rounded),
+              icon: const ReadIcon(ReadGlyph.share, size: 20),
               label: const Text('导出配置'),
             ),
             TextButton.icon(
               onPressed: () => _importDialog(context),
-              icon: const Icon(Icons.file_download_outlined),
+              icon: const ReadIcon(ReadGlyph.download, size: 20),
               label: const Text('导入配置'),
             ),
           ],
@@ -1186,7 +1187,7 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
             subtitle: const Text('点击应用此方案'),
             onTap: () => _update(entry.value.toJson()),
             trailing: IconButton(
-              icon: const Icon(Icons.delete_outline_rounded),
+              icon: const ReadIcon(ReadGlyph.trash, size: 20),
               onPressed: () async {
                 await _store.deletePreset(entry.key);
                 setState(() {});
@@ -1318,7 +1319,7 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
           if (trailing != null) trailing,
-          if (selected) const Icon(Icons.check_rounded, size: 18),
+          if (selected) const ReadIcon(ReadGlyph.check, size: 18),
         ],
       ),
       onTap: onTap,
@@ -1380,7 +1381,7 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
           if (current != null)
             IconButton(
               tooltip: '跟随主题',
-              icon: const Icon(Icons.restart_alt_rounded),
+              icon: const ReadIcon(ReadGlyph.restore, size: 20),
               onPressed: () => onChanged(null),
             ),
         ],

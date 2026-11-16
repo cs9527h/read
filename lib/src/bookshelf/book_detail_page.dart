@@ -12,6 +12,7 @@ import 'package:read/src/services/library_store.dart';
 import 'package:read/src/services/reading_stats_store.dart';
 import 'package:read/src/theme.dart';
 import 'package:read/src/theme/ui_mode.dart';
+import 'package:read/src/ui/read_icon.dart';
 
 /// 现代书籍详情页：封面、元数据、进度、继续阅读、本书排版与删除。
 class BookDetailPage extends StatefulWidget {
@@ -60,7 +61,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
         actions: <Widget>[
           IconButton(
             tooltip: '本书排版',
-            icon: const Icon(Icons.tune_rounded),
+            icon: const ReadIcon(ReadGlyph.type, size: 20),
             onPressed: _openBookSettings,
           ),
           PopupMenuButton<String>(
@@ -127,7 +128,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
                             ),
                           ),
                         ActionChip(
-                          avatar: const Icon(Icons.add, size: 13),
+                          avatar: const ReadIcon(ReadGlyph.plus, size: 13),
                           label: const Text('标签', style: TextStyle(fontSize: 11)),
                           visualDensity: VisualDensity.compact,
                           onPressed: _editTags,
@@ -209,7 +210,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
             for (final offset in _bookmarkOffsets)
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.bookmark_rounded, size: 20),
+                leading: const ReadIcon(ReadGlyph.bookmark, size: 20),
                 title: Text(
                   _bookmarkPreview(offset),
                   maxLines: 2,
@@ -224,7 +225,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
-                trailing: const Icon(Icons.chevron_right, size: 18),
+                trailing: const ReadIcon(ReadGlyph.chevronRight, size: 18),
                 onTap: () => _openAtBookmark(offset),
               ),
           ],

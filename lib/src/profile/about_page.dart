@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:read/src/version.dart';
+import 'package:read/src/ui/read_icon.dart';
 
 /// 关于：黑底白 logo，版本号与开源信息。
 class AboutPage extends StatelessWidget {
@@ -21,7 +22,7 @@ class AboutPage extends StatelessWidget {
         foregroundColor: fg,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded, color: fg),
+          icon: const ReadIcon(ReadGlyph.arrowLeft, size: 20, color: fg),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
       ),
@@ -167,7 +168,7 @@ class _AboutRow extends StatelessWidget {
             const Spacer(),
             Text(value, style: const TextStyle(color: Color(0xFF8C8C8C), fontSize: 12)),
             const SizedBox(width: 6),
-            const Icon(Icons.chevron_right_rounded, size: 18, color: Color(0xFF8C8C8C)),
+            const ReadIcon(ReadGlyph.chevronRight, size: 18, color: Color(0xFF8C8C8C)),
           ],
         ),
       ),

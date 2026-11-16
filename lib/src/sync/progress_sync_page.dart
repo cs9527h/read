@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/library_store.dart';
+import '../ui/read_icon.dart';
 import 'progress_models.dart';
 import 'progress_sync_service.dart';
 import 'webdav_encrypted_object.dart';
@@ -198,7 +199,7 @@ class _ProgressSyncPageState extends State<ProgressSyncPage> {
                 const SizedBox(height: 20),
                 FilledButton.icon(
                   onPressed: _busy ? null : _sync,
-                  icon: const Icon(Icons.cloud_sync_outlined),
+                  icon: const ReadIcon(ReadGlyph.sync, size: 20),
                   label: const Text('立即同步阅读进度'),
                 ),
                 const SizedBox(height: 20),

@@ -7,6 +7,7 @@ import 'package:read/src/services/library_store.dart';
 import 'package:read/src/services/reading_stats_store.dart';
 import 'package:read/src/theme.dart';
 import 'package:read/src/theme/ui_mode.dart';
+import 'package:read/src/ui/read_icon.dart';
 
 /// 我的阅读：按阅读状态筛选的书单。
 /// 「搁置」目前没有独立状态字段，因此只提供有真实依据的三档。
@@ -39,7 +40,7 @@ class _ReadingHistoryPageState extends State<ReadingHistoryPage> {
           appBar: AppBar(
             title: Text('我的阅读', style: TextStyle(fontSize: 18, color: palette.ink)),
             leading: IconButton(
-              icon: Icon(Icons.arrow_back_rounded, color: palette.icon),
+              icon: ReadIcon(ReadGlyph.arrowLeft, size: 20, color: palette.icon),
               onPressed: () => Navigator.of(context).maybePop(),
             ),
           ),
@@ -199,7 +200,7 @@ class _HistoryRow extends StatelessWidget {
                 ],
               ),
             ),
-            Icon(Icons.chevron_right_rounded, size: 18, color: palette.muted),
+            ReadIcon(ReadGlyph.chevronRight, size: 18, color: palette.muted),
           ],
         ),
       ),
