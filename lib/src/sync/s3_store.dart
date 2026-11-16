@@ -118,7 +118,9 @@ class S3Store implements RemoteObjectStore {
     final dateStamp = amzDate.substring(0, 8);
     final payloadHash = sha256.convert(body).toString();
     final headers = <String, String>{
-      'host': _endpoint.host,
+      // Non-default HTTPS ports are part of the HTTP Host header and must
+      // also be signed for MinIO and other self-hosted endpoints.
+      'host': _endpoint.hasPort ? '${_endpoint.host}:${_endpoint.port}' : _endpoint.host,
       'x-amz-content-sha256': payloadHash,
       'x-amz-date': amzDate,
     };
@@ -240,33 +242,106 @@ class S3Store implements RemoteObjectStore {
     }
   }
 
-  @override
-  Future<List<RemoteEntry>> list({String prefix = '', int max = 200}) async {
-    final uri = _objectUri('', <String, String>{
-      'list-type': '2',
-      'prefix': '$_rootPrefix$prefix',
-      'max-keys': '$max',
-    });
-    final response = await _send('GET', uri, Uint8List(0));
-    final text = utf8.decode(response.bytes);
-    if (response.statusCode != 200) {
-      throw RemoteStoreException('S3 列目录失败：HTTP ${response.statusCode}');
+  /// Parses one ListObjectsV2 response without relying on a specific XML
+  /// namespace prefix. Keeping this pure makes pagination and object-key
+  /// handling independently testable without any real account credentials.
+  static ({
+    List<RemoteEntry> entries,
+    bool truncated,
+    String? nextToken,
+  }) parseListObjectsV2(String xml, {String rootPrefix = ''}) {
+    final document = XmlDocument.parse(xml);
+    final root = document.rootElement;
+    if (root.name.local != 'ListBucketResult') {
+      throw const FormatException('S3 列目录响应不是 ListBucketResult');
     }
-    final document = XmlDocument.parse(text);
+
+    String? valueOf(XmlElement parent, String field) {
+      for (final child in parent.childElements) {
+        if (child.name.local == field) return child.innerText;
+      }
+      return null;
+    }
+
     final entries = <RemoteEntry>[];
-    for (final node in document.findAllElements('Contents')) {
-      final key = node.getElement('Key')?.innerText ?? '';
-      if (key.isEmpty) continue;
-      final relative = key.startsWith(_rootPrefix)
-          ? key.substring(_rootPrefix.length)
-          : key;
+    for (final child in root.childElements) {
+      if (child.name.local != 'Contents') continue;
+      final key = valueOf(child, 'Key') ?? '';
+      if (key.isEmpty || !key.startsWith(rootPrefix)) continue;
+      final relative = key.substring(rootPrefix.length);
       entries.add(RemoteEntry(
         key: relative,
-        size: int.tryParse(node.getElement('Size')?.innerText ?? '') ?? 0,
-        modifiedAt:
-            DateTime.tryParse(node.getElement('LastModified')?.innerText ?? ''),
-        etag: node.getElement('ETag')?.innerText.replaceAll('"', ''),
+        size: int.tryParse(valueOf(child, 'Size') ?? '') ?? 0,
+        modifiedAt: DateTime.tryParse(valueOf(child, 'LastModified') ?? ''),
+        etag: valueOf(child, 'ETag')?.replaceAll('"', ''),
       ));
+    }
+
+    final truncated = valueOf(root, 'IsTruncated')?.trim().toLowerCase() == 'true';
+    final token = valueOf(root, 'NextContinuationToken')?.trim();
+    return (
+      entries: entries,
+      truncated: truncated,
+      nextToken: token == null || token.isEmpty ? null : token,
+    );
+  }
+
+  @override
+  Future<List<RemoteEntry>> list({String prefix = '', int max = 200}) async {
+    if (max <= 0) return <RemoteEntry>[];
+    final entries = <RemoteEntry>[];
+    final keys = <String>{};
+    final seenTokens = <String>{};
+    String? token;
+    // A service may cap max-keys below the requested maximum. Fetch every
+    // continuation page until max distinct objects have been collected.
+    for (int pages = 0; entries.length < max; pages++) {
+      if (pages >= 1000) {
+        throw const RemoteStoreException('S3 列目录分页次数超过安全上限');
+      }
+      final query = <String, String>{
+        'list-type': '2',
+        'prefix': '$_rootPrefix$prefix',
+        'max-keys': '${(max - entries.length).clamp(1, 1000)}',
+        if (token != null) 'continuation-token': token,
+      };
+      final response = await _send(
+        'GET',
+        _objectUri('', query),
+        Uint8List(0),
+      );
+      if (response.statusCode == 401 || response.statusCode == 403) {
+        throw const RemoteAuthException('S3 列目录认证失败');
+      }
+      if (response.statusCode != 200) {
+        throw RemoteStoreException('S3 列目录失败：HTTP ${response.statusCode}');
+      }
+      final ({
+        List<RemoteEntry> entries,
+        bool truncated,
+        String? nextToken,
+      }) page;
+      try {
+        page = parseListObjectsV2(
+          utf8.decode(response.bytes),
+          rootPrefix: _rootPrefix,
+        );
+      } on FormatException {
+        throw const RemoteStoreException('S3 列目录返回无效 XML，未修改本地数据');
+      } catch (_) {
+        throw const RemoteStoreException('S3 列目录 XML 解析失败，未修改本地数据');
+      }
+      for (final entry in page.entries) {
+        if (!entry.key.startsWith(prefix) || !keys.add(entry.key)) continue;
+        entries.add(entry);
+        if (entries.length >= max) break;
+      }
+      if (!page.truncated) break;
+      final next = page.nextToken;
+      if (next == null || !seenTokens.add(next)) {
+        throw const RemoteStoreException('S3 列目录未返回有效的下一页游标');
+      }
+      token = next;
     }
     return entries;
   }
