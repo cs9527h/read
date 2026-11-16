@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 
 import '../model/book.dart';
 import '../services/library_store.dart';
+import 'cloud_library_index.dart';
 import 'metadata_sync_service.dart';
 import 'progress_conflict_store.dart';
 import 'progress_sync_service.dart';
@@ -53,7 +54,8 @@ class AutoSyncService extends ChangeNotifier with WidgetsBindingObserver {
         }
       },
     );
-    _retryTimer = Timer.periodic(const Duration(seconds: 20), (_) => _drainQueue());
+    _retryTimer =
+        Timer.periodic(const Duration(seconds: 20), (_) => _drainQueue());
     _restartInterval();
     if (config.syncOnStart) {
       scheduleMetadata(immediate: true);
@@ -90,7 +92,8 @@ class AutoSyncService extends ChangeNotifier with WidgetsBindingObserver {
     final minutes = config.intervalMinutes.clamp(1, 24 * 60);
     _intervalTimer = Timer.periodic(Duration(minutes: minutes), (_) {
       if (config.fullAuto) scheduleMetadata(immediate: true);
-      if (config.progressAuto && _currentBook != null) scheduleProgress(_currentBook!);
+      if (config.progressAuto && _currentBook != null)
+        scheduleProgress(_currentBook!);
     });
   }
 
@@ -193,7 +196,8 @@ class AutoSyncService extends ChangeNotifier with WidgetsBindingObserver {
         targetId: targetId,
         onlyBook: book,
         resolveConflict: resolver ?? _policyResolver,
-        continueOnUnresolved: resolver == null && config.conflictPolicy == 'ask',
+        continueOnUnresolved:
+            resolver == null && config.conflictPolicy == 'ask',
       );
       if (resolver != null && report.conflicts > 0) {
         await ProgressConflictStore.instance.remove(
@@ -274,6 +278,7 @@ class AutoSyncService extends ChangeNotifier with WidgetsBindingObserver {
       await config.markSync(
         report.status == 'conflict' ? '同步完成（有冲突）' : '同步完成',
       );
+      unawaited(CloudLibraryIndex.instance.refresh(force: true));
       return report;
     } catch (error) {
       final failure = SyncFailure.classify(
@@ -369,12 +374,14 @@ class AutoSyncService extends ChangeNotifier with WidgetsBindingObserver {
         }
         final report = await runProgress(book, silent: true);
         if (report == null) {
-          throw StateError(config.lastError.isEmpty ? '进度同步未完成' : config.lastError);
+          throw StateError(
+              config.lastError.isEmpty ? '进度同步未完成' : config.lastError);
         }
       } else {
         final report = await runFull(silent: true);
         if (report == null) {
-          throw StateError(config.lastError.isEmpty ? '完整同步未完成' : config.lastError);
+          throw StateError(
+              config.lastError.isEmpty ? '完整同步未完成' : config.lastError);
         }
       }
       await SyncTaskQueue.instance.complete(task);

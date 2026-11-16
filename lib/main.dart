@@ -6,6 +6,7 @@ import 'package:read/src/services/appearance_store.dart';
 import 'package:read/src/services/library_store.dart';
 import 'package:read/src/services/reading_stats_store.dart';
 import 'package:read/src/sync/auto_sync_service.dart';
+import 'package:read/src/sync/cloud_library_index.dart';
 import 'package:read/src/sync/sync_config.dart';
 import 'package:read/src/shell/home_shell.dart';
 import 'package:read/src/theme.dart';
@@ -18,6 +19,7 @@ Future<void> main() async {
   await ReaderSettingsStore.instance.init();
   await UserFontStore.instance.init();
   await SyncConfig.instance.init();
+  await CloudLibraryIndex.instance.init();
   await AutoSyncService.instance.init();
   runApp(const ReadApp());
 }
@@ -35,7 +37,8 @@ class ReadApp extends StatelessWidget {
           title: 'read',
           debugShowCheckedModeBanner: false,
           theme: buildTheme(Brightness.light, fontScale: appearance.fontScale),
-          darkTheme: buildTheme(Brightness.dark, fontScale: appearance.fontScale),
+          darkTheme:
+              buildTheme(Brightness.dark, fontScale: appearance.fontScale),
           themeMode: appearance.themeMode,
           home: const HomeShell(),
         );

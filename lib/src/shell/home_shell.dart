@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 
 import 'package:read/src/bookshelf/bookshelf_page.dart';
 import 'package:read/src/profile/profile_page.dart';
+import 'package:read/src/sync/sync_page.dart';
 import 'package:read/src/stats/stats_page.dart';
 import 'package:read/src/theme.dart';
 
-/// 应用主壳：底部三栏 书架 / 统计 / 我的。
+/// 应用主壳：底部四栏 书架 / 统计 / 同步 / 设置。无账号体系，不再保留“我的”。
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
 
@@ -26,7 +27,8 @@ class _HomeShellState extends State<HomeShell> {
         children: const <Widget>[
           BookshelfPage(),
           StatsPage(),
-          ProfilePage(),
+          SyncPage(),
+          SettingsPage(),
         ],
       ),
       bottomNavigationBar: Container(
@@ -41,22 +43,28 @@ class _HomeShellState extends State<HomeShell> {
             child: Row(
               children: <Widget>[
                 _NavItem(
-                  icon: Icons.view_day_outlined,
+                  icon: ReadIcons.shelf,
                   label: '书架',
                   selected: _index == 0,
                   onTap: () => setState(() => _index = 0),
                 ),
                 _NavItem(
-                  icon: Icons.bar_chart_rounded,
+                  icon: ReadIcons.stats,
                   label: '统计',
                   selected: _index == 1,
                   onTap: () => setState(() => _index = 1),
                 ),
                 _NavItem(
-                  icon: Icons.person_outline_rounded,
-                  label: '我的',
+                  icon: ReadIcons.sync,
+                  label: '同步',
                   selected: _index == 2,
                   onTap: () => setState(() => _index = 2),
+                ),
+                _NavItem(
+                  icon: ReadIcons.settings,
+                  label: '设置',
+                  selected: _index == 3,
+                  onTap: () => setState(() => _index = 3),
                 ),
               ],
             ),

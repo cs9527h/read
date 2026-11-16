@@ -49,8 +49,13 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   ChapterRule _rule = const ChapterRule.automatic();
   int _chapterIndex = 0;
   int _pageIndex = 0;
+  final ValueNotifier<int> _pageNotifier = ValueNotifier<int>(0);
 
   PaginatedChapter? _pagination;
+  final Map<String, PaginatedChapter> _paginationCache =
+      <String, PaginatedChapter>{};
+  final Set<int> _preloadingChapters = <int>{};
+  static const int _maxPaginationCache = 6;
   PageController? _pageController;
   ScrollController? _scrollController;
   List<int> _bookmarks = <int>[];
@@ -106,7 +111,9 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     });
     _startAutoTurn();
     _initTts();
-    unawaited(AutoSyncService.instance.onBookOpened(widget.book).then(_afterOpenSync));
+    unawaited(AutoSyncService.instance
+        .onBookOpened(widget.book)
+        .then(_afterOpenSync));
   }
 
   void _initTts() {
@@ -155,8 +162,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     try {
       final secrets = await SyncSecrets.load();
       final store = SyncBackendFactory.create(SyncConfig.instance, secrets);
-      final record = await ProgressSyncService(LibraryStore.instance)
-          .fetchRemoteStore(
+      final record =
+          await ProgressSyncService(LibraryStore.instance).fetchRemoteStore(
         store,
         secrets.encryptionPassword,
         SyncBackendFactory.targetId(SyncConfig.instance),
@@ -200,7 +207,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     }
   }
 
-  Future<ProgressChoice?> _resolveProgressConflict(ProgressSyncConflict conflict) async {
+  Future<ProgressChoice?> _resolveProgressConflict(
+      ProgressSyncConflict conflict) async {
     if (!SyncConfig.instance.promptCloudProgress) {
       return SyncConfig.instance.conflictPolicy == 'cloud'
           ? ProgressChoice.cloud
@@ -256,7 +264,10 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     if (Platform.isAndroid) {
       _volumeKeysSubscription = ReaderDeviceBridge.volumeKeys.listen(
         (String key) {
-          if (!mounted || !_isReadingActive || !_settings.volumeKeys || _loading) {
+          if (!mounted ||
+              !_isReadingActive ||
+              !_settings.volumeKeys ||
+              _loading) {
             return;
           }
           final direction = key == 'up' ? -1 : 1;
@@ -278,14 +289,17 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     _statsTimer?.cancel();
     if (Platform.isAndroid) {
       unawaited(_volumeKeysSubscription?.cancel() ?? Future<void>.value());
-      unawaited(ReaderDeviceBridge.setVolumePaging(false).catchError((Object _) {}));
-      unawaited(ReaderDeviceBridge.setWindowBrightness(null).catchError((Object _) {}));
+      unawaited(
+          ReaderDeviceBridge.setVolumePaging(false).catchError((Object _) {}));
+      unawaited(ReaderDeviceBridge.setWindowBrightness(null)
+          .catchError((Object _) {}));
     }
     _flushStats();
     AutoSyncService.instance.onBookClosed();
     unawaited(_tts.stop());
     _pageController?.dispose();
     _scrollController?.dispose();
+    _pageNotifier.dispose();
     _restoreSystemUi();
     super.dispose();
   }
@@ -387,8 +401,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   // ---------------------------------------------------------------------------
 
   void _applySystemUi() {
-    final bool hideBars =
-        _settings.immersive && !_settings.showSystemBars;
+    final bool hideBars = _settings.immersive && !_settings.showSystemBars;
     SystemChrome.setEnabledSystemUIMode(
       hideBars ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge,
     );
@@ -437,11 +450,13 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   }
 
   double get _headerHeight => _settings.minimalMode || !_settings.headerShow
-      ? 0 : _settings.headerFontSize * 2 + 8;
+      ? 0
+      : _settings.headerFontSize * 2 + 8;
   double get _footerHeight => _settings.minimalMode || !_settings.footerShow
       ? 0
       : _settings.footerFontSize * 2 +
-          (_settings.footerProgressBar ? 8 : 0) + 6;
+          (_settings.footerProgressBar ? 8 : 0) +
+          6;
 
   double get _textScale {
     final TextScaler scaler = MediaQuery.textScalerOf(context);
@@ -451,9 +466,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   void _scheduleLayout(double contentWidth, double contentHeight) {
     if (contentWidth <= 0 || contentHeight <= 0) return;
     final double bodyHeight = contentHeight - _headerHeight - _footerHeight;
-    final double measureWidth = _twoColumns
-        ? (contentWidth - _settings.columnGap) / 2
-        : contentWidth;
+    final double measureWidth =
+        _twoColumns ? (contentWidth - _settings.columnGap) / 2 : contentWidth;
     final String key = <String>[
       contentWidth.toStringAsFixed(1),
       bodyHeight.toStringAsFixed(1),
@@ -461,7 +475,9 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
       _textScale.toStringAsFixed(2),
       _settings.toJsonString(),
       _chapterIndex.toString(),
-      _chapterIndex < _chapters.length ? _chapters[_chapterIndex].length.toString() : '0',
+      _chapterIndex < _chapters.length
+          ? _chapters[_chapterIndex].length.toString()
+          : '0',
     ].join('|');
     if (key == _layoutKey) return;
     if (measureWidth <= 0 || bodyHeight <= 0) return;
@@ -478,30 +494,87 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     final int savedOffset = (_anchorOffset ?? widget.book.charOffset.value)
         .clamp(0, chapter.length);
     _anchorOffset = null;
-    final PaginatedChapter pagination = ReaderEngine.paginate(
-      chapterText: chapter.slice(widget.book.content),
-      chapterTitle: chapter.title,
-      settings: _settings,
-      width: width,
-      height: height,
-      textScale: _textScale,
-    );
+    final String signature = _paginationSignature(_chapterIndex, width, height);
+    PaginatedChapter? cached = _paginationCache[signature];
+    if (cached == null) {
+      cached = ReaderEngine.paginate(
+        chapterText: chapter.slice(widget.book.content),
+        chapterTitle: chapter.title,
+        settings: _settings,
+        width: width,
+        height: height,
+        textScale: _textScale,
+      );
+      _cachePagination(signature, cached);
+    }
+    final PaginatedChapter pagination = cached;
     final int page = pagination.pageForSourceOffset(savedOffset);
     _pageWidth = width;
     _pageHeight = height;
     setState(() {
       _pagination = pagination;
       _pageIndex = page;
+      _pageNotifier.value = page;
     });
     _resetControllers(page);
+    _schedulePreload(width, height);
     widget.book.chapterIndex.value = _chapterIndex;
     widget.book.pageIndex.value = _renderPageIndex(page);
     if (pagination.pages.isNotEmpty) {
-      widget.book.charOffset.value =
-          pagination.pages[page.clamp(0, pagination.pages.length - 1)].sourceStart;
+      widget.book.charOffset.value = pagination
+          .pages[page.clamp(0, pagination.pages.length - 1)].sourceStart;
     }
     _lastSavedOffset = widget.book.charOffset.value;
     LibraryStore.instance.saveProgress(widget.book);
+  }
+
+  String _paginationSignature(int index, double width, double height) =>
+      '${width.toStringAsFixed(1)}|${height.toStringAsFixed(1)}|'
+      '${_twoColumns}|${_textScale.toStringAsFixed(2)}|'
+      '${_settings.toJsonString()}|$index|'
+      '${index < _chapters.length ? _chapters[index].length : 0}';
+
+  void _cachePagination(String signature, PaginatedChapter pagination) {
+    if (_paginationCache.length >= _maxPaginationCache &&
+        !_paginationCache.containsKey(signature)) {
+      _paginationCache.remove(_paginationCache.keys.first);
+    }
+    _paginationCache[signature] = pagination;
+  }
+
+  void _schedulePreload(double width, double height) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _preloadAdjacent(width, height);
+    });
+  }
+
+  void _preloadAdjacent(double width, double height) {
+    for (final int index in <int>[_chapterIndex + 1, _chapterIndex - 1]) {
+      if (index < 0 || index >= _chapters.length) continue;
+      final signature = _paginationSignature(index, width, height);
+      if (_paginationCache.containsKey(signature)) continue;
+      if (!_preloadingChapters.add(index)) continue;
+      try {
+        final Chapter chapter = _chapters[index];
+        final PaginatedChapter pagination = ReaderEngine.paginate(
+          chapterText: chapter.slice(widget.book.content),
+          chapterTitle: chapter.title,
+          settings: _settings,
+          width: width,
+          height: height,
+          textScale: _textScale,
+        );
+        _cachePagination(signature, pagination);
+      } finally {
+        _preloadingChapters.remove(index);
+      }
+    }
+  }
+
+  PaginatedChapter? _cachedFor(int index) {
+    final signature = _paginationSignature(index, _pageWidth, _pageHeight);
+    return _paginationCache[signature];
   }
 
   void _resetControllers(int page) {
@@ -577,7 +650,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
 
   void _startAutoTurn() {
     _autoTurnTimer?.cancel();
-    if (!_settings.autoTurn || _settings.minimalMode || !_isReadingActive) return;
+    if (!_settings.autoTurn || _settings.minimalMode || !_isReadingActive)
+      return;
     _autoTurnTimer = Timer.periodic(
       Duration(seconds: _settings.autoTurnSeconds.clamp(3, 600)),
       (_) {
@@ -645,7 +719,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
         );
       }
     }
-    setState(() => _pageIndex = targetColumn);
+    _pageIndex = targetColumn;
+    _pageNotifier.value = targetColumn;
     _saveProgress();
   }
 
@@ -669,7 +744,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
       return;
     }
     final int column = _twoColumns ? renderIndex * 2 : renderIndex;
-    setState(() => _pageIndex = column);
+    _pageIndex = column;
+    _pageNotifier.value = column;
     _saveProgress();
   }
 
@@ -677,21 +753,28 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     if (index < 0 || index >= _chapters.length) return;
     _rememberPosition();
     final Chapter chapter = _chapters[index];
+    final cached = _cachedFor(index);
+    final anchor = atEnd ? math.max(0, chapter.length - 1) : 0;
+    final cachedPage = cached == null ? 0 : cached.pageForSourceOffset(anchor);
     setState(() {
       _chapterIndex = index;
-      _pageIndex = 0;
-      _anchorOffset = atEnd ? math.max(0, chapter.length - 1) : 0;
-      _pagination = null;
+      _pageIndex = cachedPage;
+      _pageNotifier.value = cachedPage;
+      _anchorOffset = anchor;
+      _pagination = cached;
       _layoutKey = '';
       widget.book.chapterIndex.value = index;
-      widget.book.pageIndex.value = 0;
-      widget.book.charOffset.value = _anchorOffset!;
+      widget.book.pageIndex.value = cachedPage;
+      widget.book.charOffset.value = anchor;
     });
     _lastSavedOffset = _anchorOffset!;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final controller = _pageController;
       if (controller != null && controller.hasClients) {
-        controller.jumpToPage(0);
+        final target = _renderPageIndex(_pageIndex);
+        if (target != (controller.page ?? 0).round()) {
+          controller.jumpToPage(target);
+        }
       }
     });
     await LibraryStore.instance.saveProgress(widget.book);
@@ -707,15 +790,19 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
       }
     }
     final Chapter chapter = _chapters[chapterIndex];
+    final cached = _cachedFor(chapterIndex);
+    final anchor = (absoluteOffset - chapter.start).clamp(0, chapter.length);
+    final cachedPage = cached == null ? 0 : cached.pageForSourceOffset(anchor);
     setState(() {
       _chapterIndex = chapterIndex;
-      _pageIndex = 0;
-      _anchorOffset = (absoluteOffset - chapter.start).clamp(0, chapter.length);
-      _pagination = null;
+      _pageIndex = cachedPage;
+      _pageNotifier.value = cachedPage;
+      _anchorOffset = anchor;
+      _pagination = cached;
       _layoutKey = '';
       widget.book.chapterIndex.value = chapterIndex;
-      widget.book.pageIndex.value = 0;
-      widget.book.charOffset.value = _anchorOffset!;
+      widget.book.pageIndex.value = cachedPage;
+      widget.book.charOffset.value = anchor;
     });
     _lastSavedOffset = _anchorOffset!;
     LibraryStore.instance.saveProgress(widget.book);
@@ -729,7 +816,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     final Brightness brightness = MediaQuery.platformBrightnessOf(context);
     final ReaderTheme theme = _store.effectiveTheme(_settings, brightness);
-    final Color background = Color(_settings.backgroundColor ?? theme.background);
+    final Color background =
+        Color(_settings.backgroundColor ?? theme.background);
     final Color foreground = Color(_settings.textColor ?? theme.foreground);
     final Color secondary = Color(theme.secondary);
 
@@ -755,13 +843,19 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                       _scheduleLayout(inner.maxWidth, inner.maxHeight);
                       return Column(
                         children: <Widget>[
-                          _buildHeader(secondary),
+                          ValueListenableBuilder<int>(
+                            valueListenable: _pageNotifier,
+                            builder: (_, __, ___) => _buildHeader(secondary),
+                          ),
                           Expanded(
                             child: _buildTapLayer(
                               _buildPageArea(foreground, secondary),
                             ),
                           ),
-                          _buildFooter(secondary),
+                          ValueListenableBuilder<int>(
+                            valueListenable: _pageNotifier,
+                            builder: (_, __, ___) => _buildFooter(secondary),
+                          ),
                         ],
                       );
                     },
@@ -825,7 +919,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   }
 
   Widget _buildHeader(Color secondary) {
-    if (_settings.minimalMode || !_settings.headerShow) return const SizedBox.shrink();
+    if (_settings.minimalMode || !_settings.headerShow)
+      return const SizedBox.shrink();
     return SizedBox(
       height: _headerHeight,
       child: Row(
@@ -872,7 +967,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   }
 
   Widget _buildFooter(Color secondary) {
-    if (_settings.minimalMode || !_settings.footerShow) return const SizedBox.shrink();
+    if (_settings.minimalMode || !_settings.footerShow)
+      return const SizedBox.shrink();
     return SizedBox(
       height: _footerHeight,
       child: Column(
@@ -993,7 +1089,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
         .replaceAll('{page}', '$page')
         .replaceAll('{pages}', '$totalPages')
         .replaceAll('{percent}', '${percent.toStringAsFixed(1)}%')
-        .replaceAll('{battery}', _batteryLevel == null ? '--' : '${_batteryLevel}%')
+        .replaceAll(
+            '{battery}', _batteryLevel == null ? '--' : '${_batteryLevel}%')
         .replaceAll('{time}', time);
   }
 
@@ -1076,11 +1173,12 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
           children: <Widget>[
             Icon(Icons.auto_stories_outlined, size: 34, color: secondary),
             const SizedBox(height: 12),
-            Text('下一章',
-                style: TextStyle(fontSize: 12, color: secondary)),
+            Text('下一章', style: TextStyle(fontSize: 12, color: secondary)),
             const SizedBox(height: 4),
             Text(
-              next.title.trim().isEmpty ? '第 ${_chapterIndex + 2} 章' : next.title,
+              next.title.trim().isEmpty
+                  ? '第 ${_chapterIndex + 2} 章'
+                  : next.title,
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 17,
@@ -1160,7 +1258,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
             ),
             if (canUse) ...<Widget>[
               TextSelectionToolbarTextButton(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 12),
                 onPressed: () {
                   editableState.hideToolbar();
                   unawaited(_saveSelectionHighlight(
@@ -1173,7 +1271,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                 child: const Text('高亮'),
               ),
               TextSelectionToolbarTextButton(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 12),
                 onPressed: () async {
                   editableState.hideToolbar();
                   final note = await _askNote(displayText, selection, page);
@@ -1190,7 +1288,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
             ],
             if (_highlights.isNotEmpty)
               TextSelectionToolbarTextButton(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 12),
                 onPressed: () {
                   editableState.hideToolbar();
                   _manageHighlights();
@@ -1216,12 +1314,14 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     final ends = <int>[0, text.length];
     final backgrounds = <Color?>[null, null];
     for (final highlight in _highlights) {
-      final sourceStart = (highlight.start - chapterStart).clamp(0, chapterLength);
+      final sourceStart =
+          (highlight.start - chapterStart).clamp(0, chapterLength);
       final sourceEnd = (highlight.end - chapterStart).clamp(0, chapterLength);
       if (sourceEnd <= sourceStart) continue;
       final displayStart = chapter.display.displayOffset(sourceStart);
       final displayEnd = chapter.display.displayOffset(sourceEnd);
-      final localStart = (displayStart - page.displayStart).clamp(0, text.length);
+      final localStart =
+          (displayStart - page.displayStart).clamp(0, text.length);
       final localEnd = (displayEnd - page.displayStart).clamp(0, text.length);
       if (localEnd <= localStart) continue;
       starts.add(localStart);
@@ -1298,7 +1398,9 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             Text(
-              selected.length > 160 ? '${selected.substring(0, 160)}…' : selected,
+              selected.length > 160
+                  ? '${selected.substring(0, 160)}…'
+                  : selected,
               style: const TextStyle(fontSize: 12, height: 1.5),
             ),
             const SizedBox(height: 12),
@@ -1314,7 +1416,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
           ],
         ),
         actions: <Widget>[
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, controller.text.trim()),
             child: const Text('保存'),
@@ -1338,8 +1441,10 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     final localEnd = selection.end.clamp(0, text.length);
     if (localEnd <= localStart) return;
     final chapterStart = _chapters[_chapterIndex].start;
-    final sourceStart = chapter.display.sourceOffset(page.displayStart + localStart);
-    final sourceEnd = chapter.display.sourceOffset(page.displayEnd - (text.length - localEnd));
+    final sourceStart =
+        chapter.display.sourceOffset(page.displayStart + localStart);
+    final sourceEnd = chapter.display
+        .sourceOffset(page.displayEnd - (text.length - localEnd));
     final record = HighlightRecord(
       start: chapterStart + sourceStart,
       end: chapterStart + math.max(sourceStart + 1, sourceEnd),
@@ -1589,9 +1694,11 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   void _onScrollProgress(PaginatedChapter p, ScrollController controller) {
     if (!controller.hasClients) return;
     final double max = controller.position.maxScrollExtent;
-    final double fraction = max <= 0 ? 1 : (controller.offset / max).clamp(0, 1);
-    final int displayIndex =
-        (fraction * p.display.text.length).clamp(0, p.display.text.length).toInt();
+    final double fraction =
+        max <= 0 ? 1 : (controller.offset / max).clamp(0, 1);
+    final int displayIndex = (fraction * p.display.text.length)
+        .clamp(0, p.display.text.length)
+        .toInt();
     final int source = p.display.sourceOffset(displayIndex);
     final int delta = (source - _lastSavedOffset).abs();
     if (delta > 0) {
@@ -1615,7 +1722,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
       onTapUp: (details) {
-        final width = _pageWidth > 0 ? _pageWidth : MediaQuery.sizeOf(context).width;
+        final width =
+            _pageWidth > 0 ? _pageWidth : MediaQuery.sizeOf(context).width;
         final x = details.localPosition.dx;
         final action = x < width * 0.3
             ? _settings.tapLeft
@@ -1768,7 +1876,9 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
           IconButton(
             tooltip: '朗读',
             icon: Icon(
-              _speaking ? Icons.stop_circle_outlined : Icons.headphones_outlined,
+              _speaking
+                  ? Icons.stop_circle_outlined
+                  : Icons.headphones_outlined,
               size: 21,
               color: foreground,
             ),
@@ -1818,10 +1928,12 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                 onChanged: widget.book.content.isEmpty
                     ? null
                     : (value) => setState(() => _scrubPreview = value),
-                onChangeEnd: widget.book.content.isEmpty ? null : (value) {
-                  setState(() => _scrubPreview = null);
-                  _seekProgress(value);
-                },
+                onChangeEnd: widget.book.content.isEmpty
+                    ? null
+                    : (value) {
+                        setState(() => _scrubPreview = null);
+                        _seekProgress(value);
+                      },
               ),
             ),
             for (final action in _settings.bottomActions)
@@ -1862,7 +1974,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
 
   void _seekProgress(double fraction) {
     if (_chapters.isEmpty || widget.book.content.isEmpty) return;
-    final absolute = (fraction.clamp(0, 1) * widget.book.content.length).round();
+    final absolute =
+        (fraction.clamp(0, 1) * widget.book.content.length).round();
     _jumpToAbsolute(absolute);
   }
 
@@ -1908,8 +2021,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
         break;
       }
     }
-    final percent =
-        (offset / widget.book.content.length * 100).clamp(0, 100);
+    final percent = (offset / widget.book.content.length * 100).clamp(0, 100);
     return '第 ${index + 1} 章 ${_chapters[index].title.trim()} · '
         '${percent.toStringAsFixed(2)}%';
   }
@@ -1978,16 +2090,16 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
                       Text('本机进度',
-                          style: TextStyle(
-                              fontSize: 11, color: theme.hintColor)),
+                          style:
+                              TextStyle(fontSize: 11, color: theme.hintColor)),
                       const SizedBox(height: 3),
                       Text(localText,
                           style: const TextStyle(
                               fontSize: 13, fontWeight: FontWeight.w500)),
                       const SizedBox(height: 10),
                       Text('云端进度',
-                          style: TextStyle(
-                              fontSize: 11, color: theme.hintColor)),
+                          style:
+                              TextStyle(fontSize: 11, color: theme.hintColor)),
                       const SizedBox(height: 3),
                       Text(cloudText, style: const TextStyle(fontSize: 13)),
                       if (cloudDevice.isNotEmpty) ...<Widget>[
@@ -2017,8 +2129,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                         onPressed: cloud == null
                             ? null
                             : () => Navigator.pop(ctx, 'pull'),
-                        icon: const Icon(Icons.cloud_download_outlined,
-                            size: 18),
+                        icon:
+                            const Icon(Icons.cloud_download_outlined, size: 18),
                         label: const Text('采用云端'),
                       ),
                     ),
@@ -2028,8 +2140,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
                     child: Text('尚未配置 WebDAV / S3；配置后才能读取云端进度。',
-                        style:
-                            TextStyle(fontSize: 11, color: theme.hintColor)),
+                        style: TextStyle(fontSize: 11, color: theme.hintColor)),
                   ),
                 const SizedBox(height: 6),
                 ListTile(
@@ -2144,7 +2255,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                         ? Icons.play_circle_outline_rounded
                         : Icons.pause_circle_outline_rounded),
                     title: Text(_ttsPaused ? '继续朗读' : '暂停朗读'),
-                    onTap: () => Navigator.pop(ctx, _ttsPaused ? 'resume' : 'pause'),
+                    onTap: () =>
+                        Navigator.pop(ctx, _ttsPaused ? 'resume' : 'pause'),
                   ),
                 if (_speaking || _ttsPaused)
                   ListTile(
@@ -2191,14 +2303,14 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     final pagination = _pagination;
     if (pagination == null || pagination.pages.isEmpty) {
       final chapter = _chapters[_chapterIndex];
-      final start = (widget.book.charOffset.value >= 0
-              ? widget.book.charOffset.value
-              : 0)
-          .clamp(0, chapter.length);
+      final start =
+          (widget.book.charOffset.value >= 0 ? widget.book.charOffset.value : 0)
+              .clamp(0, chapter.length);
       final end = math.min(chapter.length, start + 1800);
       return chapter.slice(widget.book.content).substring(start, end).trim();
     }
-    final page = pagination.pages[_pageIndex.clamp(0, pagination.pages.length - 1)];
+    final page =
+        pagination.pages[_pageIndex.clamp(0, pagination.pages.length - 1)];
     final chapter = _chapters[_chapterIndex];
     final start = page.sourceStart.clamp(0, chapter.length);
     final end = page.sourceEnd.clamp(start, chapter.length);
@@ -2276,7 +2388,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
           ),
         ),
         actions: <Widget>[
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, controller.text),
             child: const Text('新增'),
@@ -2291,7 +2404,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     await _reloadChapters(anchor: offset);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('已在当前位置新增章节'), duration: Duration(seconds: 2)),
+      const SnackBar(
+          content: Text('已在当前位置新增章节'), duration: Duration(seconds: 2)),
     );
   }
 
@@ -2509,82 +2623,85 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
       showDragHandle: true,
       builder: (BuildContext ctx) => StatefulBuilder(
         builder: (BuildContext ctx, StateSetter setSheetState) => SafeArea(
-        child: SizedBox(
-          height: MediaQuery.sizeOf(ctx).height * 0.65,
-          child: Column(
-            children: <Widget>[
-              const ListTile(
-                title: Text('我的书签',
-                    style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
-                subtitle: Text('按书籍中的位置排列，可添加备注'),
-              ),
-              Expanded(
-                child: _bookmarks.isEmpty
-                    ? const Center(child: Text('还没有书签，阅读时点右上角即可添加'))
-                    : ListView.builder(
-                        itemCount: _bookmarks.length,
-                        itemBuilder: (BuildContext context, int index) {
-                          final int offset = _bookmarks[index];
-                          final BookmarkMeta? meta = metas[offset];
-                          final String source = widget.book.content;
-                          int begin = offset.clamp(0, source.length);
-                          int end = (begin + 45).clamp(0, source.length);
-                          if (begin > 0 &&
-                              begin < source.length &&
-                              source.codeUnitAt(begin) >= 0xDC00 &&
-                              source.codeUnitAt(begin) <= 0xDFFF) {
-                            begin++;
-                          }
-                          if (end > begin &&
-                              end < source.length &&
-                              source.codeUnitAt(end) >= 0xDC00 &&
-                              source.codeUnitAt(end) <= 0xDFFF) {
-                            end--;
-                          }
-                          final String preview = source
-                              .substring(begin, end)
-                              .replaceAll(RegExp(r'[\r\n]+'), ' ')
-                              .trim();
-                          return ListTile(
-                            leading: const Icon(Icons.bookmark_rounded),
-                            title: Text(
-                              preview.isEmpty ? '书签位置' : preview,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            subtitle: Text(
-                              meta == null || meta.note.isEmpty
-                                  ? '位置 ${offset + 1}'
-                                  : '位置 ${offset + 1} · ${meta.note}',
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            trailing: IconButton(
-                              tooltip: '编辑备注',
-                              icon: const Icon(Icons.edit_note_rounded, size: 20),
-                              onPressed: () async {
-                                final note = await _askBookmarkNote(meta?.note ?? '');
-                                if (note == null || !mounted) return;
-                                await BookmarkMetaStore.setNote(
-                                    widget.book.id, offset, note);
-                                metas[offset] = BookmarkMeta(
-                                  offset: offset,
-                                  createdAt: meta?.createdAt ??
-                                      DateTime.now().millisecondsSinceEpoch,
-                                  note: note,
-                                );
-                                setSheetState(() {});
-                              },
-                            ),
-                            onTap: () => Navigator.pop(ctx, offset),
-                          );
-                        },
-                      ),
-              ),
-            ],
+          child: SizedBox(
+            height: MediaQuery.sizeOf(ctx).height * 0.65,
+            child: Column(
+              children: <Widget>[
+                const ListTile(
+                  title: Text('我的书签',
+                      style:
+                          TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
+                  subtitle: Text('按书籍中的位置排列，可添加备注'),
+                ),
+                Expanded(
+                  child: _bookmarks.isEmpty
+                      ? const Center(child: Text('还没有书签，阅读时点右上角即可添加'))
+                      : ListView.builder(
+                          itemCount: _bookmarks.length,
+                          itemBuilder: (BuildContext context, int index) {
+                            final int offset = _bookmarks[index];
+                            final BookmarkMeta? meta = metas[offset];
+                            final String source = widget.book.content;
+                            int begin = offset.clamp(0, source.length);
+                            int end = (begin + 45).clamp(0, source.length);
+                            if (begin > 0 &&
+                                begin < source.length &&
+                                source.codeUnitAt(begin) >= 0xDC00 &&
+                                source.codeUnitAt(begin) <= 0xDFFF) {
+                              begin++;
+                            }
+                            if (end > begin &&
+                                end < source.length &&
+                                source.codeUnitAt(end) >= 0xDC00 &&
+                                source.codeUnitAt(end) <= 0xDFFF) {
+                              end--;
+                            }
+                            final String preview = source
+                                .substring(begin, end)
+                                .replaceAll(RegExp(r'[\r\n]+'), ' ')
+                                .trim();
+                            return ListTile(
+                              leading: const Icon(Icons.bookmark_rounded),
+                              title: Text(
+                                preview.isEmpty ? '书签位置' : preview,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              subtitle: Text(
+                                meta == null || meta.note.isEmpty
+                                    ? '位置 ${offset + 1}'
+                                    : '位置 ${offset + 1} · ${meta.note}',
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              trailing: IconButton(
+                                tooltip: '编辑备注',
+                                icon: const Icon(Icons.edit_note_rounded,
+                                    size: 20),
+                                onPressed: () async {
+                                  final note =
+                                      await _askBookmarkNote(meta?.note ?? '');
+                                  if (note == null || !mounted) return;
+                                  await BookmarkMetaStore.setNote(
+                                      widget.book.id, offset, note);
+                                  metas[offset] = BookmarkMeta(
+                                    offset: offset,
+                                    createdAt: meta?.createdAt ??
+                                        DateTime.now().millisecondsSinceEpoch,
+                                    note: note,
+                                  );
+                                  setSheetState(() {});
+                                },
+                              ),
+                              onTap: () => Navigator.pop(ctx, offset),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
           ),
         ),
-      ),
       ),
     );
     if (!mounted || position == null) return;
@@ -2607,7 +2724,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
           ),
         ),
         actions: <Widget>[
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, controller.text.trim()),
             child: const Text('保存'),
@@ -2684,7 +2802,9 @@ class _ChapterSheetState extends State<_ChapterSheet> {
     final term = _query.trim().toLowerCase();
     final indices = <int>[
       for (var i = 0; i < widget.chapters.length; i++)
-        if (term.isEmpty || widget.chapters[i].title.toLowerCase().contains(term)) i,
+        if (term.isEmpty ||
+            widget.chapters[i].title.toLowerCase().contains(term))
+          i,
     ];
     return DraggableScrollableSheet(
       expand: false,
@@ -2697,7 +2817,8 @@ class _ChapterSheetState extends State<_ChapterSheet> {
               children: <Widget>[
                 Text('目录', style: Theme.of(ctx).textTheme.titleMedium),
                 const SizedBox(width: 8),
-                Text('${widget.chapters.length} 章 · 当前第 ${widget.currentIndex + 1} 章',
+                Text(
+                    '${widget.chapters.length} 章 · 当前第 ${widget.currentIndex + 1} 章',
                     style: TextStyle(fontSize: 11, color: palette.muted)),
               ],
             ),
@@ -2782,7 +2903,8 @@ class _ChapterSheetState extends State<_ChapterSheet> {
                         )
                       : selected
                           ? Text('阅读中',
-                              style: TextStyle(fontSize: 10, color: palette.muted))
+                              style:
+                                  TextStyle(fontSize: 10, color: palette.muted))
                           : null,
                   onTap: () => Navigator.pop(ctx, '$index'),
                 );
@@ -2900,8 +3022,8 @@ class _BookSearchDelegate extends SearchDelegate<BookSearchMatch?> {
   }
 
   TextSpan _highlightSnippet(BuildContext context, String snippet) {
-    final textStyle = Theme.of(context).textTheme.bodyMedium ??
-        const TextStyle(fontSize: 14);
+    final textStyle =
+        Theme.of(context).textTheme.bodyMedium ?? const TextStyle(fontSize: 14);
     final keyword = query.trim();
     if (keyword.isEmpty) {
       return TextSpan(text: snippet, style: textStyle);

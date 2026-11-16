@@ -46,6 +46,9 @@ jobs:
           cp tools/android/native/MainActivity.kt android/app/src/main/kotlin/app/readen/read/MainActivity.kt
           test -s android/app/src/main/kotlin/app/readen/read/MainActivity.kt
 
+      - name: 确保网络权限
+        run: python3 tools/android/ensure_network_permission.py
+
       - name: 应用黑白羽毛图标
         run: bash tools/android/apply_icons.sh
 
@@ -88,6 +91,9 @@ jobs:
           mkdir -p out
           cp build/app/outputs/flutter-apk/app-release.apk out/read-android.apk
           ls -lh out
+
+      - name: 应用墨水屏细线图标
+        run: bash tools/android/apply_icons.sh eink
 
       - name: 设置墨水屏独立包名
         run: |
