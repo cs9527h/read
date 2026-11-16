@@ -5,7 +5,8 @@ void main() {
   test('默认值完整且可被 patch 覆盖', () {
     final ReaderSettings s = ReaderSettings();
     expect(s.fontSize, 18.0);
-    expect(s.lineHeight, 1.75);
+    expect(s.lineHeight, 1.6);
+    expect(s.indentMode, 'em');
     expect(s.pageTurnMode, 'cover');
     expect(s.headerShow, isFalse);
     final ReaderSettings next = s.patch(<String, Object?>{'fontSize': 22.0});

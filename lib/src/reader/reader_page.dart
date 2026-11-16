@@ -352,7 +352,16 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     if (!mounted) return;
     final ReaderSettings next = _store.resolve(widget.book.id);
     if (next != _settings) {
-      final int anchor = _currentAbsoluteOffset;
+      // 重排用章节内相对偏移恢复位置。这里必须取当前页的 sourceStart
+      // （相对偏移），不能用全书绝对偏移，否则改字号后会跳到错误页面。
+      final PaginatedChapter? current = _pagination;
+      int anchor;
+      if (current != null && current.pages.isNotEmpty) {
+        anchor = current.pages[_pageIndex.clamp(0, current.pages.length - 1)]
+            .sourceStart;
+      } else {
+        anchor = widget.book.charOffset.value;
+      }
       _anchorOffset = anchor;
       // 保留当前 PaginatedChapter，等新版式算完再替换：调字号时不会闪出
       // 「正在排版…」空白页。重排本身做 180ms 防抖，拖动滑块只算最后一次。
@@ -1229,18 +1238,15 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
           builder: (BuildContext context, Widget? child) {
             double delta = 0;
             if (controller.hasClients && controller.position.haveDimensions) {
-              delta = (controller.page ?? renderIndex.toDouble()) - renderIndex.toDouble();
+              delta = (controller.page ?? renderIndex.toDouble()) -
+                  renderIndex.toDouble();
             }
-            final double direction = _settings.reverseDirection ? -1 : 1;
-            return Transform.translate(
-              offset: Offset(delta * direction * -_pageWidth * 0.22, 0),
-              child: Transform.scale(
-                scale: 1 - delta.abs() * 0.04,
-                child: Opacity(
-                  opacity: (1 - delta.abs() * 0.25).clamp(0, 1),
-                  child: child,
-                ),
-              ),
+            // 翻页动画只用透明度过渡，不做任何缩放或额外平移：
+            // Transform.scale 会把正文压成窄条，Transform.translate 会让
+            // 正文向边缘漂移，二者都会破坏分页后的排版宽度。
+            return Opacity(
+              opacity: (1 - delta.abs() * 0.22).clamp(0, 1),
+              child: child,
             );
           },
           child: guided,

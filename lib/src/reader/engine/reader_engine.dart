@@ -19,7 +19,10 @@ class DisplayChapter {
   final int sourceLength;
 
   int sourceOffset(int displayIndex) {
-    if (displayIndex <= 0) return 0;
+    if (map.isEmpty) return 0;
+    // 标题首行被跳过时，正文第一个显示字符对应 map[0]（标题之后），
+    // 而不是 0（标题本身），否则进度锚点会指回已由标题块绘制的行。
+    if (displayIndex <= 0) return map[0];
     if (displayIndex >= map.length) return sourceLength;
     return map[displayIndex];
   }
@@ -125,13 +128,17 @@ class ReaderEngine {
       };
 
   /// 章节标题块高度（含上下间距）。标题模板为 none 时返回 0。
+  /// 分章器在「无法识别章节」时用「全文」作哨兵标题，不应当成真正的
+  /// 章节标题画成巨大标题，因此这里对「全文」返回 0。
   static double titleBlockHeight(
     ReaderSettings s,
     String title,
     double width,
     double textScale,
   ) {
-    if (s.titleTemplate == 'none' || title.trim().isEmpty) {
+    if (s.titleTemplate == 'none' ||
+        title.trim().isEmpty ||
+        title.trim() == '全文') {
       return 0;
     }
     final TextStyle style = TextStyle(
@@ -154,7 +161,56 @@ class ReaderEngine {
     return height + s.titleGapTop + s.titleGapBottom + s.chapterStartBlank;
   }
 
-  static DisplayChapter buildDisplay(String source, ReaderSettings s, double textScale) {
+  static DisplayChapter buildDisplay(
+    String source,
+    ReaderSettings s,
+    double textScale, {
+    String title = '',
+  }) {
+    // 章节标题已由页首标题块绘制，正文不再重复显示同一标题首行，
+    // 但必须把锚点映射指向标题之后，保证进度/书签仍定位到正文。
+    int contentStart = 0;
+    final String trimmedTitle = title.trim();
+    if (trimmedTitle.isNotEmpty) {
+      int lead = 0;
+      while (lead < source.length) {
+        final int unit = source.codeUnitAt(lead);
+        if (unit == 0xFEFF ||
+            unit == 0x20 ||
+            unit == 0x09 ||
+            unit == 0x0A ||
+            unit == 0x0D) {
+          lead++;
+        } else {
+          break;
+        }
+      }
+      if (lead < source.length && source.startsWith(trimmedTitle, lead)) {
+        final int afterTitle = lead + trimmedTitle.length;
+        // 标题必须是一整行：其后只能是换行、行尾空白或文件末尾。
+        // 仅凭 startsWith 会把「前言」误判成「前言正文」的标题前缀。
+        final int unit =
+            afterTitle < source.length ? source.codeUnitAt(afterTitle) : -1;
+        final bool isLineEnd = afterTitle >= source.length ||
+            unit == 0x0A ||
+            unit == 0x0D ||
+            unit == 0x20 ||
+            unit == 0x09 ||
+            unit == 0x3000;
+        if (isLineEnd) {
+          contentStart = afterTitle;
+          while (contentStart < source.length) {
+            final int u = source.codeUnitAt(contentStart);
+            if (u == 0x20 || u == 0x09 || u == 0x0A || u == 0x0D || u == 0x3000) {
+              contentStart++;
+            } else {
+              break;
+            }
+          }
+        }
+      }
+    }
+
     final double linePx = math.max(1.0, s.fontSize * s.lineHeight * textScale);
     final int blankAfter = s.paragraphSpacingAfter <= 0
         ? 0
@@ -164,9 +220,10 @@ class ReaderEngine {
         : math.max(1, (s.paragraphSpacingBefore / linePx).round());
 
     // 段落按原文切分，保留原始偏移，保证书签/进度与原文一致。
+    // 从 contentStart 起切，标题首行不再进入正文排版串。
     final List<List<int>> paragraphs = <List<int>>[]; // [start, end]
-    int paragraphStart = 0;
-    for (int i = 0; i <= source.length; i++) {
+    int paragraphStart = contentStart;
+    for (int i = contentStart; i <= source.length; i++) {
       final bool atEnd = i == source.length;
       final int unit = atEnd ? 0x0A : source.codeUnitAt(i);
       if (unit == 0x0A || unit == 0x0D) {
@@ -254,7 +311,8 @@ class ReaderEngine {
     if (!width.isFinite || !height.isFinite || width <= 0 || height <= 0) {
       throw ArgumentError('分页区域必须有正的宽高');
     }
-    final DisplayChapter display = buildDisplay(chapterText, settings, textScale);
+    final DisplayChapter display =
+        buildDisplay(chapterText, settings, textScale, title: chapterTitle);
     final double titleHeight =
         titleBlockHeight(settings, chapterTitle, width, textScale);
     final bool showTitle = titleHeight > 0;
