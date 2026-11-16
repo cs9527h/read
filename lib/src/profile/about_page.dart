@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import 'package:read/src/profile/diagnostics_page.dart';
+import 'package:read/src/services/diagnostics_service.dart';
 
 import 'package:read/src/version.dart';
 
@@ -84,6 +88,31 @@ class AboutPage extends StatelessWidget {
             },
           ),
           _AboutRow(
+            label: '反馈',
+            value: 'QQ',
+            onTap: () async {
+              const link = 'https://qm.qq.com/q/Yvc3ugiCoE';
+              final opened = await launchUrl(Uri.parse(link),
+                  mode: LaunchMode.externalApplication);
+              if (!context.mounted) return;
+              if (opened) {
+                await DiagnosticsService.instance.record('feedback_opened');
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('无法打开 QQ 反馈链接')),
+                );
+              }
+            },
+          ),
+          _AboutRow(
+            label: '诊断日志',
+            value: '本地记录 · 可选上传',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                  builder: (_) => const DiagnosticsPage()),
+            ),
+          ),
+          _AboutRow(
             label: '检查更新',
             value: '预览版需手动安装',
             onTap: () => showDialog<void>(
@@ -107,8 +136,8 @@ class AboutPage extends StatelessWidget {
           ),
           const SizedBox(height: 24),
           const Text(
-            'read 是一个安静、离线优先的本地阅读器：不登录、不上传书籍、'
-            '不内置示例内容。数据只存在你的设备上，同步走你自己的 WebDAV。',
+            '无需登录。书籍只按你的云同步设置上传至你自己的存储；'
+            '诊断日志默认仅保存在本机。',
             style: TextStyle(color: dim, fontSize: 12, height: 1.7),
           ),
         ],

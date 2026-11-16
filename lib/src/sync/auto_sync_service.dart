@@ -4,6 +4,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/widgets.dart';
 
 import '../model/book.dart';
+import '../services/diagnostics_service.dart';
 import '../services/library_store.dart';
 import 'cloud_library_index.dart';
 import 'metadata_sync_service.dart';
@@ -57,8 +58,9 @@ class AutoSyncService extends ChangeNotifier with WidgetsBindingObserver {
     _retryTimer =
         Timer.periodic(const Duration(seconds: 20), (_) => _drainQueue());
     _restartInterval();
-    if (config.syncOnStart) {
+    if (config.syncOnStart && config.configured) {
       scheduleMetadata(immediate: true);
+      unawaited(_drainQueue());
     }
     notifyListeners();
   }
@@ -157,15 +159,61 @@ class AutoSyncService extends ChangeNotifier with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Android/iOS may terminate an app immediately after backgrounding.
+    // Pause is a best-effort network opportunity, NOT a guaranteed upload.
     final wasForeground = _foreground;
     _foreground = state == AppLifecycleState.resumed;
     if (wasForeground && !_foreground) {
-      if (config.syncOnBookClose && _currentBook != null) {
-        unawaited(runProgress(_currentBook!, silent: true));
-      }
-      if (config.fullAuto) scheduleMetadata(immediate: true);
+      unawaited(DiagnosticsService.instance.record('app_background'));
+      unawaited(_syncOnBackground());
     } else if (!wasForeground && _foreground) {
-      if (config.syncOnStart) scheduleMetadata(immediate: true);
+      unawaited(DiagnosticsService.instance.record('app_resume'));
+      if (config.syncOnStart && config.configured) {
+        scheduleMetadata(immediate: true);
+        unawaited(_drainQueue());
+      }
+    }
+  }
+
+  /// Persist pending operations before attempting network I/O on background.
+  /// A task left in the queue after termination is retried on next launch.
+  Future<void> _syncOnBackground() async {
+    if (!config.configured) return;
+    final target = SyncBackendFactory.targetId(config);
+    final book = _currentBook;
+    if (book != null && config.progressAuto && config.syncOnBookClose) {
+      try {
+        final hash = await library.ensureContentHash(book);
+        await SyncTaskQueue.instance.enqueue(
+          'progress', bookHash: hash, targetId: target);
+        final report = await runProgress(book, silent: true);
+        if (report != null) {
+          await _completeQueued('progress', hash, target);
+        }
+      } catch (_) {
+        // Queued work is retained for a future foreground retry.
+      }
+    }
+    if (config.fullAuto) {
+      try {
+        await SyncTaskQueue.instance.enqueue('full', targetId: target);
+        final report = await runFull(silent: true);
+        if (report != null) await _completeQueued('full', '', target);
+      } catch (_) {
+        // Do not block lifecycle transitions on cloud failures.
+      }
+    }
+    unawaited(DiagnosticsService.instance.uploadIfDue());
+  }
+
+  Future<void> _completeQueued(
+      String kind, String bookHash, String target) async {
+    final key = '$kind|$bookHash|$target';
+    for (final task in SyncTaskQueue.instance.tasks) {
+      if (task.key == key) {
+        await SyncTaskQueue.instance.complete(task);
+        break;
+      }
     }
   }
 
@@ -258,6 +306,7 @@ class AutoSyncService extends ChangeNotifier with WidgetsBindingObserver {
     }
     _metadataRunning = true;
     notifyListeners();
+    unawaited(DiagnosticsService.instance.record('sync_started'));
     try {
       final secrets = await SyncSecrets.load();
       final store = SyncBackendFactory.create(config, secrets);
@@ -279,6 +328,7 @@ class AutoSyncService extends ChangeNotifier with WidgetsBindingObserver {
         report.status == 'conflict' ? '同步完成（有冲突）' : '同步完成',
       );
       unawaited(CloudLibraryIndex.instance.refresh(force: true));
+      unawaited(DiagnosticsService.instance.record('sync_succeeded'));
       return report;
     } catch (error) {
       final failure = SyncFailure.classify(
@@ -295,6 +345,7 @@ class AutoSyncService extends ChangeNotifier with WidgetsBindingObserver {
         suggestion: failure.suggestion,
       ));
       await config.markSync('同步失败', error: failure.message);
+      unawaited(DiagnosticsService.instance.record('sync_failed'));
       if (!silent) rethrow;
       if (enqueueOnFailure) await SyncTaskQueue.instance.enqueue('full');
       return null;
@@ -355,9 +406,12 @@ class AutoSyncService extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<void> _drainQueue() async {
-    if (!_foreground) return;
+    if (!_foreground || !config.configured) return;
     final task = SyncTaskQueue.instance.nextDue(DateTime.now());
     if (task == null) return;
+    // Offline is not a failed attempt. Do not exhaust retries while waiting.
+    if (task.kind == 'progress' && !await _canRunProgressNetwork()) return;
+    if (task.kind == 'full' && !await _canRunNetwork()) return;
     try {
       if (task.kind == 'progress') {
         final currentTarget = SyncBackendFactory.targetId(config);
@@ -378,6 +432,10 @@ class AutoSyncService extends ChangeNotifier with WidgetsBindingObserver {
               config.lastError.isEmpty ? '进度同步未完成' : config.lastError);
         }
       } else {
+        final currentTarget = SyncBackendFactory.targetId(config);
+        if (task.targetId.isNotEmpty && task.targetId != currentTarget) {
+          throw StateError('同步目标已更改，旧的待同步任务已暂停');
+        }
         final report = await runFull(silent: true);
         if (report == null) {
           throw StateError(

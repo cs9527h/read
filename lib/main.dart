@@ -4,6 +4,7 @@ import 'package:read/src/reader/settings/reader_settings_store.dart';
 import 'package:read/src/reader/settings/user_font_store.dart';
 import 'package:read/src/services/appearance_store.dart';
 import 'package:read/src/services/library_store.dart';
+import 'package:read/src/services/diagnostics_service.dart';
 import 'package:read/src/services/reading_stats_store.dart';
 import 'package:read/src/sync/auto_sync_service.dart';
 import 'package:read/src/sync/cloud_library_index.dart';
@@ -20,6 +21,8 @@ Future<void> main() async {
   await UserFontStore.instance.init();
   await SyncConfig.instance.init();
   await CloudLibraryIndex.instance.init();
+  await DiagnosticsService.instance.init();
+  await DiagnosticsService.instance.record('app_start');
   await AutoSyncService.instance.init();
   runApp(const ReadApp());
 }
