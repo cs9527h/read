@@ -90,10 +90,15 @@ void main() {
     await tester.drag(find.byType(PageView), const Offset(-600, 0));
     await tester.pump(const Duration(milliseconds: 700));
     expect(book.chapterIndex.value, 1);
-    // The chapter switch writes progress asynchronously. Give the new
-    // controller and its deferred first layout a separate frame to mount.
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 160));
+    // Cross-chapter transition includes controller replacement and async
+    // persistence. Pump several distinct frames instead of one large time
+    // jump, which may fire the page-change callback on the very last frame.
+    for (int i = 0; i < 12; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+      if (find.text('第二章 远行', skipOffstage: false).evaluate().isNotEmpty) {
+        break;
+      }
+    }
     final visibleText = tester.widgetList<Text>(
       find.byType(Text, skipOffstage: false),
     ).map((text) => text.data ?? text.textSpan?.toPlainText() ?? '').toList();
