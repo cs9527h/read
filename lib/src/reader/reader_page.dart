@@ -623,6 +623,10 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     final PageController? old = _pageController;
     _pageController = PageController(
       initialPage: _virtualPrevCount + _renderPageIndex(columnPage),
+      // Chapter changes reconstruct the controller with an explicitly saved
+      // source anchor. PageStorage must never restore an older virtual page
+      // (such as the previous chapter) over this initialPage.
+      keepPage: false,
     );
     _controllerEpoch++;
     // 旧控制器可能还在本帧的 PageView 上，延后一帧再释放，避免
