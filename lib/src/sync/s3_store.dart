@@ -328,7 +328,7 @@ class S3Store implements RemoteObjectStore {
         );
       } on FormatException {
         throw const RemoteStoreException('S3 列目录返回无效 XML，未修改本地数据');
-      } on XmlException {
+      } catch (_) {
         throw const RemoteStoreException('S3 列目录 XML 解析失败，未修改本地数据');
       }
       for (final entry in page.entries) {
