@@ -32,9 +32,11 @@ class ChapterRule {
   final String pattern;
 }
 
+// 关键：标题行内的空白只能用 [ \t]，绝不能用 \s（它包含 \n）。
+// 否则 multiLine 模式下 "第一章\n正文无标点" 会被当成一行标题，把下一行正文吞进章名。
 final RegExp _heading = RegExp(
   r'^[ \t]*(第[ \t]*[0-9零一二三四五六七八九十百千万〇两]+[ \t]*[章回卷节篇集部册]|'
-  r'Chapter\s+\d+|CHAPTER\s+\d+|序章|楔子|引言|前言|后记|尾声|番外)\s*[^\n]*$',
+  r'Chapter[ \t]+\d+|CHAPTER[ \t]+\d+|序章|楔子|引言|前言|后记|尾声|番外)[ \t]*[^\n]*$',
   multiLine: true,
 );
 
