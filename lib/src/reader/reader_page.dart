@@ -2047,62 +2047,64 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
           children: <Widget>[
             Row(
               children: <Widget>[
-            Text(
-              '${(_overallProgress * 100).toStringAsFixed(1)}%',
-              style: TextStyle(fontSize: 12, color: secondary),
+                Text(
+                  '${(_overallProgress * 100).toStringAsFixed(1)}%',
+                  style: TextStyle(fontSize: 12, color: secondary),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Slider(
+                    value: _overallProgress.clamp(0, 1),
+                    onChanged: widget.book.content.isEmpty
+                        ? null
+                        : (value) => setState(() => _scrubPreview = value),
+                    onChangeEnd: widget.book.content.isEmpty ? null : (value) {
+                      setState(() => _scrubPreview = null);
+                      _seekProgress(value);
+                    },
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Slider(
-                value: _overallProgress.clamp(0, 1),
-                onChanged: widget.book.content.isEmpty
-                    ? null
-                    : (value) => setState(() => _scrubPreview = value),
-                onChangeEnd: widget.book.content.isEmpty ? null : (value) {
-                  setState(() => _scrubPreview = null);
-                  _seekProgress(value);
-                },
-              ),
-            ),
-            ],
-            ),
+            // Keep action buttons on a separate row to protect slider
+            // accessibility and hit targets on compact phones.
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: <Widget>[
-            for (final action in _settings.bottomActions)
-              IconButton(
-                tooltip: switch (action) {
-                  'toc' => '目录',
-                  'bookmark' => '书签',
-                  'search' => '书内搜索',
-                  _ => '阅读设置',
-                },
-                icon: ReadIcon(
-                  switch (action) {
-                    'toc' => ReadGlyph.toc,
-                    'bookmark' => ReadGlyph.bookmark,
-                    'search' => ReadGlyph.search,
-                    _ => ReadGlyph.type,
-                  },
-                  size: 20,
-                  color: foreground,
-                ),
-                onPressed: () {
-                  switch (action) {
-                    case 'toc':
-                      _showChapters();
-                    case 'bookmark':
-                      _showBookmarks();
-                    case 'search':
-                      _searchInBook();
-                    default:
-                      _openSettings();
-                  }
-                },
-              ),
-          ],
+                for (final action in _settings.bottomActions)
+                  IconButton(
+                    tooltip: switch (action) {
+                      'toc' => '目录',
+                      'bookmark' => '书签',
+                      'search' => '书内搜索',
+                      _ => '阅读设置',
+                    },
+                    icon: ReadIcon(
+                      switch (action) {
+                        'toc' => ReadGlyph.toc,
+                        'bookmark' => ReadGlyph.bookmark,
+                        'search' => ReadGlyph.search,
+                        _ => ReadGlyph.type,
+                      },
+                      size: 20,
+                      color: foreground,
+                    ),
+                    onPressed: () {
+                      switch (action) {
+                        case 'toc':
+                          _showChapters();
+                        case 'bookmark':
+                          _showBookmarks();
+                        case 'search':
+                          _searchInBook();
+                        default:
+                          _openSettings();
+                      }
+                    },
+                  ),
               ],
             ),
+          ],
         ),
       ),
     );
