@@ -1951,7 +1951,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
 
   Widget _topBar(Color background, Color foreground) {
     return Container(
-      color: background.withValues(alpha: 0.96),
+      color: background,
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
       child: Row(
         children: <Widget>[
@@ -2038,7 +2038,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
 
   Widget _bottomBar(Color background, Color foreground, Color secondary) {
     return Container(
-      color: background.withValues(alpha: 0.96),
+      color: background,
       padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
       child: SafeArea(
         top: false,
