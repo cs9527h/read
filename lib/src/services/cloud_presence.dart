@@ -37,6 +37,14 @@ class CloudPresence extends ChangeNotifier {
   String? _error;
   DateTime? _checkedAt;
 
+  /// 本地文件存在性缓存。
+  ///
+  /// [stateFor] 会被书架每一帧、每一格调用，直接 `existsSync` 会在滚动时累积成
+  /// 成百上千次系统调用。这里按路径缓存，并设 3 秒 TTL：删除/导入后最多 3 秒收敛，
+  /// 远小于用户感知阈值，但省掉了滚动期间的重复 stat。
+  final Map<String, bool> _existsCache = <String, bool>{};
+  DateTime _existsCachedAt = DateTime.fromMillisecondsSinceEpoch(0);
+
   final Set<String> _remoteFileHashes = <String>{};
   final Set<String> _remoteMetaHashes = <String>{};
   final Map<String, String> _remoteTitles = <String, String>{};
@@ -66,12 +74,22 @@ class CloudPresence extends ChangeNotifier {
     if (!_available) return CloudState.localOnly;
     final String? hash = book.contentHash;
     if (hash == null || hash.isEmpty) return CloudState.localOnly;
-    final bool localExists = book.sourcePath != null && File(book.sourcePath!).existsSync();
+    final bool localExists = _localFileExists(book.sourcePath);
     final bool fileInCloud = _remoteFileHashes.contains(hash);
     final bool metaInCloud = _remoteMetaHashes.contains(hash);
     if (fileInCloud && localExists) return CloudState.synced;
     if (metaInCloud && !localExists) return CloudState.cloudOnly;
     return CloudState.localOnly;
+  }
+
+  bool _localFileExists(String? path) {
+    if (path == null || path.isEmpty) return false;
+    final DateTime now = DateTime.now();
+    if (now.difference(_existsCachedAt) > const Duration(seconds: 3)) {
+      _existsCache.clear();
+      _existsCachedAt = now;
+    }
+    return _existsCache.putIfAbsent(path, () => File(path).existsSync());
   }
 
   /// 只同步了进度、书文件不在云端的书：用于「云端数据对比」，不用于云朵。
@@ -83,6 +101,7 @@ class CloudPresence extends ChangeNotifier {
 
   void markUnavailable() {
     _available = false;
+    _existsCache.clear();
     _remoteFileHashes.clear();
     _remoteMetaHashes.clear();
     _remoteTitles.clear();
@@ -173,6 +192,8 @@ class CloudPresence extends ChangeNotifier {
       }
       _available = _remoteFileHashes.isNotEmpty || _remoteMetaHashes.isNotEmpty;
       _checkedAt = DateTime.now();
+      // 云端状态刚刷新过，本地文件判定也一并重算。
+      _existsCache.clear();
     } catch (error) {
       _error = error.toString();
       if (_checkedAt == null) _available = false;

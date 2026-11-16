@@ -79,9 +79,20 @@
 
 `flutter build bundle` 的失败原因是本机构建环境缺少 Android SDK，与代码本身无关；本仓库的 CI（`.github/workflows/build-android.yml`）会在具备 SDK 的 runner 上完成真机产物编译。此版本未取得本地产物级构建结论，发布前应以 CI 产物为准。
 
+## 桌面图标分套
+
+两个变体是独立包名，装在同一台手机上必须能分辨，因此启动图标也分了两套：
+
+| 变体 | 包名 | 图标 | 资源目录 |
+| --- | --- | --- | --- |
+| 原版 | `app.readen.read` | 墨绿对角渐变 + 象牙羽毛 + 柔和投影 + 内嵌羽枝刻痕 | `assets/app_icon_classic` |
+| 墨水屏 | `app.readen.read.eink` | 纯黑底 + 白色细线羽毛（保持原设计） | `assets/app_icon` |
+
+`tools/android/apply_icons.sh classic|eink` 在各自 `flutter build apk` 之前写入 mipmap；参数错误或目录缺失直接 `exit 1/2`，不会静默沿用上一套。
+
 ## 已知遗留
 
-1. Android 启动图标（`assets/app_icon`、`tools/android/apply_icons.sh`）尚未按原版 / 墨水屏分套，本轮只完成应用内图标系统。
-2. `pdf_reader_page.dart` 仍在用旧图标，未接入 `ReadIcon`。
-3. AI 封面未接入任何模型服务，仅保留入口与错误提示。
-4. WiFi 传书为局域网 `HttpServer`（8765–8774），未做鉴权，仅在可信局域网使用。
+1. `pdf_reader_page.dart` 仍在用旧图标，未接入 `ReadIcon`。
+2. AI 封面未接入任何模型服务，仅保留入口与错误提示。
+3. WiFi 传书为局域网 `HttpServer`（8765–8774），未做鉴权，仅在可信局域网使用。
+4. 「分享」目前复制书籍信息，没有引入系统分享插件。
