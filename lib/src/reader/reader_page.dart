@@ -853,8 +853,10 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
       _layoutKey = '$_signature|$index';
       _nextPagination = null;
       _prevPagination = null;
+      // Swap controller and chapter in the same state transaction: PageView
+      // must not rebuild with the new chapter and the old viewport index.
+      _recreateController(page);
     });
-    _recreateController(page);
     _syncProgressValues(page);
     widget.book.charOffset.value =
         pagination.pages[page.clamp(0, pagination.pages.length - 1)].sourceStart;
