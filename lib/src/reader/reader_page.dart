@@ -1385,6 +1385,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                     chapter,
                     page,
                     selection,
+                    chapterIndex: chapterIndex,
                     note: '',
                   ));
                 },
@@ -1400,6 +1401,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                     chapter,
                     page,
                     selection,
+                    chapterIndex: chapterIndex,
                     note: note,
                   );
                 },
@@ -1555,6 +1557,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     PaginatedChapter chapter,
     EnginePage page,
     TextSelection selection, {
+    required int chapterIndex,
     required String note,
   }) async {
     if (!selection.isValid || selection.isCollapsed) return;
@@ -1562,7 +1565,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     final localStart = selection.start.clamp(0, text.length);
     final localEnd = selection.end.clamp(0, text.length);
     if (localEnd <= localStart) return;
-    final chapterStart = _chapters[_chapterIndex].start;
+    final chapterStart = _chapters[chapterIndex].start;
     final sourceStart = chapter.display.sourceOffset(page.displayStart + localStart);
     final sourceEnd = chapter.display.sourceOffset(page.displayEnd - (text.length - localEnd));
     final record = HighlightRecord(
