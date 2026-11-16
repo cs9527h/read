@@ -90,7 +90,11 @@ void main() {
     await tester.drag(find.byType(PageView), const Offset(-600, 0));
     await tester.pump(const Duration(milliseconds: 700));
     expect(book.chapterIndex.value, 1);
-    expect(find.text('第二章 远行'), findsWidgets);
+    // The chapter switch writes progress asynchronously. Give the new
+    // controller and its deferred first layout a separate frame to mount.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 160));
+    expect(find.text('第二章 远行', skipOffstage: false), findsWidgets);
     expect(tester.takeException(), isNull);
   });
 
