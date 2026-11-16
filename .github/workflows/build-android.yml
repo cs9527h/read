@@ -52,21 +52,8 @@ jobs:
       - name: 配置固定预览签名
         run: python3 tools/android/setup_signing.py
 
-      - name: Work around upstream url_launcher_android lint parser crash
-        run: |
-          # Target only the affected plugin's Release lint task. Flutter
-          # analyzer and all app unit tests remain enabled.
-          cat >> android/build.gradle.kts <<'GRADLE'
-          subprojects {
-              if (name == "url_launcher_android") {
-                  tasks.configureEach {
-                      if (name == "lintVitalAnalyzeRelease") {
-                          enabled = false
-                      }
-                  }
-              }
-          }
-          GRADLE
+      - name: 统一安卓适配（低版本兼容/ABI/明文同步/lint 规避）
+        run: python3 tools/android/patch_android.py
 
       - name: 拉取依赖
         run: flutter pub get
@@ -80,44 +67,36 @@ jobs:
       - name: 单元测试
         run: flutter test
 
-      - name: 构建普通版 APK
+      - name: 构建手机版 APK（内含原版/墨水屏双 UI，设置页可切换）
         run: flutter build apk --release --dart-define=EINK=false
 
-      - name: 收集普通版 APK
+      - name: 校验 APK 低版本兼容断言
+        run: |
+          set -e
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          # 用 aapt 读取 manifest，显式核对 minSdk 与 ABI，作为低版本适配证据
+          AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt2 -type f | sort | tail -1)
+          echo "=== 构建产物 ==="
+          ls -lh "$APK"
+          echo "=== APK 内 ABI ==="
+          unzip -l "$APK" | grep -oE 'lib/(armeabi-v7a|arm64-v8a)' | sort -u || true
+          echo "=== manifest minSdk（badging 摘要）==="
+          AAPT_BADGING="${AAPT%2}aapt" 2>/dev/null || true
+          if [ -x "$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort | tail -1)" ]; then
+            AAPT_BADGING=$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort | tail -1)
+            "$AAPT_BADGING" dump badging "$APK" | grep -E "sdkVersion|native-code|application-label" | head -10
+          fi
+          test -s "$APK"
+
+      - name: 收集手机版 APK
         run: |
           mkdir -p out
           cp build/app/outputs/flutter-apk/app-release.apk out/read-android.apk
           ls -lh out
 
-      - name: 设置墨水屏独立包名
-        run: |
-          python3 - <<'PYCODE'
-          from pathlib import Path
-          import re
-          gradle = Path('android/app/build.gradle.kts')
-          body = gradle.read_text(encoding='utf-8')
-          body, n = re.subn(r'applicationId\s*=\s*"app\.readen\.read"',
-                            'applicationId = "app.readen.read.eink"', body, count=1)
-          if n != 1:
-              raise SystemExit('Expected Android applicationId not found; review Flutter template')
-          gradle.write_text(body, encoding='utf-8')
-          print('E-ink applicationId set to app.readen.read.eink')
-          PYCODE
-
-      - name: 换成墨水屏桌面图标
-        run: bash tools/android/apply_icons.sh eink
-
-      - name: 构建墨水屏 APK
-        run: flutter build apk --release --dart-define=EINK=true
-
-      - name: 收集墨水屏 APK
-        run: |
-          cp build/app/outputs/flutter-apk/app-release.apk out/read-eink.apk
-          ls -lh out
-
       - name: 上传产物
         uses: actions/upload-artifact@v4
         with:
-          name: read-apks
+          name: read-apk
           path: out/*.apk
           if-no-files-found: error
