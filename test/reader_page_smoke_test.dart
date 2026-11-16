@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:read/src/model/book.dart';
+import 'package:read/src/services/highlight_store.dart';
 import 'package:read/src/reader/reader_page.dart';
 import 'package:read/src/reader/settings/reader_settings_store.dart';
 import 'package:read/src/reader/settings/user_font_store.dart';
@@ -70,6 +71,43 @@ void main() {
     await tester.pump(const Duration(milliseconds: 700));
     expect(book.chapterIndex.value, 1,
         reason: '滑到哨兵页后应自动落到下一章第 1 页');
+  });
+
+  testWidgets('书籍中的高亮记录会在正文上实际显示颜色', (tester) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    await ReaderSettingsStore.instance.init();
+    await UserFontStore.instance.init();
+    const id = 'highlight-persisted-render';
+    const content = '第一章 高亮测试\n蓝色的天空很漂亮。';
+    final int start = content.indexOf('天空');
+    await HighlightStore.add(id, HighlightRecord(
+      start: start,
+      end: start + 2,
+      color: 0xFFFFFF00,
+      note: '',
+      createdAt: 1,
+    ));
+    final book = Book(
+      id: id,
+      title: '高亮验证',
+      author: '测试',
+      content: content,
+    );
+    await tester.pumpWidget(MaterialApp(home: ReaderPage(book: book)));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+
+    final selectable = tester.widget<SelectableText>(find.byType(SelectableText).first);
+    final spans = selectable.textSpan?.children ?? <InlineSpan>[];
+    expect(
+      spans.whereType<TextSpan>().any(
+        (span) => span.text?.contains('天空') == true &&
+            span.style?.backgroundColor != null,
+      ),
+      isTrue,
+      reason: '已有高亮必须真正标记正文，不能只存储高亮记录',
+    );
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('全书进度拖动使用真实字符位置而不是章节序号', (tester) async {
