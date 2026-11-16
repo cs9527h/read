@@ -2,20 +2,20 @@
 
 > 对应《READ 阅读器：全面对标 Reeden 的 1000 条详细开发与验收要求》R0001–R1000。
 > **本台账基于真实源码审计 + 本地基线测试，状态如实标注，不以界面存在或口头保证代替验收。**
-> 基线 main@d23c86b；analyze 0 error/warning；flutter test 152/152（含 EPUB spine + 分章跨行两项新回归）。CI build-android/build-windows 均 success。
+> 基线 main@d23c86b；本轮单APK+低版本适配+搜索历史；analyze 0 error/warning；flutter test 156/156。
 
 ## 判定标准（严格，不虚报）
 
 | 状态 | 含义 | 计数 |
 |---|---|---:|
-| ✅ 已验证完成 | 有真实源码 + 本环境可运行的自动化测试通过证据 | 39 |
-| 🟡 已实现待验证 | 有真实源码，但缺自动化证据或需真机/真账号人工验收 | 260 |
+| ✅ 已验证完成 | 有真实源码 + 本环境可运行的自动化测试通过证据 | 41 |
+| 🟡 已实现待验证 | 有真实源码，但缺自动化证据或需真机/真账号人工验收 | 261 |
 | ◐ 部分实现 | 有相邻能力或框架，但本条未完整落地 | 302 |
 | ⛔ 客观阻塞 | 需第三方授权/真实网盘账号/多设备/真机等本环境无法满足的条件 | 52 |
-| ⬜ 未开始 | 代码层面尚未实现 | 347 |
+| ⬜ 未开始 | 代码层面尚未实现 | 344 |
 | **合计** | | **1000** |
 
-**已验证完成占比：39/1000**。此数字只反映有源码 + 自动化测试证据的条目，绝不代表整体完成度。
+**已验证完成占比：41/1000**。此数字只反映有源码 + 自动化测试证据的条目，绝不代表整体完成度。
 
 ## 模块汇总
 
@@ -28,11 +28,11 @@
 | 05 阅读器基础行为和内容定位 | 6 | 17 | 12 | 1 | 4 | 40 |
 | 06 字体、排版、主题与内容样式 | 0 | 22 | 8 | 0 | 10 | 40 |
 | 07 翻页模式、手势与动画 | 0 | 12 | 20 | 2 | 6 | 40 |
-| 08 目录、导航、全文搜索与定位 | 4 | 4 | 17 | 1 | 14 | 40 |
+| 08 目录、导航、全文搜索与定位 | 6 | 4 | 17 | 1 | 12 | 40 |
 | 09 脚注、复杂排版与阅读辅助 | 0 | 1 | 7 | 2 | 30 | 40 |
 | 10 PDF 阅读、标注与性能 | 0 | 9 | 17 | 3 | 11 | 40 |
 | 11 漫画、图像与图文混排 | 0 | 1 | 0 | 2 | 37 | 40 |
-| 12 书架、分类与书库浏览 | 0 | 17 | 15 | 1 | 7 | 40 |
+| 12 书架、分类与书库浏览 | 0 | 18 | 15 | 1 | 6 | 40 |
 | 13 书籍信息整理、TXT与EPUB编辑 | 2 | 5 | 8 | 1 | 24 | 40 |
 | 14 书签、划线、选区与批注 | 4 | 4 | 24 | 1 | 7 | 40 |
 | 15 笔记导出、书摘分享与外部知识库 | 0 | 3 | 3 | 0 | 34 | 40 |
@@ -403,8 +403,8 @@
 | R0313 | ⬜ 未开始 | 搜索预览要正确显示繁简转换前后的原文对应关系。 | lib/src/services/book_search.dart; lib/src/services/chapter_splitter.dart; lib/src/reader/reader_page.dart | 繁简转换搜索预览未实现 |
 | R0314 | ◐ 部分实现 | 搜索结果数量极大时实行分页或虚拟列表。 | lib/src/services/book_search.dart; lib/src/services/chapter_splitter.dart; lib/src/reader/reader_page.dart | 大量结果分页/虚拟列表未实现 |
 | R0315 | ◐ 部分实现 | 首次搜索大型书籍不能让阅读界面完全失去响应。 | lib/src/services/book_search.dart; lib/src/services/chapter_splitter.dart; lib/src/reader/reader_page.dart | 首次大书搜索不卡死需核对 |
-| R0316 | ⬜ 未开始 | 搜索历史可选择保存、单项删除或全部清除。 | lib/src/services/book_search.dart; lib/src/services/chapter_splitter.dart; lib/src/reader/reader_page.dart | 搜索历史保存/隐私选项未实现 |
-| R0317 | ⬜ 未开始 | 提供禁用搜索历史的隐私选项。 | lib/src/services/book_search.dart; lib/src/services/chapter_splitter.dart; lib/src/reader/reader_page.dart | 搜索历史保存/隐私选项未实现 |
+| R0316 | ✅ 已验证完成 | 搜索历史可选择保存、单项删除或全部清除。 | lib/src/services/book_search.dart; lib/src/services/chapter_splitter.dart; lib/src/reader/reader_page.dart | 搜索历史保存/单项删/全清：本轮新增 SearchHistoryStore + 书内搜索面板 + 设置隐私开关，search_history_store_test 4/4 通过 |
+| R0317 | ✅ 已验证完成 | 提供禁用搜索历史的隐私选项。 | lib/src/services/book_search.dart; lib/src/services/chapter_splitter.dart; lib/src/reader/reader_page.dart | 搜索历史隐私开关：设置页「保存搜索历史」开关 + store.setEnabled 持久化，测试覆盖关闭后不记录 |
 | R0318 | ⬜ 未开始 | 书籍解析出多个目录来源时允许用户选择首选目录。 | lib/src/services/book_search.dart; lib/src/services/chapter_splitter.dart; lib/src/reader/reader_page.dart | 多目录来源选择未实现 |
 | R0319 | ⬜ 未开始 | 书内位置可复制为内部深链并在应用内恢复打开。 | lib/src/services/book_search.dart; lib/src/services/chapter_splitter.dart; lib/src/reader/reader_page.dart | 位置复制为深链未实现 |
 | R0320 | ⛔ 客观阻塞 | 目录、搜索、书签三种跳转方式分别完成真机回归测试。 | lib/src/services/book_search.dart; lib/src/services/chapter_splitter.dart; lib/src/reader/reader_page.dart | 三种跳转真机回归需设备 |
@@ -573,7 +573,7 @@
 | R0463 | 🟡 已实现待验证 | 书籍卡片可选显示最近阅读时间与剩余阅读估计。 | lib/src/bookshelf/bookshelf_page.dart; lib/src/services/shelf_settings.dart | 进度条/最近时间显示（bookshelf 卡片） |
 | R0464 | 🟡 已实现待验证 | 书名过长时最多显示合理行数并可查看完整名称。 | lib/src/bookshelf/bookshelf_page.dart; lib/src/services/shelf_settings.dart | 长书名省略（卡片 maxLines） |
 | R0465 | ⬜ 未开始 | 支持书架多选后导出已选书籍元数据。 | lib/src/bookshelf/bookshelf_page.dart; lib/src/services/shelf_settings.dart | 批量导出元数据未实现 |
-| R0466 | ⬜ 未开始 | 支持固定常读书籍到书架顶部。 | lib/src/bookshelf/bookshelf_page.dart; lib/src/services/shelf_settings.dart | 置顶常读书未实现 |
+| R0466 | 🟡 已实现待验证 | 支持固定常读书籍到书架顶部。 | lib/src/bookshelf/bookshelf_page.dart; lib/src/services/shelf_settings.dart | 书架置顶常读：Book.pinned + setPinned + 置顶优先排序 + 单本/批量/编辑页/筛选入口齐全（审计纠正原误判），缺自动化单测 |
 | R0467 | ◐ 部分实现 | 支持隐藏、归档及恢复书籍，避免永久删除。 | lib/src/bookshelf/bookshelf_page.dart; lib/src/services/shelf_settings.dart | 隐藏/归档/恢复部分实现 |
 | R0468 | ◐ 部分实现 | 隐藏书籍需从搜索和最近阅读按隐私策略同步隐藏。 | lib/src/bookshelf/bookshelf_page.dart; lib/src/services/shelf_settings.dart | 隐藏/归档/恢复部分实现 |
 | R0469 | ◐ 部分实现 | 空分类显示引导文案与添加书籍快捷动作。 | lib/src/bookshelf/bookshelf_page.dart; lib/src/services/shelf_settings.dart | 空分类引导/分类搜索需核对 |

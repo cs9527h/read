@@ -25,6 +25,7 @@ import 'package:read/src/services/highlight_store.dart';
 import 'package:read/src/services/manual_chapter_store.dart';
 import 'package:read/src/services/library_store.dart';
 import 'package:read/src/services/reading_stats_store.dart';
+import 'package:read/src/services/search_history_store.dart';
 import 'package:read/src/sync/auto_sync_service.dart';
 import 'package:read/src/sync/progress_models.dart';
 import 'package:read/src/sync/metadata_sync_service.dart';
@@ -2952,6 +2953,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
       delegate: _BookSearchDelegate(
         widget.book.content,
         _chapters,
+        bookId: widget.book.id,
         initialQuery: initialQuery,
       ),
     );
@@ -3162,13 +3164,16 @@ class _GuidePainter extends CustomPainter {
 }
 
 class _BookSearchDelegate extends SearchDelegate<BookSearchMatch?> {
-  _BookSearchDelegate(this.content, this.chapters, {String? initialQuery})
+  _BookSearchDelegate(this.content, this.chapters, {this.bookId, String? initialQuery})
       : super(searchFieldLabel: '搜索本书内容') {
     if (initialQuery != null) query = initialQuery;
   }
 
   final String content;
   final List<Chapter> chapters;
+  final String? bookId;
+
+  SearchHistoryStore get _history => SearchHistoryStore.instance;
 
   @override
   List<Widget> buildActions(BuildContext context) => <Widget>[
@@ -3191,20 +3196,75 @@ class _BookSearchDelegate extends SearchDelegate<BookSearchMatch?> {
       );
 
   @override
-  Widget buildSuggestions(BuildContext context) => _results(context);
+  Widget buildSuggestions(BuildContext context) {
+    if (query.trim().isEmpty) return _buildHistory(context);
+    return _results(context);
+  }
 
   @override
   Widget buildResults(BuildContext context) => _results(context);
+
+  /// 搜索历史面板（R0316/R0317）：展示最近搜索、隐私开关、单项删除与全部清除。
+  Widget _buildHistory(BuildContext context) {
+    final String? book = bookId;
+    if (book == null || !_history.enabled || _history.historyFor(book).isEmpty) {
+      return const Center(child: Text('输入关键词搜索当前书籍'));
+    }
+    final List<String> items = _history.historyFor(book);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(
+            children: <Widget>[
+              const Text('最近搜索', style: TextStyle(fontWeight: FontWeight.w700)),
+              const Spacer(),
+              TextButton(
+                onPressed: () => _history.clear(book),
+                child: const Text('全部清除'),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: ListView.separated(
+            itemCount: items.length,
+            separatorBuilder: (_, __) => const Divider(height: 1),
+            itemBuilder: (BuildContext context, int index) {
+              final String term = items[index];
+              return ListTile(
+                leading: const ReadIcon(ReadGlyph.search, size: 18),
+                title: Text(term, maxLines: 1, overflow: TextOverflow.ellipsis),
+                onTap: () {
+                  query = term;
+                  showResults(context);
+                },
+                trailing: IconButton(
+                  tooltip: '删除',
+                  icon: const Icon(Icons.close, size: 18),
+                  onPressed: () => _history.remove(book, term),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
 
   Widget _results(BuildContext context) {
     if (query.trim().isEmpty) {
       return const Center(child: Text('输入关键词搜索当前书籍'));
     }
+    final String keyword = query.trim();
     final List<BookSearchMatch> matches =
-        searchBookText(content, chapters, query);
+        searchBookText(content, chapters, keyword);
     if (matches.isEmpty) {
       return const Center(child: Text('未找到匹配内容'));
     }
+    // 命中后记入历史（隐私开关关闭时 store 内部会忽略）。
+    if (bookId != null) unawaited(_history.record(bookId!, keyword));
     return ListView.builder(
       itemCount: matches.length,
       itemBuilder: (BuildContext context, int index) {

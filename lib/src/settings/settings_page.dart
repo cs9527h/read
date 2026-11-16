@@ -5,6 +5,7 @@ import 'package:read/src/reader/settings/reader_settings_store.dart';
 import 'package:read/src/services/appearance_store.dart';
 import 'package:read/src/services/library_store.dart';
 import 'package:read/src/services/shelf_settings.dart';
+import 'package:read/src/services/search_history_store.dart';
 import 'package:read/src/stats/stats_page.dart';
 import 'package:read/src/sync/data_tools_page.dart';
 import 'package:read/src/theme.dart';
@@ -28,6 +29,7 @@ class SettingsPage extends StatelessWidget {
         ShelfSettings.instance,
         LibraryStore.instance,
         ReaderSettingsStore.instance,
+        SearchHistoryStore.instance,
       ]),
       builder: (BuildContext context, Widget? _) {
         final ReaderSettings global = ReaderSettingsStore.instance.globalSettings();
@@ -207,6 +209,27 @@ class SettingsPage extends StatelessWidget {
 
                 _label(palette, '数据与工具'),
                 _group(palette, <Widget>[
+                  _switchRow(
+                    palette,
+                    title: '保存搜索历史',
+                    subtitle: '关闭后不再记录书内搜索词，可随时清除已保存记录',
+                    value: SearchHistoryStore.instance.enabled,
+                    onChanged: SearchHistoryStore.instance.setEnabled,
+                  ),
+                  _navRow(
+                    palette,
+                    glyph: ReadGlyph.search,
+                    title: '清除全部搜索历史',
+                    subtitle: '删除所有书籍的书内搜索记录',
+                    onTap: () async {
+                      await SearchHistoryStore.instance.clearAll();
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('已清除全部搜索历史')),
+                        );
+                      }
+                    },
+                  ),
                   _navRow(
                     palette,
                     glyph: ReadGlyph.device,

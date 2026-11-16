@@ -6,6 +6,7 @@ import 'package:read/src/services/appearance_store.dart';
 import 'package:read/src/services/collection_store.dart';
 import 'package:read/src/services/library_store.dart';
 import 'package:read/src/services/reading_stats_store.dart';
+import 'package:read/src/services/search_history_store.dart';
 import 'package:read/src/sync/auto_sync_service.dart';
 import 'package:read/src/sync/sync_config.dart';
 import 'package:read/src/shell/home_shell.dart';
@@ -17,6 +18,7 @@ Future<void> main() async {
   await LibraryStore.instance.init();
   await AppearanceStore.instance.init();
   await ReadingStatsStore.instance.init();
+  await SearchHistoryStore.instance.init();
   await ReaderSettingsStore.instance.init();
   await UserFontStore.instance.init();
   await CollectionStore.instance.init();
