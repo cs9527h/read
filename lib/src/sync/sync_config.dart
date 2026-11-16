@@ -45,6 +45,11 @@ class SyncConfig extends ChangeNotifier {
   bool syncStats = false;
   bool syncFiles = false;
 
+  /// Original book files are encrypted before upload by default. Legacy
+  /// plaintext objects are readable only after an explicit opt-in.
+  bool encryptFiles = true;
+  bool allowLegacyPlainFiles = false;
+
   bool autoJumpProgress = false;
   bool promptCloudProgress = true;
   /// local | cloud | ask. Automatic runs default to local to protect the
@@ -113,6 +118,8 @@ class SyncConfig extends ChangeNotifier {
         syncReaderSettings = data['syncReaderSettings'] == true;
         syncStats = data['syncStats'] == true;
         syncFiles = data['syncFiles'] == true;
+        encryptFiles = data['encryptFiles'] != false;
+        allowLegacyPlainFiles = data['allowLegacyPlainFiles'] == true;
         autoJumpProgress = data['autoJumpProgress'] == true;
         promptCloudProgress = data['promptCloudProgress'] != false;
         conflictPolicy = _string(data['conflictPolicy'], 'local');
@@ -169,6 +176,8 @@ class SyncConfig extends ChangeNotifier {
       'syncReaderSettings': syncReaderSettings,
       'syncStats': syncStats,
       'syncFiles': syncFiles,
+      'encryptFiles': encryptFiles,
+      'allowLegacyPlainFiles': allowLegacyPlainFiles,
       'autoJumpProgress': autoJumpProgress,
       'promptCloudProgress': promptCloudProgress,
       'conflictPolicy': conflictPolicy,
