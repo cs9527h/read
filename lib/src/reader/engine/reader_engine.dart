@@ -127,6 +127,17 @@ class ReaderEngine {
         _ => TextAlign.left,
       };
 
+  /// 段距换算为“插入几个空行”。
+  ///
+  /// 渲染层是单一文本流，空行高度只能是整行，所以 px 无法精确兑现。
+  /// 优先使用行数设置；只有旧配置（仅存 px）才做一次折算，
+  /// 且不再用 `max(1, …)` —— 那会把 1px 也放大成一整行。
+  static int _spacingLines(double lines, double legacyPx, double linePx) {
+    if (lines > 0) return lines.round().clamp(0, 3);
+    if (legacyPx <= 0) return 0;
+    return (legacyPx / linePx).round().clamp(0, 3);
+  }
+
   /// 章节标题块高度（含上下间距）。标题模板为 none 时返回 0。
   /// 分章器在「无法识别章节」时用「全文」作哨兵标题，不应当成真正的
   /// 章节标题画成巨大标题，因此这里对「全文」返回 0。
@@ -212,12 +223,10 @@ class ReaderEngine {
     }
 
     final double linePx = math.max(1.0, s.fontSize * s.lineHeight * textScale);
-    final int blankAfter = s.paragraphSpacingAfter <= 0
-        ? 0
-        : math.max(1, (s.paragraphSpacingAfter / linePx).round());
-    final int blankBefore = s.paragraphSpacingBefore <= 0
-        ? 0
-        : math.max(1, (s.paragraphSpacingBefore / linePx).round());
+    final int blankAfter =
+        _spacingLines(s.paragraphSpacingLines, s.paragraphSpacingAfter, linePx);
+    final int blankBefore =
+        _spacingLines(0, s.paragraphSpacingBefore, linePx);
 
     // 段落按原文切分，保留原始偏移，保证书签/进度与原文一致。
     // 从 contentStart 起切，标题首行不再进入正文排版串。

@@ -38,6 +38,22 @@ final RegExp _heading = RegExp(
   multiLine: true,
 );
 
+/// A real heading almost never ends with sentence punctuation. Without this
+/// guard a paragraph such as "第一章正文。" (a line of prose that merely starts
+/// with a chapter-like prefix) would be split into its own chapter, producing
+/// wrong chapter names, duplicated headings and broken neighbour previews.
+final RegExp _sentenceEnd = RegExp(r'[。！？…，、；：,;:.!?]$');
+
+/// Headings are short. Prose paragraphs that happen to start with "第X章"
+/// are usually much longer than this.
+const int _maxHeadingLength = 60;
+
+bool _looksLikeHeading(String line) {
+  final String title = line.trim();
+  if (title.isEmpty || title.length > _maxHeadingLength) return false;
+  return !_sentenceEnd.hasMatch(title);
+}
+
 /// Validate a deliberately constrained, line-anchored regular expression.
 ///
 /// Custom patterns are run against heading-length lines only. To limit
@@ -98,7 +114,7 @@ List<Chapter> splitChapters(
   if (rule.mode == ChapterRuleMode.automatic) {
     for (final match in _heading.allMatches(text)) {
       final title = match.group(0)!.trim();
-      if (title.isNotEmpty && title.length <= 100) {
+      if (_looksLikeHeading(title)) {
         headings.add(_ChapterHeading(match.start, title));
       }
     }
