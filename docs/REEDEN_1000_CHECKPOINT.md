@@ -6,8 +6,8 @@
 ## 环境与仓库
 - 仓库：cs9527h/read（default branch `main`）
 - GitHub token：存于 `/root/.gh_token`（用户提供，勿提交仓库）
-- **当前工作分支：`work/reeden-v2`**，基线 = GitHub main `7bd405d`（v1.1.1-preview 已合并）
-- 旧分支 `work/reeden-1000` 已完成历史交付，勿再用
+- **main 已更新到 v2.0.0**（`456647e`）；下一轮从 `main` 切新分支 `work/reeden-v3`
+- 历史分支：`work/reeden-v2`（v2.0 来源，已合并）、`work/reeden-1000`（v1.1.1 来源，已合并），勿再用
 - Flutter：`/opt/flutter350/bin/flutter`（3.50.0 / Dart 3.14.0）。系统默认 flutter 是 3.0.0，不可用！
 - 验证基准：analyze 0 error/0 warning（146 infos）；flutter test 156/156 通过
 
@@ -23,24 +23,27 @@
 - 台账生成 `gen_ledger.py` → docs/READ_REEDEN_1000_STATUS.md + .csv
 - 更新某条：编辑 classify.py，重跑 `classify.py` + `gen_ledger.py`
 
-## 1000 项台账状态（本轮第 2 批后）
-- ✅ 已验证完成 V：41
+## 1000 项台账状态（本轮发布后）
+- ✅ 已验证完成 V：43
 - 🟡 已实现待验证 I：261
 - ◐ 部分实现 P：302
 - ⛔ 客观阻塞 B：52（真机/真网盘账号/多设备/第三方授权）
-- ⬜ 未开始 N：344
-- 合计 1000。**绝不虚报完成。**（V+I=302 有源码支撑，P/B/N=698 如实标注缺口）
+- ⬜ 未开始 N：342
+- 合计 1000。**绝不虚报完成。**（V+I=304 有源码支撑，P/B/N=696 如实标注缺口）
 
 ## 本轮逐批进度
 | 批次 | 范围 | 状态 | commit | 说明 |
 |---|---|---|---|---|
-| v2-1 | 单一手机版 + 低版本安卓适配 | 已推送+CI绿 | 9623fa1 | 移除 eink 独立包；patch_android.py 统一适配（minSdk24/ABI/明文同步/权限/lint）；APK 断言；CI build-android success |
-| v2-2 | 书内搜索历史（R0316/R0317）+ 台账纠错 | 已推送 | 7f55f3e | SearchHistoryStore 4/4 测试；UI 接入；R0466 置顶误判纠正；全量 156/156 |
-| v2-3 | 待定（草稿） | 未开始 | - | 见下方建议 |
-| v2-4 | 发布 2.0 + tag | 未开始 | - | - |
+| v2-1 | 单一手机版 + 低版本安卓适配 | 完成+CI绿 | 9623fa1 | 移除 eink 独立包；patch_android.py 统一适配（minSdk24/ABI/明文同步/权限/lint）；APK 断言 |
+| v2-2 | 书内搜索历史（R0316/R0317）+ 台账纠错 | 完成 | 7f55f3e | SearchHistoryStore 4/4 测试；UI 接入；R0466 置顶误判纠正；全量 156/156 |
+| v2-3 | README/版本 2.0.0+14/检查点 | 完成+CI绿 | cb5a943 | README 从过时 0.7.0 双包更新到 2.0 单包真实状态 |
+| v2-4 | 单书笔记导出 Markdown（R0561/R0575） | 完成+CI绿 | 0e0a1af | NoteExporter + 阅读器导出按钮 + 4 测试；全量 160/160 |
+| v2-5 | 合并 main + 打 tag v2.0.0-preview | 完成 | 456647e | PR #48 squash 合并；release 仅产单一手机版 APK |
 
 ## GitHub 状态
-- 工作分支 `work/reeden-v2` 已推送；**PR #48**（→ main）已创建，等待合并
+- **PR #48 已合并 main**（squash `456647e`）；合并前最终 head 0e0a1af 的 apk+windows CI 全绿
+- 已打 tag `v2.0.0-preview` @ `456647e`，release workflow 仅构建 `read-android.apk` + `APK_SHA256.txt`（无 eink 包）
+- 版本 2.0.0+14，包名 `app.readen.read` 不变，支持覆盖安装
 - PR #48：v2-1 CI 绿（build-android 9623fa1 success）；v2-2 提交 7f55f3e 的 CI 进行中
 - 尚未合并 main、尚未打 2.0 tag。合并/发布前确认 7f55f3e 的 apk+windows 均 success
 
@@ -54,13 +57,14 @@ head -20 docs/READ_REEDEN_1000_STATUS.md
 ```
 
 ## 下一批建议（按真实缺口，均已核对代码，非台账臆测）
-1. **笔记导出/书摘分享（模块 15，34 未开始）**：读取 highlight_store/bookmark_meta_store，做 Markdown/TXT 导出 + 分享，可本地测试。价值高、风险低。
+1. **笔记导出扩展（模块 15）**：本轮已做 Markdown；剩余 R0562 TXT / R0563 JSON / R0564 CSV / R0577 筛选导出 / R0575 已做。可基于 NoteExporter 扩展，纯函数+测试，风险低。
 2. **阅读统计补充（模块 16）**：目标（分钟/字数/年度本数），基于 reading_stats_store 扩展 + 单测。
 3. **书籍元数据导出（R0465/R0479）**：书架多选导出元数据 JSON + 整库备份，可测。
-4. 逐批把「已实现待验证」中有本地测试可行的条目升为已验证。
+4. **同步可靠性测试补强**：sync_service_test 仅 2 项，可为冲突/墓碑/断点补测，不改动逻辑。
+5. 逐批把「已实现待验证」中有本地测试可行的条目升为已验证。
 > 已核对确认为**已实现**（勿重复做）：R0466 置顶（Book.pinned+setPinned+完整UI）、
-> R0172 位置返回（_positionHistory 栈 + _goBackPosition + UI 入口 2074）、
-> R0239 排版防抖（180ms Timer）、R0316/R0317 搜索历史（本轮新增）。
+> R0172 位置返回（_positionHistory 栈 + _goBackPosition + UI 入口）、
+> R0239 排版防抖（180ms Timer）、R0316/R0317 搜索历史、R0561/R0575 笔记 Markdown 导出（均本轮新增）。
 
 ## 客观阻塞（本环境无法满足，如实记录）
 - 需 Android 真机录屏/性能/安装回归的项（R0015/R0200/R0280/R0397/R0984 等）
