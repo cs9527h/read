@@ -41,6 +41,25 @@ void main() {
     expect(chapters.last.slice(text).startsWith('第二章'), isTrue);
   });
 
+  test('标题不吞掉下一行无标点正文（\\s 不得跨行）', () {
+    const text = '第一章\n正文没有句末标点但这里是内容\n第二章\n另一段无标点的正文内容';
+    final chapters = splitChapters(text);
+    // 章名不得包含换行，也不得把正文当章名
+    expect(chapters.map((c) => c.title).any((t) => t.contains('\n')), isFalse);
+    expect(chapters.map((c) => c.title).any((t) => t.contains('正文')), isFalse);
+    expect(chapters.any((c) => c.title == '第一章'), isTrue);
+    expect(chapters.any((c) => c.title == '第二章'), isTrue);
+    // 原文字符不丢失、章节连续覆盖
+    expect(chapters.map((c) => c.slice(text)).join(), text);
+  });
+
+  test('英文 Chapter 标题同样不跨行吞正文', () {
+    const text = 'Chapter 1\nsome prose with no stop\nChapter 2\nmore prose here';
+    final chapters = splitChapters(text);
+    expect(chapters.map((c) => c.title).any((t) => t.contains('\n')), isFalse);
+    expect(chapters.map((c) => c.slice(text)).join(), text);
+  });
+
   test('超长假标题不是章节，避免误拆 TXT 正文', () {
     final bogus = '第一章' + List<String>.filled(180, '这仍是正文内容').join();
     final text = '第一章 真标题\n内容\n' + bogus +
