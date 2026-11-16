@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:read/src/model/book.dart';
+import 'package:read/src/services/highlight_store.dart';
 import 'package:read/src/reader/reader_page.dart';
 import 'package:read/src/reader/settings/reader_settings_store.dart';
 import 'package:read/src/reader/settings/user_font_store.dart';
@@ -90,6 +91,44 @@ void main() {
     await tester.pump(const Duration(milliseconds: 700));
     expect(book.chapterIndex.value, 1);
     expect(find.text('第二章 远行'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('保存的正文高亮在阅读页真正显示背景颜色', (tester) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    await ReaderSettingsStore.instance.init();
+    await UserFontStore.instance.init();
+    const bookId = 'highlight-render';
+    const content = '第一章 高亮测试\n蓝色的天空很漂亮。';
+    final start = content.indexOf('天空');
+    await HighlightStore.add(bookId, HighlightRecord(
+      start: start,
+      end: start + 2,
+      color: 0xFFFFFF00,
+      note: '',
+      createdAt: 1,
+    ));
+    final book = Book(
+      id: bookId,
+      title: '高亮测试',
+      author: '本地',
+      content: content,
+    );
+    await tester.pumpWidget(MaterialApp(home: ReaderPage(book: book)));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+
+    final selectable = tester.widget<SelectableText>(find.byType(SelectableText).first);
+    final span = selectable.textSpan!;
+    final children = span.children ?? <InlineSpan>[];
+    expect(
+      children.whereType<TextSpan>().any(
+        (segment) => segment.text?.contains('天空') == true &&
+            segment.style?.backgroundColor != null,
+      ),
+      isTrue,
+      reason: '保存后的高亮必须实际为对应文字设置背景，不能只保存记录',
+    );
     expect(tester.takeException(), isNull);
   });
 
