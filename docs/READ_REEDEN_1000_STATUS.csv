@@ -561,7 +561,7 @@ R0557,14,书签、划线、选区与批注,笔记同步不得因为设备时钟�
 R0558,14,书签、划线、选区与批注,从其他格式导入笔记时保持原文、来源及可用定位。,未开始,lib/src/services/highlight_store.dart; lib/src/services/bookmark_store.dart; lib/src/reader/reader_page.dart,外部笔记导入未实现
 R0559,14,书签、划线、选区与批注,在跨段、高亮重叠与超长选区场景执行专项测试。,客观阻塞,lib/src/services/highlight_store.dart; lib/src/services/bookmark_store.dart; lib/src/reader/reader_page.dart,跨段/重叠/超长选区专项测试需真机
 R0560,14,书签、划线、选区与批注,标注功能不得要求开启云同步才能本地使用。,已验证完成,lib/src/services/highlight_store.dart; lib/src/services/bookmark_store.dart; lib/src/reader/reader_page.dart,标注无需云同步即可本地用（本地 store）
-R0561,15,笔记导出、书摘分享与外部知识库,笔记支持按单本书籍导出 Markdown 文本。,未开始,lib/src/sync/data_tools_page.dart; lib/src/profile/about_page.dart,笔记导出 MD/TXT/JSON/CSV 未实现
+R0561,15,笔记导出、书摘分享与外部知识库,笔记支持按单本书籍导出 Markdown 文本。,已验证完成,lib/src/sync/data_tools_page.dart; lib/src/profile/about_page.dart,单书笔记导出 Markdown：本轮新增 NoteExporter + 阅读器高亮面板「导出 Markdown」按钮（复制到剪贴板），note_exporter_test 4/4 通过
 R0562,15,笔记导出、书摘分享与外部知识库,笔记支持按单本书籍导出纯文本 TXT。,未开始,lib/src/sync/data_tools_page.dart; lib/src/profile/about_page.dart,笔记导出 MD/TXT/JSON/CSV 未实现
 R0563,15,笔记导出、书摘分享与外部知识库,笔记支持导出 JSON 结构化数据供未来重新导入。,未开始,lib/src/sync/data_tools_page.dart; lib/src/profile/about_page.dart,笔记导出 MD/TXT/JSON/CSV 未实现
 R0564,15,笔记导出、书摘分享与外部知识库,笔记支持导出 CSV，列包含书名、章节、内容及时间。,未开始,lib/src/sync/data_tools_page.dart; lib/src/profile/about_page.dart,笔记导出 MD/TXT/JSON/CSV 未实现
@@ -575,7 +575,7 @@ R0571,15,笔记导出、书摘分享与外部知识库,长书摘导出图片应�
 R0572,15,笔记导出、书摘分享与外部知识库,导出目标允许用户通过 SAF 选择任意合法目录。,部分实现,lib/src/sync/data_tools_page.dart; lib/src/profile/about_page.dart,SAF 选择导出目录需核对
 R0573,15,笔记导出、书摘分享与外部知识库,导出失败显示失败原因且保留原有笔记。,未开始,lib/src/sync/data_tools_page.dart; lib/src/profile/about_page.dart,导出失败保留笔记未专项实现
 R0574,15,笔记导出、书摘分享与外部知识库,批量导出所有笔记时按书籍建立稳定目录结构。,未开始,lib/src/sync/data_tools_page.dart; lib/src/profile/about_page.dart,批量导出/保留层级/样式标记/筛选导出未实现
-R0575,15,笔记导出、书摘分享与外部知识库,导出的 Markdown 保留标题层级与章节路径。,未开始,lib/src/sync/data_tools_page.dart; lib/src/profile/about_page.dart,批量导出/保留层级/样式标记/筛选导出未实现
+R0575,15,笔记导出、书摘分享与外部知识库,导出的 Markdown 保留标题层级与章节路径。,已验证完成,lib/src/sync/data_tools_page.dart; lib/src/profile/about_page.dart,导出 Markdown 保留标题层级与章节路径：NoteExporter 按章分组输出 ## 章节标题，note_exporter_test 验证章节顺序
 R0576,15,笔记导出、书摘分享与外部知识库,导出内容保留高亮颜色及样式的可读标记。,未开始,lib/src/sync/data_tools_page.dart; lib/src/profile/about_page.dart,批量导出/保留层级/样式标记/筛选导出未实现
 R0577,15,笔记导出、书摘分享与外部知识库,导出时可选择只含高亮、只含备注或全部。,未开始,lib/src/sync/data_tools_page.dart; lib/src/profile/about_page.dart,批量导出/保留层级/样式标记/筛选导出未实现
 R0578,15,笔记导出、书摘分享与外部知识库,支持按时间区间导出读书笔记。,未开始,lib/src/sync/data_tools_page.dart; lib/src/profile/about_page.dart,按时间/标签导出未实现

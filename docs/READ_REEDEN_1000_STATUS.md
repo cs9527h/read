@@ -2,20 +2,20 @@
 
 > 对应《READ 阅读器：全面对标 Reeden 的 1000 条详细开发与验收要求》R0001–R1000。
 > **本台账基于真实源码审计 + 本地基线测试，状态如实标注，不以界面存在或口头保证代替验收。**
-> 基线 main@d23c86b；本轮单APK+低版本适配+搜索历史；analyze 0 error/warning；flutter test 156/156。
+> 基线 main@d23c86b；本轮单APK+低版本适配+搜索历史+笔记导出；analyze 0 error/warning；flutter test 160/160。
 
 ## 判定标准（严格，不虚报）
 
 | 状态 | 含义 | 计数 |
 |---|---|---:|
-| ✅ 已验证完成 | 有真实源码 + 本环境可运行的自动化测试通过证据 | 41 |
+| ✅ 已验证完成 | 有真实源码 + 本环境可运行的自动化测试通过证据 | 43 |
 | 🟡 已实现待验证 | 有真实源码，但缺自动化证据或需真机/真账号人工验收 | 261 |
 | ◐ 部分实现 | 有相邻能力或框架，但本条未完整落地 | 302 |
 | ⛔ 客观阻塞 | 需第三方授权/真实网盘账号/多设备/真机等本环境无法满足的条件 | 52 |
-| ⬜ 未开始 | 代码层面尚未实现 | 344 |
+| ⬜ 未开始 | 代码层面尚未实现 | 342 |
 | **合计** | | **1000** |
 
-**已验证完成占比：41/1000**。此数字只反映有源码 + 自动化测试证据的条目，绝不代表整体完成度。
+**已验证完成占比：43/1000**。此数字只反映有源码 + 自动化测试证据的条目，绝不代表整体完成度。
 
 ## 模块汇总
 
@@ -35,7 +35,7 @@
 | 12 书架、分类与书库浏览 | 0 | 18 | 15 | 1 | 6 | 40 |
 | 13 书籍信息整理、TXT与EPUB编辑 | 2 | 5 | 8 | 1 | 24 | 40 |
 | 14 书签、划线、选区与批注 | 4 | 4 | 24 | 1 | 7 | 40 |
-| 15 笔记导出、书摘分享与外部知识库 | 0 | 3 | 3 | 0 | 34 | 40 |
+| 15 笔记导出、书摘分享与外部知识库 | 2 | 3 | 3 | 0 | 32 | 40 |
 | 16 阅读统计、目标、习惯与年度报告 | 0 | 13 | 13 | 0 | 14 | 40 |
 | 17 听书、TTS、后台播放与多角色朗读 | 0 | 4 | 14 | 2 | 20 | 40 |
 | 18 词典、生词本、翻译与学习辅助 | 0 | 0 | 2 | 0 | 38 | 40 |
@@ -683,7 +683,7 @@
 
 | 编号 | 状态 | 需求 | 代码路径 | 证据/阻塞说明 |
 |---|---|---|---|---|
-| R0561 | ⬜ 未开始 | 笔记支持按单本书籍导出 Markdown 文本。 | lib/src/sync/data_tools_page.dart; lib/src/profile/about_page.dart | 笔记导出 MD/TXT/JSON/CSV 未实现 |
+| R0561 | ✅ 已验证完成 | 笔记支持按单本书籍导出 Markdown 文本。 | lib/src/sync/data_tools_page.dart; lib/src/profile/about_page.dart | 单书笔记导出 Markdown：本轮新增 NoteExporter + 阅读器高亮面板「导出 Markdown」按钮（复制到剪贴板），note_exporter_test 4/4 通过 |
 | R0562 | ⬜ 未开始 | 笔记支持按单本书籍导出纯文本 TXT。 | lib/src/sync/data_tools_page.dart; lib/src/profile/about_page.dart | 笔记导出 MD/TXT/JSON/CSV 未实现 |
 | R0563 | ⬜ 未开始 | 笔记支持导出 JSON 结构化数据供未来重新导入。 | lib/src/sync/data_tools_page.dart; lib/src/profile/about_page.dart | 笔记导出 MD/TXT/JSON/CSV 未实现 |
 | R0564 | ⬜ 未开始 | 笔记支持导出 CSV，列包含书名、章节、内容及时间。 | lib/src/sync/data_tools_page.dart; lib/src/profile/about_page.dart | 笔记导出 MD/TXT/JSON/CSV 未实现 |
@@ -697,7 +697,7 @@
 | R0572 | ◐ 部分实现 | 导出目标允许用户通过 SAF 选择任意合法目录。 | lib/src/sync/data_tools_page.dart; lib/src/profile/about_page.dart | SAF 选择导出目录需核对 |
 | R0573 | ⬜ 未开始 | 导出失败显示失败原因且保留原有笔记。 | lib/src/sync/data_tools_page.dart; lib/src/profile/about_page.dart | 导出失败保留笔记未专项实现 |
 | R0574 | ⬜ 未开始 | 批量导出所有笔记时按书籍建立稳定目录结构。 | lib/src/sync/data_tools_page.dart; lib/src/profile/about_page.dart | 批量导出/保留层级/样式标记/筛选导出未实现 |
-| R0575 | ⬜ 未开始 | 导出的 Markdown 保留标题层级与章节路径。 | lib/src/sync/data_tools_page.dart; lib/src/profile/about_page.dart | 批量导出/保留层级/样式标记/筛选导出未实现 |
+| R0575 | ✅ 已验证完成 | 导出的 Markdown 保留标题层级与章节路径。 | lib/src/sync/data_tools_page.dart; lib/src/profile/about_page.dart | 导出 Markdown 保留标题层级与章节路径：NoteExporter 按章分组输出 ## 章节标题，note_exporter_test 验证章节顺序 |
 | R0576 | ⬜ 未开始 | 导出内容保留高亮颜色及样式的可读标记。 | lib/src/sync/data_tools_page.dart; lib/src/profile/about_page.dart | 批量导出/保留层级/样式标记/筛选导出未实现 |
 | R0577 | ⬜ 未开始 | 导出时可选择只含高亮、只含备注或全部。 | lib/src/sync/data_tools_page.dart; lib/src/profile/about_page.dart | 批量导出/保留层级/样式标记/筛选导出未实现 |
 | R0578 | ⬜ 未开始 | 支持按时间区间导出读书笔记。 | lib/src/sync/data_tools_page.dart; lib/src/profile/about_page.dart | 按时间/标签导出未实现 |

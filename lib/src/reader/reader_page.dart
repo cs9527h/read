@@ -23,6 +23,7 @@ import 'package:read/src/services/chapter_rule_store.dart';
 import 'package:read/src/services/chapter_splitter.dart';
 import 'package:read/src/services/highlight_store.dart';
 import 'package:read/src/services/manual_chapter_store.dart';
+import 'package:read/src/services/note_exporter.dart';
 import 'package:read/src/services/library_store.dart';
 import 'package:read/src/services/reading_stats_store.dart';
 import 'package:read/src/services/search_history_store.dart';
@@ -1613,6 +1614,33 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     }
   }
 
+  /// 导出本书全部笔记（高亮/划线 + 书签）为 Markdown 并复制到剪贴板。
+  /// 无第三方分享依赖，复制后用户可粘贴到任意笔记 App——真实可用，非演示。
+  Future<void> _exportNotes(BuildContext ctx) async {
+    final Map<int, BookmarkMeta> marks =
+        await BookmarkMetaStore.load(widget.book.id);
+    final String highlightMd = NoteExporter.exportHighlights(
+      title: widget.book.title,
+      author: widget.book.author,
+      content: widget.book.content,
+      chapters: _chapters,
+      highlights: _highlights,
+    );
+    final String bookmarkMd = NoteExporter.exportBookmarks(
+      title: widget.book.title,
+      author: widget.book.author,
+      content: widget.book.content,
+      chapters: _chapters,
+      bookmarks: marks,
+    );
+    final String md = '$highlightMd\n---\n\n$bookmarkMd';
+    await Clipboard.setData(ClipboardData(text: md));
+    if (ctx.mounted) {
+      Navigator.of(ctx).pop();
+      _showToast('已复制 ${_highlights.length} 条划线、${marks.length} 个书签为 Markdown');
+    }
+  }
+
   Future<void> _manageHighlights() async {
     await showModalBottomSheet<void>(
       context: context,
@@ -1624,6 +1652,11 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
             ListTile(
               title: Text('高亮与笔记（${_highlights.length}）'),
               subtitle: const Text('按原文字符锚点保存，换字号后仍能定位'),
+              trailing: TextButton.icon(
+                onPressed: () => _exportNotes(ctx),
+                icon: const ReadIcon(ReadGlyph.save, size: 18),
+                label: const Text('导出 Markdown'),
+              ),
             ),
             for (final highlight in _highlights)
               ListTile(
