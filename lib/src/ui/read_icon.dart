@@ -207,15 +207,18 @@ class _GlyphPainter extends CustomPainter {
     canvas.translate((size.width - 24 * scale) / 2, (size.height - 24 * scale) / 2);
     canvas.scale(scale);
 
+    // 统一线宽与视觉重量（任务 410/411）：普通版圆头略加粗，墨水屏高对比
+    // 线性在细笔画下需要补偿，避免纯黑白时发虚。填充由 10% 提到 13%，
+    // 让实心语义有质感又不至于脏。
     final Paint stroke = Paint()
       ..color = color
       ..style = PaintingStyle.stroke
-      ..strokeWidth = (eink ? 1.05 : 1.7) * strokeScale
-      ..strokeCap = eink ? StrokeCap.butt : StrokeCap.round
+      ..strokeWidth = (eink ? 1.35 : 1.9) * strokeScale
+      ..strokeCap = eink ? StrokeCap.square : StrokeCap.round
       ..strokeJoin = eink ? StrokeJoin.miter : StrokeJoin.round
       ..isAntiAlias = true;
     final Paint fill = Paint()
-      ..color = color.withValues(alpha: 0.10)
+      ..color = color.withValues(alpha: 0.13)
       ..style = PaintingStyle.fill
       ..isAntiAlias = true;
 
@@ -314,12 +317,19 @@ List<_Shape> _geometry(ReadGlyph glyph, bool eink) {
               _Shape.poly(<double>[18.4, 15.8, 18.8, 10.6, 13.8, 11.6]),
             ];
     case ReadGlyph.settings:
+      // 两版统一为"齿轮"语义（任务 413）：墨水屏用方头高对比齿，
+      // 原版用圆头弧齿，识别度一致而风格不同。
       return eink
           ? const <_Shape>[
-              _Shape.line(3.5, 8, 20.5, 8),
-              _Shape.line(3.5, 16, 20.5, 16),
-              _Shape.rect(8, 6, 3, 4, radius: 0.4, filled: true),
-              _Shape.rect(14, 14, 3, 4, radius: 0.4, filled: true),
+              _Shape.circle(12, 12, 3.0),
+              _Shape.line(12, 2.6, 12, 5.0),
+              _Shape.line(12, 19, 12, 21.4),
+              _Shape.line(2.6, 12, 5, 12),
+              _Shape.line(19, 12, 21.4, 12),
+              _Shape.line(5.4, 5.4, 7.1, 7.1),
+              _Shape.line(16.9, 16.9, 18.6, 18.6),
+              _Shape.line(18.6, 5.4, 16.9, 7.1),
+              _Shape.line(7.1, 16.9, 5.4, 18.6),
             ]
           : const <_Shape>[
               _Shape.circle(12, 12, 3.1),
@@ -725,9 +735,17 @@ List<_Shape> _geometry(ReadGlyph glyph, bool eink) {
         _Shape.rect(16, 12.4, 4.4, 7.4, radius: eink ? 0 : 2, filled: true),
       ];
     case ReadGlyph.moon:
+      // 实心月牙（任务 413）：两圆求交生成的多边形，两端尖角自然。
       return <_Shape>[
-        _Shape.arc(13.4, 11.4, 8.2, math.pi * 1.28, math.pi * 1.42),
-        _Shape.arc(16.4, 8.4, 6.4, math.pi * 1.3, math.pi * 0.82),
+        const _Shape.poly(<double>[
+          13.1, 3.0, 11.2, 3.1, 9.4, 3.6, 7.7, 4.5, 6.2, 5.7, 5.1, 7.2,
+          4.2, 8.9, 3.8, 10.7, 3.7, 12.6, 4.0, 14.4, 4.7, 16.2, 5.8, 17.8,
+          7.1, 19.1, 8.7, 20.1, 10.5, 20.7, 12.3, 21.0, 14.2, 20.9, 16.0,
+          20.4, 17.7, 19.5, 19.2, 18.3, 20.3, 16.8, 20.3, 16.8, 18.7, 17.4,
+          16.9, 17.7, 15.2, 17.6, 13.5, 17.1, 12.0, 16.2, 10.7, 15.0, 9.7,
+          13.6, 9.0, 11.9, 8.8, 10.2, 8.9, 8.4, 9.5, 6.8, 10.4, 5.2, 11.6,
+          4.0, 13.1, 3.0,
+        ], filled: true),
       ];
     case ReadGlyph.sun:
       return <_Shape>[
@@ -766,10 +784,20 @@ List<_Shape> _geometry(ReadGlyph glyph, bool eink) {
         _Shape.rect(7.4, 7.4, 9.2, 9.2, radius: eink ? 0 : 1.6, filled: true),
       ];
     case ReadGlyph.quote:
-      return <_Shape>[
-        _Shape.poly(const <double>[6.6, 4.8, 3.4, 10.6, 6.6, 16.4], filled: true),
-        _Shape.poly(const <double>[17.4, 4.8, 14.2, 10.6, 17.4, 16.4], filled: true),
-      ];
+      // 双引号（任务 413）：两个逗号形引号，避免误读为"快退"。
+      return eink
+          ? const <_Shape>[
+              _Shape.circle(8.4, 9.2, 2.0),
+              _Shape.line(9.4, 11.0, 6.6, 17.6),
+              _Shape.circle(16.4, 9.2, 2.0),
+              _Shape.line(17.4, 11.0, 14.6, 17.6),
+            ]
+          : const <_Shape>[
+              _Shape.circle(8.4, 9.2, 2.1, filled: true),
+              _Shape.line(9.4, 11.0, 6.6, 17.6),
+              _Shape.circle(16.4, 9.2, 2.1, filled: true),
+              _Shape.line(17.4, 11.0, 14.6, 17.6),
+            ];
     case ReadGlyph.minus:
       return const <_Shape>[
         _Shape.line(5, 12, 19, 12),

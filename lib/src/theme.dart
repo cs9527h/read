@@ -101,30 +101,200 @@ class _NoAnimationTransitionsBuilder extends PageTransitionsBuilder {
       child;
 }
 
+/// 墨水屏专用主题（任务 403/423/473）：
+/// - 纯黑白、零阴影、零强调色，层级靠【字重 + 边框】而非灰度/颜色区分；
+/// - 完整配置各组件，避免退回 Material 默认的圆角、阴影、蓝色强调；
+/// - 全局无动画（路由、水波纹、滑块反馈），但通过字阶与 2px 描边保持精致。
+ThemeData _buildEinkTheme({double fontScale = 1.0}) {
+  const Color ink = Colors.black;
+  const Color paper = Colors.white;
+  final TextTheme base = Typography.material2021().black;
+  TextStyle ts(double size, FontWeight weight, {double height = 1.35}) =>
+      base.bodyMedium!.copyWith(
+        fontSize: size * fontScale,
+        fontWeight: weight,
+        height: height,
+        color: ink,
+        letterSpacing: -0.1,
+      );
+
+  final TextTheme einkText = TextTheme(
+    displayLarge: ts(34, FontWeight.w700, height: 1.15),
+    headlineLarge: ts(26, FontWeight.w700, height: 1.2),
+    headlineMedium: ts(21, FontWeight.w700),
+    headlineSmall: ts(18, FontWeight.w700),
+    titleLarge: ts(18, FontWeight.w700),
+    titleMedium: ts(15, FontWeight.w700),
+    titleSmall: ts(14, FontWeight.w600),
+    bodyLarge: ts(15, FontWeight.w400, height: 1.55),
+    bodyMedium: ts(14, FontWeight.w400, height: 1.55),
+    bodySmall: ts(12, FontWeight.w400, height: 1.45),
+    labelLarge: ts(14, FontWeight.w600),
+    labelMedium: ts(12, FontWeight.w600),
+    labelSmall: ts(11, FontWeight.w500),
+  );
+
+  return ThemeData(
+    useMaterial3: false,
+    brightness: Brightness.light,
+    scaffoldBackgroundColor: paper,
+    canvasColor: paper,
+    primaryColor: ink,
+    colorScheme: const ColorScheme.light(
+      primary: ink,
+      onPrimary: paper,
+      secondary: ink,
+      onSecondary: paper,
+      surface: paper,
+      onSurface: ink,
+      error: ink,
+      onError: paper,
+    ),
+    textTheme: einkText,
+    iconTheme: const IconThemeData(color: ink, size: 22),
+    dividerColor: const Color(0xFF9A9A9A),
+    dividerTheme: const DividerThemeData(
+      color: Color(0xFF9A9A9A),
+      thickness: 1,
+      space: 1,
+    ),
+    appBarTheme: AppBarTheme(
+      backgroundColor: paper,
+      foregroundColor: ink,
+      iconTheme: const IconThemeData(color: ink, size: 24),
+      actionsIconTheme: const IconThemeData(color: ink, size: 22),
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      centerTitle: false,
+      titleSpacing: 16,
+      titleTextStyle: ts(19, FontWeight.w700, height: 1.2),
+      shape: const Border(bottom: BorderSide(color: ink, width: 2)),
+      toolbarHeight: 56,
+    ),
+    // 按钮：选中=实心黑底白字，次级=黑边白底直角，靠填充而非颜色表达层级。
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        backgroundColor: ink,
+        foregroundColor: paper,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+        elevation: 0,
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+      ),
+    ),
+    elevatedButtonTheme: ElevatedButtonThemeData(
+      style: ElevatedButton.styleFrom(
+        backgroundColor: ink,
+        foregroundColor: paper,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+        elevation: 0,
+      ),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        foregroundColor: ink,
+        side: const BorderSide(color: ink, width: 1.6),
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+      ),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(
+        foregroundColor: ink,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+      ),
+    ),
+    // 开关/复选/单选：关闭=灰描边空心，开启=实心黑，用填充区分状态。
+    switchTheme: SwitchThemeData(
+      thumbColor: WidgetStateProperty.resolveWith<Color>(
+        (Set<WidgetState> s) => s.contains(WidgetState.selected) ? paper : ink,
+      ),
+      trackColor: WidgetStateProperty.resolveWith<Color>(
+        (Set<WidgetState> s) => s.contains(WidgetState.selected) ? ink : paper,
+      ),
+      trackOutlineColor: WidgetStateProperty.all<Color>(ink),
+    ),
+    checkboxTheme: CheckboxThemeData(
+      fillColor: WidgetStateProperty.resolveWith<Color>(
+        (Set<WidgetState> s) => s.contains(WidgetState.selected) ? ink : paper,
+      ),
+      checkColor: WidgetStateProperty.all<Color>(paper),
+      side: const BorderSide(color: ink, width: 1.6),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+    ),
+    radioTheme: RadioThemeData(
+      fillColor: WidgetStateProperty.resolveWith<Color>(
+        (Set<WidgetState> s) => s.contains(WidgetState.selected) ? ink : ink,
+      ),
+    ),
+    sliderTheme: const SliderThemeData(
+      activeTrackColor: ink,
+      inactiveTrackColor: Color(0xFFBFBFBF),
+      thumbColor: ink,
+      overlayColor: Color(0x1A000000),
+      activeTickMarkColor: ink,
+      inactiveTickMarkColor: Color(0xFF9A9A9A),
+      valueIndicatorColor: ink,
+      showValueIndicator: ShowValueIndicator.onDrag,
+    ),
+    progressIndicatorTheme: const ProgressIndicatorThemeData(
+      color: ink,
+      linearTrackColor: Color(0xFFBFBFBF),
+      circularTrackColor: Color(0xFFBFBFBF),
+    ),
+    bottomSheetTheme: const BottomSheetThemeData(
+      backgroundColor: paper,
+      modalBackgroundColor: paper,
+      elevation: 0,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+    ),
+    dialogTheme: const DialogThemeData(
+      backgroundColor: paper,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.zero,
+        side: BorderSide(color: ink, width: 2),
+      ),
+      titleTextStyle: TextStyle(
+        color: ink,
+        fontSize: 18,
+        fontWeight: FontWeight.w700,
+      ),
+      contentTextStyle: TextStyle(color: ink, fontSize: 14, height: 1.5),
+    ),
+    snackBarTheme: const SnackBarThemeData(
+      backgroundColor: ink,
+      contentTextStyle: TextStyle(color: paper, fontSize: 13),
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+    ),
+    tabBarTheme: TabBarThemeData(
+      labelColor: ink,
+      unselectedLabelColor: const Color(0xFF555555),
+      labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+      unselectedLabelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w400),
+      indicator: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: ink, width: 3)),
+      ),
+    ),
+    pageTransitionsTheme: const PageTransitionsTheme(
+      builders: <TargetPlatform, PageTransitionsBuilder>{
+        TargetPlatform.android: _NoAnimationTransitionsBuilder(),
+        TargetPlatform.windows: _NoAnimationTransitionsBuilder(),
+      },
+    ),
+    splashFactory: NoSplash.splashFactory,
+    tooltipTheme: TooltipThemeData(
+      decoration: ShapeDecoration(
+        color: ink,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+      ),
+      textStyle: const TextStyle(color: paper, fontSize: 12),
+    ),
+  );
+}
+
 ThemeData buildTheme(Brightness brightness, {double fontScale = 1.0}) {
   if (ReadUi.instance.isEink) {
-    return ThemeData(
-      useMaterial3: false,
-      brightness: Brightness.light,
-      scaffoldBackgroundColor: Colors.white,
-      canvasColor: Colors.white,
-      colorScheme: const ColorScheme.light(
-        primary: Colors.black,
-        onPrimary: Colors.white,
-        surface: Colors.white,
-        onSurface: Colors.black,
-      ),
-      textTheme: const TextTheme(
-        bodyMedium: TextStyle(color: Colors.black, fontSize: 18, height: 1.6),
-      ),
-      pageTransitionsTheme: const PageTransitionsTheme(
-        builders: <TargetPlatform, PageTransitionsBuilder>{
-          TargetPlatform.android: _NoAnimationTransitionsBuilder(),
-          TargetPlatform.windows: _NoAnimationTransitionsBuilder(),
-        },
-      ),
-      splashFactory: NoSplash.splashFactory,
-    );
+    return _buildEinkTheme(fontScale: fontScale);
   }
 
   final ReadPalette palette =
