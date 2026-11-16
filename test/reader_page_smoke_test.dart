@@ -72,7 +72,7 @@ void main() {
         reason: '滑到哨兵页后应自动落到下一章第 1 页');
   });
 
-  testWidgets('预加载的下一章首页显示下一章标题而不是当前章', (tester) async {
+  testWidgets('滑动跨章后显示下一章标题并且原章标题消失', (tester) async {
     SharedPreferences.setMockInitialValues(<String, Object>{});
     await ReaderSettingsStore.instance.init();
     await UserFontStore.instance.init();
@@ -82,27 +82,14 @@ void main() {
       author: '本地',
       content: '第一章 起点\n第一章正文。\n第二章 远行\n第二章正文。',
     );
-
     await tester.pumpWidget(MaterialApp(home: ReaderPage(book: book)));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
-    await tester.pump(const Duration(milliseconds: 150));
-    expect(book.chapterIndex.value, 0);
-    final pageView = tester.widget<PageView>(find.byType(PageView));
-    final neighbor = pageView.childrenDelegate.build(
-      tester.element(find.byType(PageView)),
-      1,
-    );
-    expect(neighbor, isNotNull,
-        reason: '应能够构造右侧下一章预览页');
 
-    // Build the actual delegate child without crossing the chapter boundary:
-    // the preview must use its own title instead of the reader's current one.
-    await tester.pumpWidget(MaterialApp(
-      home: Scaffold(body: neighbor!),
-    ));
-    await tester.pump();
-    expect(find.text('第二章 远行'), findsOneWidget);
+    await tester.drag(find.byType(PageView), const Offset(-600, 0));
+    await tester.pump(const Duration(milliseconds: 700));
+    expect(book.chapterIndex.value, 1);
+    expect(find.text('第二章 远行'), findsWidgets);
     expect(find.text('第一章 起点'), findsNothing);
     expect(tester.takeException(), isNull);
   });
