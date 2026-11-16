@@ -195,15 +195,37 @@ class FormatEngine {
       }
     }
     final sections = <String>[];
+    // An EPUB spine entry may start with prose instead of a chapter heading.
+    final numberedHeading = RegExp(
+      r'^(?:第[ \t]*[0-9零一二三四五六七八九十百千万〇两]+[ \t]*[章回卷节篇集部册](?:[ \t]+.*)?|Chapter\s+\d+(?:\s+.*)?)$',
+      caseSensitive: false,
+    );
     for (final spine in opf.findAllElements('itemref')) {
       final path = manifest[spine.getAttribute('idref')];
       if (path == null) continue;
-      final content = htmlToPlainText(read(path));
+      final rawHtml = read(path);
+      final content = htmlToPlainText(rawHtml);
       if (content.isEmpty) continue;
       final firstLine = content.split('\n').first.trim();
-      final title = firstLine.length <= 60 ? firstLine : '正文';
-      sections.add('第' + (sections.length + 1).toString() +
-          '章 ' + title + '\n' + content);
+      final headingText = html_parser.parse(rawHtml)
+          .querySelector('h1, h2, h3, h4, h5, h6')
+          ?.text.trim();
+      final leadingHtmlHeading = headingText != null &&
+          headingText.isNotEmpty &&
+          headingText.length <= 60 &&
+          headingText == firstLine;
+      final genuineHeading = leadingHtmlHeading ||
+          (firstLine.length <= 60 && numberedHeading.hasMatch(firstLine));
+      final title = genuineHeading ? firstLine : '正文';
+      final chapterTitle = numberedHeading.hasMatch(title)
+          ? title
+          : '第${sections.length + 1}章 $title';
+      final body = genuineHeading
+          ? (content.contains('\n')
+              ? content.substring(content.indexOf('\n') + 1).trimLeft()
+              : '')
+          : content;
+      sections.add(body.isEmpty ? chapterTitle : '$chapterTitle\n$body');
     }
     if (sections.isEmpty) {
       throw const FormatException('EPUB 中没有可读取的文字，图片/DRM 内容暂不支持');
