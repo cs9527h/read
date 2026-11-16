@@ -346,15 +346,6 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
           ],
         ),
         _slider(
-          '行距',
-          _settings.lineHeight,
-          1.0,
-          2.8,
-          divisions: 18,
-          label: _settings.lineHeight.toStringAsFixed(2),
-          onChanged: (double v) => _update(<String, Object?>{'lineHeight': v}),
-        ),
-        _slider(
           '字重',
           _settings.fontWeight.toDouble(),
           300,
@@ -404,6 +395,28 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(18, 14, 18, 32),
       children: <Widget>[
+        _section('行距与段距', secondary),
+        _slider(
+          '行距',
+          _settings.lineHeight,
+          1.0,
+          2.8,
+          divisions: 18,
+          label: _settings.lineHeight.toStringAsFixed(2),
+          onChanged: (double v) => _update(<String, Object?>{'lineHeight': v}),
+        ),
+        _segment<String>(
+          label: '段距',
+          value: '${_settings.paragraphSpacingLines.round()}',
+          options: const <String, String>{
+            '0': '无',
+            '1': '空一行',
+            '2': '空两行',
+          },
+          onChanged: (String v) => _update(<String, Object?>{
+            'paragraphSpacingLines': double.parse(v),
+          }),
+        ),
         _section('缩进与对齐', secondary),
         _segment<String>(
           label: '首行缩进',
@@ -436,18 +449,6 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
             'right': '右对齐',
           },
           onChanged: (String v) => _update(<String, Object?>{'align': v}),
-        ),
-        _segment<String>(
-          label: '段距',
-          value: '${_settings.paragraphSpacingLines.round()}',
-          options: const <String, String>{
-            '0': '无',
-            '1': '空一行',
-            '2': '空两行',
-          },
-          onChanged: (String v) => _update(<String, Object?>{
-            'paragraphSpacingLines': double.parse(v),
-          }),
         ),
         _switch(
           '保留原文空行',
