@@ -207,18 +207,18 @@ class _GlyphPainter extends CustomPainter {
     canvas.translate((size.width - 24 * scale) / 2, (size.height - 24 * scale) / 2);
     canvas.scale(scale);
 
-    // 统一线宽与视觉重量（任务 410/411）：普通版圆头略加粗，墨水屏高对比
-    // 线性在细笔画下需要补偿，避免纯黑白时发虚。填充由 10% 提到 13%，
-    // 让实心语义有质感又不至于脏。
+    // 统一线性风格（任务 410/411/412）：干净、直观、识别度优先。
+    // 描边两版一致；"实心"语义一律用纯色实心（不再用半透明填充——那会让
+    // 图标发灰发脏），且两版同样处理，避免原版实心、墨水屏空心造成语义漂移。
     final Paint stroke = Paint()
       ..color = color
       ..style = PaintingStyle.stroke
-      ..strokeWidth = (eink ? 1.35 : 1.9) * strokeScale
-      ..strokeCap = eink ? StrokeCap.square : StrokeCap.round
-      ..strokeJoin = eink ? StrokeJoin.miter : StrokeJoin.round
+      ..strokeWidth = (eink ? 1.7 : 1.8) * strokeScale
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
       ..isAntiAlias = true;
     final Paint fill = Paint()
-      ..color = color.withValues(alpha: 0.13)
+      ..color = color
       ..style = PaintingStyle.fill
       ..isAntiAlias = true;
 
@@ -231,10 +231,10 @@ class _GlyphPainter extends CustomPainter {
           for (int i = 2; i < shape.p.length; i += 2) {
             path.lineTo(shape.p[i], shape.p[i + 1]);
           }
-          if (shape.filled && !eink) canvas.drawPath(path, fill);
+          if (shape.filled) canvas.drawPath(path, fill);
           canvas.drawPath(path, stroke);
         case _Kind.circle:
-          if (shape.filled && !eink) {
+          if (shape.filled) {
             canvas.drawCircle(Offset(shape.a, shape.b), shape.c, fill);
           }
           canvas.drawCircle(Offset(shape.a, shape.b), shape.c, stroke);
@@ -245,10 +245,10 @@ class _GlyphPainter extends CustomPainter {
               rect,
               Radius.circular(eink ? 0.5 : shape.radius),
             );
-            if (shape.filled && !eink) canvas.drawRRect(rr, fill);
+            if (shape.filled) canvas.drawRRect(rr, fill);
             canvas.drawRRect(rr, stroke);
           } else {
-            if (shape.filled && !eink) canvas.drawRect(rect, fill);
+            if (shape.filled) canvas.drawRect(rect, fill);
             canvas.drawRect(rect, stroke);
           }
         case _Kind.arc:
@@ -347,15 +347,11 @@ List<_Shape> _geometry(ReadGlyph glyph, bool eink) {
         const _Shape.dot(18.8, 12, 1.55),
       ];
     case ReadGlyph.search:
-      return eink
-          ? const <_Shape>[
-              _Shape.circle(10.6, 10.6, 6.2),
-              _Shape.line(15.2, 15.2, 20.4, 20.4),
-            ]
-          : const <_Shape>[
-              _Shape.circle(10.4, 10.4, 6.6, filled: true),
-              _Shape.line(15.4, 15.4, 20.2, 20.2),
-            ];
+      // 放大镜统一为干净的线性造型（去实心镜片，避免像实心圆点）。
+      return const <_Shape>[
+        _Shape.circle(10.6, 10.6, 6.4),
+        _Shape.line(15.4, 15.4, 20.2, 20.2),
+      ];
     case ReadGlyph.plus:
       return const <_Shape>[
         _Shape.line(12, 4.8, 12, 19.2),
@@ -491,17 +487,15 @@ List<_Shape> _geometry(ReadGlyph glyph, bool eink) {
         _Shape.poly(<double>[5.6, 14, 12, 19.8, 18.4, 14]),
       ];
     case ReadGlyph.book:
-      return eink
-          ? const <_Shape>[
-              _Shape.poly(<double>[3.8, 5, 9.6, 5, 12, 7.2, 14.4, 5, 20.2, 5, 20.2, 19, 14.4, 19, 12, 21.2]),
-              _Shape.poly(<double>[3.8, 5, 3.8, 19, 9.6, 19, 12, 21.2]),
-              _Shape.line(12, 7.2, 12, 21.2),
-            ]
-          : const <_Shape>[
-              _Shape.poly(<double>[3.4, 4.6, 9.4, 4.6, 12, 7, 14.6, 4.6, 20.6, 4.6, 20.6, 18.6, 14.6, 18.6, 12, 20.8], filled: true),
-              _Shape.poly(<double>[3.4, 4.6, 3.4, 18.6, 9.4, 18.6, 12, 20.8]),
-              _Shape.line(12, 7, 12, 20.8),
-            ];
+      // 打开的书：左右两页 + 书脊，纯线性，两版一致、小尺寸清晰。
+      return const <_Shape>[
+        // 左页
+        _Shape.poly(<double>[3.6, 5.2, 10.6, 6.4, 12, 8.2, 12, 20.2, 10.6, 18.6, 3.6, 17.6, 3.6, 5.2]),
+        // 右页
+        _Shape.poly(<double>[20.4, 5.2, 13.4, 6.4, 12, 8.2, 12, 20.2, 13.4, 18.6, 20.4, 17.6, 20.4, 5.2]),
+        // 书脊
+        _Shape.line(12, 8.2, 12, 20.2),
+      ];
     case ReadGlyph.info:
       return <_Shape>[
         const _Shape.circle(12, 12, 8.4),
@@ -595,13 +589,13 @@ List<_Shape> _geometry(ReadGlyph glyph, bool eink) {
       ];
     case ReadGlyph.image:
       return <_Shape>[
-        _Shape.rect(3.6, 4.4, 16.8, 15.2, radius: eink ? 0 : 2.4, filled: true),
+        _Shape.rect(3.6, 4.4, 16.8, 15.2, radius: eink ? 0 : 2.4),
         const _Shape.circle(8.6, 9.2, 1.7),
         const _Shape.poly(<double>[4.4, 17.4, 9.6, 12.4, 13.2, 15.6, 16, 13, 19.8, 17.2]),
       ];
     case ReadGlyph.camera:
       return <_Shape>[
-        _Shape.rect(3.4, 6.6, 17.2, 13.4, radius: eink ? 0 : 2.6, filled: true),
+        _Shape.rect(3.4, 6.6, 17.2, 13.4, radius: eink ? 0 : 2.6),
         const _Shape.circle(12, 13, 4),
         const _Shape.poly(<double>[8.6, 6.6, 9.8, 4.2, 14.2, 4.2, 15.4, 6.6]),
       ];
@@ -614,7 +608,7 @@ List<_Shape> _geometry(ReadGlyph glyph, bool eink) {
       ];
     case ReadGlyph.lock:
       return <_Shape>[
-        _Shape.rect(5, 10.6, 14, 10, radius: eink ? 0 : 2.2, filled: true),
+        _Shape.rect(5, 10.6, 14, 10, radius: eink ? 0 : 2.2),
         _Shape.arc(12, 10.6, 4.6, math.pi, math.pi),
         const _Shape.dot(12, 15.4, 1.1),
       ];
@@ -656,11 +650,11 @@ List<_Shape> _geometry(ReadGlyph glyph, bool eink) {
           : const <_Shape>[
               _Shape.poly(<double>[4.2, 4.2, 16.6, 4.2, 19.8, 7.4, 19.8, 19.8, 4.2, 19.8]),
               _Shape.rect(8.2, 4.2, 7.6, 5.2, radius: 1),
-              _Shape.rect(7.2, 12.2, 9.6, 7.6, radius: 1.4, filled: true),
+              _Shape.rect(7.2, 12.2, 9.6, 7.6, radius: 1.4),
             ];
     case ReadGlyph.device:
       return <_Shape>[
-        _Shape.rect(6.6, 2.8, 10.8, 18.4, radius: eink ? 0 : 2.6, filled: true),
+        _Shape.rect(6.6, 2.8, 10.8, 18.4, radius: eink ? 0 : 2.6),
         const _Shape.line(10.4, 5.2, 13.6, 5.2),
         const _Shape.line(10.6, 18.4, 13.4, 18.4),
       ];
@@ -761,7 +755,7 @@ List<_Shape> _geometry(ReadGlyph glyph, bool eink) {
       ];
     case ReadGlyph.note:
       return <_Shape>[
-        _Shape.rect(4.4, 3.6, 15.2, 16.8, radius: eink ? 0 : 2.2, filled: true),
+        _Shape.rect(4.4, 3.6, 15.2, 16.8, radius: eink ? 0 : 2.2),
         const _Shape.line(8, 8.4, 16, 8.4),
         const _Shape.line(8, 12.4, 16, 12.4),
         const _Shape.line(8, 16.4, 13, 16.4),
