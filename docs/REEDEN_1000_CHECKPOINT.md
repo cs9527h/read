@@ -1,73 +1,75 @@
 # READ × Reeden 1000 · 执行检查点（机器可恢复）
 
 > 本文件供上下文/额度耗尽后下一轮精确恢复。每批结束必须更新本文件。
+> 最近更新：本轮「全面大改 v2.0」（用户新指令：单手机版 + 低版本安卓 + 对标 Reeden 重做）
 
 ## 环境与仓库
 - 仓库：cs9527h/read（default branch `main`）
 - GitHub token：存于 `/root/.gh_token`（用户提供，勿提交仓库）
-- 本地工作分支：`work/reeden-1000`，基线 = GitHub main `d23c86b`
+- **当前工作分支：`work/reeden-v2`**，基线 = GitHub main `7bd405d`（v1.1.1-preview 已合并）
+- 旧分支 `work/reeden-1000` 已完成历史交付，勿再用
 - Flutter：`/opt/flutter350/bin/flutter`（3.50.0 / Dart 3.14.0）。系统默认 flutter 是 3.0.0，不可用！
-- 基线验证：analyze 0 error/0 warning（149 infos）；flutter test 149/149 通过
+- 验证基准：analyze 0 error/0 warning（146 infos）；flutter test 156/156 通过
+
+## 用户本轮新指令（最高优先级）
+1. 手机版已内置墨水屏模式 → **去掉独立 eink APK**，只发一个手机版。
+2. **尽可能覆盖低版本安卓**：Flutter 3.50 官方下限 = API 24（Android 7.0），
+   API 23 及以下属引擎 Unsupported（强行改 minSdk 会运行时崩溃，属虚报）。故以 24 为下限做完整兼容。
+3. 之前要求的功能「全面详细重新大改对标 Reeden」——持续逐批做真实代码，不虚报。
 
 ## 任务包与中间产物
 - 任务书原文：`/root/.codebuddy/artifact/2f8a7d30-9c21-4f0b-1d73-8da1ff5e8000/task1000/READ_Reeden_1000_混元Flash_开发任务书.md`
-- 解析脚本：`.../parse_requirements.py`（→ requirements.json）
-- 分类表：`.../classify.py`（→ classified.json）
-- 台账生成：`.../gen_ledger.py`（→ docs/READ_REEDEN_1000_STATUS.md + .csv）
-- 更新某条状态：编辑 classify.py 的 OVERRIDE，重跑 classify.py + gen_ledger.py
+- 解析脚本 `parse_requirements.py` → requirements.json；分类表 `classify.py` → classified.json
+- 台账生成 `gen_ledger.py` → docs/READ_REEDEN_1000_STATUS.md + .csv
+- 更新某条：编辑 classify.py，重跑 `classify.py` + `gen_ledger.py`
 
-## 1000 项台账状态（第 3 批后）
-- ✅ 已验证完成 V：39
-- 🟡 已实现待验证 I：260
+## 1000 项台账状态（本轮第 2 批后）
+- ✅ 已验证完成 V：41
+- 🟡 已实现待验证 I：261
 - ◐ 部分实现 P：302
 - ⛔ 客观阻塞 B：52（真机/真网盘账号/多设备/第三方授权）
-- ⬜ 未开始 N：347
-- 合计 1000。**绝不虚报完成。**
+- ⬜ 未开始 N：344
+- 合计 1000。**绝不虚报完成。**（V+I=302 有源码支撑，P/B/N=698 如实标注缺口）
 
-## 逐批进度
+## 本轮逐批进度
 | 批次 | 范围 | 状态 | commit | 说明 |
 |---|---|---|---|---|
-| 1 | R0001-R0040（审计+台账基线） | 已推送 | 14a82b0 | 建保护分支、基线测试、生成1000台账 |
-| 2 | 阅读内核 P0（EPUB spine）+ 对标矩阵 | 已推送+CI绿 | bef009e(+a5b137d,22db52d) | 合入 PR#46 同源修复；3 份能力矩阵；CI build-android/windows success |
-| 3 | 分章跨行吞正文 bug | 已推送+CI绿 | bd56614 | 标题正则 \s→[ \t]；chapter_splitter 8/8；全量 152/152 |
-| 4 | 台账证据更新 | 已推送+CI绿 | 5d33421 | R0282 升已验证；CI build-android/windows 均 success |
-| 5 | 发布准备（版本 1.1.1+13 + 发布说明） | 进行中 | 待提交 | bump 版本保升级兼容；RELEASE_1_1_1.md |
+| v2-1 | 单一手机版 + 低版本安卓适配 | 已推送+CI绿 | 9623fa1 | 移除 eink 独立包；patch_android.py 统一适配（minSdk24/ABI/明文同步/权限/lint）；APK 断言；CI build-android success |
+| v2-2 | 书内搜索历史（R0316/R0317）+ 台账纠错 | 已推送 | 7f55f3e | SearchHistoryStore 4/4 测试；UI 接入；R0466 置顶误判纠正；全量 156/156 |
+| v2-3 | 待定（草稿） | 未开始 | - | 见下方建议 |
+| v2-4 | 发布 2.0 + tag | 未开始 | - | - |
 
 ## GitHub 状态
-- 工作分支：`work/reeden-1000`（已推送 origin）
-- PR #47 已合并 main（squash `7bd405d`）；合并前 CI 全绿：bef009e/5d33421/19a82d9 的 apk+windows 均 success
-- 已打 tag `v1.1.1-preview` @ `7bd405d`，已触发 release workflow（构建手机 APK + 墨水屏 APK + SHA256）
-- 发布说明：`docs/RELEASE_1_1_1.md`；包名不变（app.readen.read / app.readen.read.eink），支持覆盖安装
+- 工作分支 `work/reeden-v2` 已推送；**PR #48**（→ main）已创建，等待合并
+- PR #48：v2-1 CI 绿（build-android 9623fa1 success）；v2-2 提交 7f55f3e 的 CI 进行中
+- 尚未合并 main、尚未打 2.0 tag。合并/发布前确认 7f55f3e 的 apk+windows 均 success
 
 ## 下一轮恢复命令
 ```bash
 cd /workspace/read-app
-git checkout work/reeden-1000
-git pull --rebase   # 如需同步 main 合并后的状态
+git checkout work/reeden-v2 && git pull --rebase
 /opt/flutter350/bin/flutter analyze --no-fatal-infos
 /opt/flutter350/bin/flutter test
-cat docs/READ_REEDEN_1000_STATUS.md | head -20
+head -20 docs/READ_REEDEN_1000_STATUS.md
 ```
 
-## 下一批建议（按未开始项优先级）
-1. 模块 09（脚注/复杂排版，30 未开始）与模块 15（笔记导出，34 未开始）——可本地实现+测试，价值高。
-2. 模块 18（词典/生词本）先做本地词库骨架 + 生词本 CRUD（可测），在线服务标授权阻塞。
-3. 模块 16 阅读目标（分钟/字数/年度本数）+ 单元测试。
-4. 继续把「已实现待验证」中有本地测试可行的条目升级为已验证，逐批 commit + CI。
-> 每批结束：更新 classify.py → 重跑 gen_ledger.py → commit → push → 合并 → 必要时打 tag。
-
-## 已识别的真实高价值修复候选（按优先级）
-1. **EPUB spine 开篇正文被误当作重复标题** —— PR #46（fix/read-epub-chapter-content-20261116-0723, commits c6a55fa+7a7af5c5）已修好且 CI 绿，未合并。涉及 R0125/R0126/R0219。可 cherry-pick 或按 diff 手工移植。
-2. **format_engine 40MB 上限**:超大 TXT 直接抛错（R0124），需分段索引。
-3. **空开关/半成品入口扫描**:逐项核对 R0021/R0891/R0992。
+## 下一批建议（按真实缺口，均已核对代码，非台账臆测）
+1. **笔记导出/书摘分享（模块 15，34 未开始）**：读取 highlight_store/bookmark_meta_store，做 Markdown/TXT 导出 + 分享，可本地测试。价值高、风险低。
+2. **阅读统计补充（模块 16）**：目标（分钟/字数/年度本数），基于 reading_stats_store 扩展 + 单测。
+3. **书籍元数据导出（R0465/R0479）**：书架多选导出元数据 JSON + 整库备份，可测。
+4. 逐批把「已实现待验证」中有本地测试可行的条目升为已验证。
+> 已核对确认为**已实现**（勿重复做）：R0466 置顶（Book.pinned+setPinned+完整UI）、
+> R0172 位置返回（_positionHistory 栈 + _goBackPosition + UI 入口 2074）、
+> R0239 排版防抖（180ms Timer）、R0316/R0317 搜索历史（本轮新增）。
 
 ## 客观阻塞（本环境无法满足，如实记录）
-- 所有需 Android 真机录屏/性能测试/安装回归项（R0015/R0200/R0280/R0397/R0984 等）
-- 所有需真实网盘账号授权的云盘接入（百度/123/OneDrive/GDrive/Dropbox，R0811-R0821）
+- 需 Android 真机录屏/性能/安装回归的项（R0015/R0200/R0280/R0397/R0984 等）
+- 需真实网盘账号授权的云盘接入（百度/123/OneDrive/GDrive/Dropbox，R0811-R0821）
 - 双设备同步验证（R0800/R0985）
 - 第三方付费 API（在线 TTS/翻译/AI，需用户提供密钥）
 
 ## 不可触碰
-- 包名、签名、用户数据库、旧版 data schema 必须保持升级兼容
+- 包名（app.readen.read）、固定预览签名、用户数据库 schema、旧版升级兼容必须保持
+- **注意**：本轮已移除 app.readen.read.eink 独立包；若用户反悔需恢复独立包，参考 git 历史 v1.1.1
 - 不得提交 token / 私钥 / 私人书籍 / 真实凭据
 - 不得修改 GitHub 仓库可见性与权限
