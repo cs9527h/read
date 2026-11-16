@@ -38,7 +38,7 @@
 | 024 | PASS | 分页连续不重不漏；reader_engine_test「分页不遗漏不重复」 |
 | 025 | PASS | 标题单独测量 titleBlockHeight，与正文区分页 |
 | 026 | PASS | 原文首行即标题时正文跳过、锚点保留（本轮修复） |
-| 027 | PARTIAL | 无章节 TXT 显示「全文」；是否过度需按实际观感调整 |
+| 027 | PASS | titleBlockHeight 对哨兵标题「全文」返回 0，不画成巨大标题（本轮修复） |
 | 028 | NOT_STARTED | 超长章节分块/isolate 未做，目前同步测量 |
 | 029 | PASS | 缓存键 = 签名+章节 |
 | 030 | PASS | 仅排版参数变化失效缓存 |
@@ -117,7 +117,7 @@
 | 088 | PARTIAL | 跳转按整书字符位置（reader_page_smoke_test 有），未真机 |
 | 089 | PARTIAL | 目录搜索/定位/跳转存在；未逐一验 |
 | 090 | PARTIAL | 目录打开定位当前章；未验 |
-| 091 | NOT_STARTED | 设置面板仍一次展示较多项，未重排 |
+| 091 | PARTIAL | 设置面板已按 字体/段落/主题/页眉页脚/翻页/布局/高级 分 Tab，常用项在前；各 Tab 内仍偏多 |
 | 092 | PARTIAL | 常用项在前；是否简化未审 |
 | 093 | PARTIAL | 高级设置收纳存在；未核 |
 | 094 | PARTIAL | 字号加减+滑块存在；未验 |
@@ -245,9 +245,9 @@
 | 191 | PARTIAL | WebDAV 冲突/离线/错误凭据/损坏测试部分 |
 | 192 | BLOCKED | 需真机 100 次翻页 |
 | 193 | BLOCKED | 需分别构建/检查两变体 |
-| 194 | PASS | flutter analyze 0 error 0 warning |
-| 195 | PASS | flutter test --no-pub 123/123 通过 |
-| 196 | PARTIAL | CI 构建待触发 |
+| 194 | PASS | flutter analyze --no-fatal-infos 0 error 0 warning（本地 + CI） |
+| 195 | PASS | flutter test --no-pub 124/124 通过（本地 + CI） |
+| 196 | PASS | CI build-android + build-windows-experimental 全绿（run 见 PR #37） |
 | 197 | PARTIAL | 版本/包名/签名/升级兼容待核 |
 | 198 | PARTIAL | PR 待提交 |
 | 199 | PARTIAL | 0.8.0 Preview 发布待完成 |
