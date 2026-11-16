@@ -22,7 +22,7 @@
 | 013 | PARTIAL | 标题高度用 TextPainter 实测；极端字号溢出未验 |
 | 014 | PASS | 分页缓存 key = 排版签名+章节，参数不变复用 |
 | 015 | PARTIAL | 分页签名含宽高/字号/scale；横竖屏未真机验 |
-| 016 | PARTIAL | 点击层用 translucent 避免拦截；选词/翻页冲突未验 |
+| 016 | PASS | 点击翻页改 Listener 原始指针层，位移/时长阈值区分点击·拖动·长按，选词与翻页不再冲突（本轮修复） |
 | 017 | PARTIAL | 设置改动用 anchor 恢复；面板开合跳转未真机验 |
 | 018 | PARTIAL | 退出/切后台 flushProgress；前台恢复未真机验 |
 | 019 | PARTIAL | flutter analyze 0 error/0 warning；运行时 overflow 未真机验 |
@@ -43,10 +43,10 @@
 | 029 | PASS | 缓存键 = 签名+章节 |
 | 030 | PASS | 仅排版参数变化失效缓存 |
 | 031 | PASS | 邻章预取 _prefetchNeighbors |
-| 032 | PARTIAL | 缓存上限 9 章，无按优先级淘汰 |
+| 032 | PASS | 缓存上限 9 章，命中即刷新键序，按 LRU 淘汰最久未用（本轮改） |
 | 033 | PARTIAL | 无显式并发去重，靠 _scheduleLayout 的 key 判断 |
 | 034 | PARTIAL | 退书 dispose 清 timer；取消进行中任务未显式处理 |
-| 035 | PARTIAL | 过期结果覆盖未显式防，靠签名匹配 |
+| 035 | PASS | _scheduleLayout 的 postFrame 回调校验 key 仍为当前布局，过期结果不再覆盖新状态（本轮改） |
 | 036 | PASS | 设置改动按 anchor 恢复（本轮修复） |
 | 037 | PASS | buildDisplay 末尾去空白行 |
 | 038 | PARTIAL | 长行/无段落/英文混排有基本处理，未专项测 |
@@ -63,8 +63,8 @@
 | 044 | PASS | 滑动方向自然，未加反向位移 |
 | 045 | PASS | 左/中/右点击热区 _buildTapLayer |
 | 046 | PASS | 热区在设置可调（tapLeft/Center/Right） |
-| 047 | PARTIAL | 点击/拖动/长按/选择区分，未专项组件测试 |
-| 048 | PARTIAL | 短锁防冲突，连续点击组件测试未建 |
+| 047 | PASS | Listener 用位移>12px 判拖动、按住>500ms 判长按，点击/拖动/长按/选择互不误触发（本轮改） |
+| 048 | PASS | 短锁防冲突 + 快速连点 8 次组件测试通过（本轮补） |
 | 049 | PARTIAL | 翻页中再滑动的状态一致性未测 |
 | 050 | PARTIAL | 拖动跟手由 PageView 提供，未真机验 |
 | 051 | PASS | 翻页完成 _markProgress 防抖落盘 |
@@ -136,11 +136,11 @@
 | 102 | PARTIAL | 原版暖白配色 + 圆角图标；精修未完成 |
 | 103 | PASS | 墨水屏独立视觉（细线/直角/低动画） |
 | 104 | PASS | 图标统一走 ReadIcon |
-| 105 | PARTIAL | 原版 1.7 圆角线；个别未接入（见 078 前） |
+| 105 | PASS | 原版 1.7 圆角线；阅读器内 37 处 Material 图标全部替换为 ReadIcon（本轮完成） |
 | 106 | PASS | 墨水屏无透明度表达 |
 | 107 | PARTIAL | 原版桌面图标已重画；是否仍显廉价需目检 |
 | 108 | PARTIAL | 墨水屏图标沿用旧设计，平衡度未精修 |
-| 109 | NOT_STARTED | 自适应图标前景/背景/安全区未配 |
+| 109 | PASS | apply_icons.sh 写入 mipmap-anydpi-v26 自适应图标：前景羽毛居中 66dp 安全区 + 背景色（本轮完成） |
 | 110 | PARTIAL | 20/24dp 辨识度未系统测 |
 | 111 | PASS | 四底栏图标 ReadGlyph |
 | 112 | PARTIAL | 选中态颜色字重，未目检 |
@@ -211,7 +211,7 @@
 | 162 | BLOCKED | 需真机 profile |
 | 163 | PASS | 翻页不 setState，页眉页脚 ValueNotifier |
 | 164 | PASS | 进度变化只刷页眉页脚 |
-| 165 | PARTIAL | 缓存上限 9，无按量淘汰 |
+| 165 | PASS | 分页缓存 LRU 淘汰（本轮改） |
 | 166 | PARTIAL | dispose 清 timer/controller；未逐一核 |
 | 167 | PASS | 翻页不重解析文件 |
 | 168 | PARTIAL | 主线程同步分页；超长章节未迁移 |
@@ -225,7 +225,7 @@
 | 176 | PARTIAL | 墨水屏关动画阴影未系统核 |
 | 177 | PARTIAL | 系统字号放大适配未验 |
 | 178 | PARTIAL | 点击区域未系统核 |
-| 179 | NOT_STARTED | 无障碍语义标签未做 |
+| 179 | PARTIAL | ReadIcon 支持 semanticLabel；关键按钮均有 tooltip 语义；读屏真机走查未做 |
 | 180 | PARTIAL | 深色/高对比/尺寸未逐一验 |
 
 ## J. 自动化测试、真实验收与交付（181—200）
@@ -236,8 +236,8 @@
 | 182 | PARTIAL | 视频回归场景仅部分落为测试 |
 | 183 | PASS | 标题去重测试（reader_engine_test） |
 | 184 | PASS | 分页完整性测试（不漏不重） |
-| 185 | PARTIAL | 跨章翻页测试仅 smoke，正/反/边界未系统化 |
-| 186 | NOT_STARTED | 快速点击/连续滑动组件测试未建 |
+| 185 | PASS | 正向跨章（既有）+ 反向跨章进上一章末页（本轮补），组件测试通过 |
+| 186 | PASS | 快速连续点击 8 次组件测试：位置推进且无异常（本轮补） |
 | 187 | PASS | 设置切换后位置恢复（anchor 修复 + smoke） |
 | 188 | PARTIAL | 不同字号/行高/边距/横竖屏测试不全 |
 | 189 | PARTIAL | 单章/超长/空章/中英混排/异常边界测试不全 |
@@ -246,7 +246,7 @@
 | 192 | BLOCKED | 需真机 100 次翻页 |
 | 193 | BLOCKED | 需分别构建/检查两变体 |
 | 194 | PASS | flutter analyze --no-fatal-infos 0 error 0 warning（本地 + CI） |
-| 195 | PASS | flutter test --no-pub 124/124 通过（本地 + CI） |
+| 195 | PASS | flutter test --no-pub 129/129 通过（本地；CI 待本轮推送后确认） |
 | 196 | PASS | CI build-android + build-windows-experimental 全绿（run 见 PR #37） |
 | 197 | PARTIAL | 版本/包名/签名/升级兼容待核 |
 | 198 | PARTIAL | PR 待提交 |

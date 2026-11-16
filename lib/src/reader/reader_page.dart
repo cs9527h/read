@@ -78,6 +78,11 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   bool _cloudBusy = false;
   bool _chapterTransition = false;
 
+  // 点击翻页用原始指针层处理，避免被 SelectableText 的文本选择手势
+  // 抢走 tap，导致点右侧/左侧不翻页（任务 16/45/47）。
+  Offset? _tapDownPosition;
+  DateTime? _tapDownTime;
+
   /// 只用于刷新页眉页脚，避免每次翻页 setState 重建整页。
   final ValueNotifier<int> _pageTick = ValueNotifier<int>(0);
 
@@ -514,19 +519,33 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     _signature = signature;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      // 过期回调防护：排队期间可能又发起了新的布局请求（改字号、旋转、
+      // 窗口变化），旧尺寸的结果不能覆盖新状态（任务 35）。
+      if (key != _layoutKey) return;
       _relayout(measureWidth, bodyHeight);
     });
   }
 
+  // 分页缓存上限：按章节计，超出按 LRU 淘汰最久未命中的一章（任务 32/165）。
+  static const int _kPaginationCacheMax = 9;
+
   void _rememberPagination(String key, PaginatedChapter pagination) {
     _paginationCache[key] = pagination;
-    if (_paginationCache.length > 9) {
+    if (_paginationCache.length > _kPaginationCacheMax) {
       _paginationCache.remove(_paginationCache.keys.first);
     }
   }
 
-  PaginatedChapter? _cachedFor(int index) =>
-      _paginationCache['$_signature|$index'];
+  PaginatedChapter? _cachedFor(int index) {
+    final String key = '$_signature|$index';
+    final PaginatedChapter? pagination = _paginationCache[key];
+    if (pagination != null) {
+      // 命中即刷新 LRU 顺序，让 keys.first 始终是最久未使用的键。
+      _paginationCache.remove(key);
+      _paginationCache[key] = pagination;
+    }
+    return pagination;
+  }
 
   PaginatedChapter _computeFor(int index, double width, double height) {
     final Chapter chapter = _chapters[index];
@@ -1560,7 +1579,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
             ),
             for (final highlight in _highlights)
               ListTile(
-                leading: const Icon(Icons.format_quote_rounded),
+                leading: const ReadIcon(ReadGlyph.quote, size: 20),
                 title: Text(
                   highlight.note.isEmpty ? '高亮' : highlight.note,
                   maxLines: 2,
@@ -1571,7 +1590,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                   style: const TextStyle(fontSize: 11),
                 ),
                 trailing: IconButton(
-                  icon: const Icon(Icons.delete_outline_rounded, size: 20),
+                  icon: const ReadIcon(ReadGlyph.trash, size: 20),
                   onPressed: () async {
                     await HighlightStore.remove(widget.book.id, highlight);
                     final values = await HighlightStore.load(widget.book.id);
@@ -1804,12 +1823,32 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   /// as a full-screen Stack overlay. Overlays intercept hit testing and make
   /// PageView swipes and long-press text selection impossible.
   Widget _buildTapLayer(Widget page) {
-    return GestureDetector(
+    // 用 Listener 而非 GestureDetector：SelectableText 内部的点击手势会在
+    // 手势竞技场里抢走 tap，导致"点击翻页"失效。原始指针事件不参与竞技场，
+    // 因此点击翻页始终可靠，同时拖动交给 PageView、长按交给文本选择。
+    return Listener(
       behavior: HitTestBehavior.translucent,
-      onTapUp: (details) {
-        final width = _pageWidth > 0 ? _pageWidth : MediaQuery.sizeOf(context).width;
-        final x = details.localPosition.dx;
-        final action = x < width * 0.3
+      onPointerDown: (PointerDownEvent event) {
+        _tapDownPosition = event.localPosition;
+        _tapDownTime = DateTime.now();
+      },
+      onPointerUp: (PointerUpEvent event) {
+        final Offset? down = _tapDownPosition;
+        final DateTime? downTime = _tapDownTime;
+        _tapDownPosition = null;
+        _tapDownTime = null;
+        if (down == null || downTime == null) return;
+        // 位移超过阈值视为拖动（交给 PageView/滚动），不当作点击。
+        if ((event.localPosition - down).distance > 12) return;
+        // 按住过久视为长按（交给文本选择），不当作点击。
+        if (DateTime.now().difference(downTime) >
+            const Duration(milliseconds: 500)) {
+          return;
+        }
+        final double width =
+            _pageWidth > 0 ? _pageWidth : MediaQuery.sizeOf(context).width;
+        final double x = down.dx;
+        final String action = x < width * 0.3
             ? _settings.tapLeft
             : x > width * 0.7
                 ? _settings.tapRight
@@ -2147,7 +2186,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                     else
                       IconButton(
                         tooltip: '刷新云端进度',
-                        icon: const Icon(Icons.refresh_rounded, size: 19),
+                        icon: const ReadIcon(ReadGlyph.refresh, size: 19),
                         onPressed: () => Navigator.pop(ctx, 'refresh'),
                       ),
                   ],
@@ -2194,7 +2233,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                         onPressed: configured
                             ? () => Navigator.pop(ctx, 'push')
                             : () => Navigator.pop(ctx, 'settings'),
-                        icon: const Icon(Icons.cloud_upload_outlined, size: 18),
+                        icon: const ReadIcon(ReadGlyph.cloudUpload, size: 18),
                         label: const Text('同步本机'),
                       ),
                     ),
@@ -2204,8 +2243,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                         onPressed: cloud == null
                             ? null
                             : () => Navigator.pop(ctx, 'pull'),
-                        icon: const Icon(Icons.cloud_download_outlined,
-                            size: 18),
+                        icon: const ReadIcon(ReadGlyph.cloudDownload, size: 18),
                         label: const Text('采用云端'),
                       ),
                     ),
@@ -2222,21 +2260,21 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                 ListTile(
                   dense: true,
                   contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.sync_rounded, size: 20),
+                  leading: const ReadIcon(ReadGlyph.sync, size: 20),
                   title: const Text('完整同步书库'),
                   subtitle: Text(SyncConfig.instance.syncFiles
                       ? '数据 + 可选图书原文件（文件会加密上传）'
                       : '数据：书籍信息、书签、笔记、设置；不含图书文件'),
-                  trailing: const Icon(Icons.chevron_right, size: 18),
+                  trailing: const ReadIcon(ReadGlyph.chevronRight, size: 18),
                   onTap: () => Navigator.pop(ctx, 'full'),
                 ),
                 ListTile(
                   dense: true,
                   contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.settings_outlined, size: 20),
+                  leading: const ReadIcon(ReadGlyph.settings, size: 20),
                   title: const Text('云存储与同步范围'),
                   subtitle: const Text('WebDAV / S3、自动同步、文件与数据分开控制'),
-                  trailing: const Icon(Icons.chevron_right, size: 18),
+                  trailing: const ReadIcon(ReadGlyph.chevronRight, size: 18),
                   onTap: () => Navigator.pop(ctx, 'settings'),
                 ),
               ],
@@ -2292,13 +2330,13 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
                 ListTile(
-                  leading: const Icon(Icons.record_voice_over_outlined),
+                  leading: const ReadIcon(ReadGlyph.headphones, size: 20),
                   title: const Text('朗读本页'),
                   subtitle: const Text('使用系统 TTS 引擎，不读取书外内容'),
                   onTap: () => Navigator.pop(ctx, 'page'),
                 ),
                 ListTile(
-                  leading: const Icon(Icons.play_circle_outline_rounded),
+                  leading: const ReadIcon(ReadGlyph.play, size: 20),
                   title: const Text('连续朗读'),
                   subtitle: const Text('读完后自动翻页，直到章节结尾'),
                   onTap: () => Navigator.pop(ctx, 'continuous'),
@@ -2327,15 +2365,15 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                 ),
                 if (_speaking || _ttsPaused)
                   ListTile(
-                    leading: Icon(_ttsPaused
-                        ? Icons.play_circle_outline_rounded
-                        : Icons.pause_circle_outline_rounded),
+                    leading: ReadIcon(
+                        _ttsPaused ? ReadGlyph.play : ReadGlyph.pause,
+                        size: 20),
                     title: Text(_ttsPaused ? '继续朗读' : '暂停朗读'),
                     onTap: () => Navigator.pop(ctx, _ttsPaused ? 'resume' : 'pause'),
                   ),
                 if (_speaking || _ttsPaused)
                   ListTile(
-                    leading: const Icon(Icons.stop_circle_outlined),
+                    leading: const ReadIcon(ReadGlyph.stop, size: 20),
                     title: const Text('停止朗读'),
                     onTap: () => Navigator.pop(ctx, 'stop'),
                   ),
@@ -2733,7 +2771,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                               .replaceAll(RegExp(r'[\r\n]+'), ' ')
                               .trim();
                           return ListTile(
-                            leading: const Icon(Icons.bookmark_rounded),
+                            leading: const ReadIcon(ReadGlyph.bookmark, size: 20),
                             title: Text(
                               preview.isEmpty ? '书签位置' : preview,
                               maxLines: 2,
@@ -2748,7 +2786,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                             ),
                             trailing: IconButton(
                               tooltip: '编辑备注',
-                              icon: const Icon(Icons.edit_note_rounded, size: 20),
+                              icon: const ReadIcon(ReadGlyph.note, size: 20),
                               onPressed: () async {
                                 final note = await _askBookmarkNote(meta?.note ?? '');
                                 if (note == null || !mounted) return;
@@ -2896,13 +2934,13 @@ class _ChapterSheetState extends State<_ChapterSheet> {
               onChanged: (String value) => setState(() => _query = value),
               decoration: InputDecoration(
                 hintText: '搜索章节标题',
-                prefixIcon: const Icon(Icons.search_rounded, size: 18),
+                prefixIcon: const ReadIcon(ReadGlyph.search, size: 18),
                 isDense: true,
                 border: const OutlineInputBorder(),
                 suffixIcon: _query.isEmpty
                     ? null
                     : IconButton(
-                        icon: const Icon(Icons.close_rounded, size: 18),
+                        icon: const ReadIcon(ReadGlyph.close, size: 18),
                         onPressed: () {
                           _controller.clear();
                           setState(() => _query = '');
@@ -2920,13 +2958,13 @@ class _ChapterSheetState extends State<_ChapterSheet> {
                   return Column(
                     children: <Widget>[
                       ListTile(
-                        leading: const Icon(Icons.playlist_add_rounded),
+                        leading: const ReadIcon(ReadGlyph.plus, size: 20),
                         title: const Text('从当前位置新增章节'),
                         subtitle: const Text('手动修正目录边界，不改原文'),
                         onTap: () => Navigator.pop(ctx, 'manual'),
                       ),
                       ListTile(
-                        leading: const Icon(Icons.tune_rounded),
+                        leading: const ReadIcon(ReadGlyph.type, size: 20),
                         title: const Text('章节识别规则'),
                         subtitle: const Text('自动 / 整本一章 / 自定义正则'),
                         onTap: () => Navigator.pop(ctx, 'rules'),
@@ -2963,7 +3001,7 @@ class _ChapterSheetState extends State<_ChapterSheet> {
                   trailing: chapter.manual
                       ? IconButton(
                           tooltip: '删除手动章节',
-                          icon: const Icon(Icons.delete_outline, size: 18),
+                          icon: const ReadIcon(ReadGlyph.trash, size: 18),
                           onPressed: () =>
                               Navigator.pop(ctx, 'remove:${chapter.start}'),
                         )
@@ -3035,7 +3073,7 @@ class _BookSearchDelegate extends SearchDelegate<BookSearchMatch?> {
         if (query.isNotEmpty)
           IconButton(
             tooltip: '清空',
-            icon: const Icon(Icons.clear),
+            icon: const ReadIcon(ReadGlyph.close, size: 22),
             onPressed: () {
               query = '';
               showSuggestions(context);
@@ -3046,7 +3084,7 @@ class _BookSearchDelegate extends SearchDelegate<BookSearchMatch?> {
   @override
   Widget buildLeading(BuildContext context) => IconButton(
         tooltip: '返回',
-        icon: const Icon(Icons.arrow_back),
+        icon: const ReadIcon(ReadGlyph.arrowLeft, size: 22),
         onPressed: () => close(context, null),
       );
 

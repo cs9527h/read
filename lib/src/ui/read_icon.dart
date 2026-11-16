@@ -65,6 +65,12 @@ enum ReadGlyph {
   moon,
   sun,
   note,
+  play,
+  pause,
+  stop,
+  quote,
+  minus,
+  cloudUpload,
 }
 
 /// 一个矢量图标。颜色默认跟随 IconTheme，尺寸默认 22。
@@ -75,6 +81,7 @@ class ReadIcon extends StatelessWidget {
     this.size = 22,
     this.color,
     this.strokeScale = 1,
+    this.semanticLabel,
   });
 
   final ReadGlyph glyph;
@@ -82,11 +89,15 @@ class ReadIcon extends StatelessWidget {
   final Color? color;
   final double strokeScale;
 
+  /// 屏幕阅读器标签。图标在 IconButton/ListTile 里时通常由父级提供语义，
+  /// 裸用时可显式传入，避免 CustomPaint 图标对读屏不可见（任务 179）。
+  final String? semanticLabel;
+
   @override
   Widget build(BuildContext context) {
     final Color resolved =
         color ?? IconTheme.of(context).color ?? Theme.of(context).iconTheme.color ?? Colors.black;
-    return ListenableBuilder(
+    final Widget icon = ListenableBuilder(
       listenable: ReadUi.instance,
       builder: (BuildContext context, Widget? _) {
         return SizedBox(
@@ -103,6 +114,8 @@ class ReadIcon extends StatelessWidget {
         );
       },
     );
+    if (semanticLabel == null) return icon;
+    return Semantics(label: semanticLabel, image: true, child: icon);
   }
 }
 
@@ -733,6 +746,38 @@ List<_Shape> _geometry(ReadGlyph glyph, bool eink) {
         const _Shape.line(8, 8.4, 16, 8.4),
         const _Shape.line(8, 12.4, 16, 12.4),
         const _Shape.line(8, 16.4, 13, 16.4),
+      ];
+    case ReadGlyph.play:
+      return eink
+          ? const <_Shape>[
+              _Shape.poly(<double>[7.8, 5.2, 7.8, 18.8, 18.6, 12]),
+            ]
+          : const <_Shape>[
+              _Shape.poly(<double>[7.2, 4.8, 7.2, 19.2, 19.4, 12], filled: true),
+            ];
+    case ReadGlyph.pause:
+      return const <_Shape>[
+        _Shape.rect(7.4, 5, 3.6, 14, filled: true),
+        _Shape.rect(13, 5, 3.6, 14, filled: true),
+      ];
+    case ReadGlyph.stop:
+      return <_Shape>[
+        _Shape.rect(7.4, 7.4, 9.2, 9.2, radius: eink ? 0 : 1.6, filled: true),
+      ];
+    case ReadGlyph.quote:
+      return <_Shape>[
+        _Shape.poly(const <double>[6.6, 4.8, 3.4, 10.6, 6.6, 16.4], filled: true),
+        _Shape.poly(const <double>[17.4, 4.8, 14.2, 10.6, 17.4, 16.4], filled: true),
+      ];
+    case ReadGlyph.minus:
+      return const <_Shape>[
+        _Shape.line(5, 12, 19, 12),
+      ];
+    case ReadGlyph.cloudUpload:
+      return <_Shape>[
+        ..._geometry(ReadGlyph.cloud, eink),
+        const _Shape.line(12, 15.6, 12, 9.4),
+        const _Shape.poly(<double>[9.6, 12, 12, 9.2, 14.4, 12]),
       ];
   }
 }
