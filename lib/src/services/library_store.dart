@@ -12,6 +12,7 @@ import '../model/book.dart';
 import '../formats/format_engine.dart';
 import '../formats/pdf_format.dart';
 import 'bookmark_store.dart';
+import 'collection_store.dart';
 import 'manual_chapter_store.dart';
 import 'chapter_rule_store.dart';
 
@@ -26,6 +27,21 @@ class LibraryStore extends ChangeNotifier {
   static const String _fontKey = 'read.reader.fontsize';
   static const String _lineKey = 'read.reader.lineheight';
   static const String _bgKey = 'read.reader.bg';
+  static const String _sortKey = 'read.shelf.sort.v1';
+
+  /// 书架排序方式。置顶书始终排在前面，与排序方式无关。
+  static const Map<String, String> sortLabels = <String, String>{
+    'recent': '最近阅读',
+    'added': '加入时间',
+    'title': '书名',
+    'author': '作者',
+    'progress': '阅读进度',
+    'rating': '评分',
+  };
+
+  String _sortMode = 'recent';
+
+  String get sortMode => _sortMode;
 
   final List<Book> books = <Book>[];
   SharedPreferences? _prefs;
@@ -47,6 +63,8 @@ class LibraryStore extends ChangeNotifier {
     _fontSize = _prefs!.getDouble(_fontKey) ?? 18;
     _lineHeight = _prefs!.getDouble(_lineKey) ?? 1.7;
     _backgroundIndex = _prefs!.getInt(_bgKey) ?? 0;
+    final String? sort = _prefs!.getString(_sortKey);
+    if (sort != null && sortLabels.containsKey(sort)) _sortMode = sort;
 
     final loadedBooks = <Book>[];
     final String? raw = _prefs!.getString(_metaKey);
@@ -75,10 +93,35 @@ class LibraryStore extends ChangeNotifier {
 
   void _sortBooks() {
     books.sort((Book a, Book b) {
-      final int ta = a.lastReadAt?.millisecondsSinceEpoch ?? 0;
-      final int tb = b.lastReadAt?.millisecondsSinceEpoch ?? 0;
-      return tb.compareTo(ta);
+      if (a.pinned != b.pinned) return a.pinned ? -1 : 1;
+      final int result;
+      switch (_sortMode) {
+        case 'title':
+          result = a.title.compareTo(b.title);
+        case 'author':
+          result = a.author.compareTo(b.author);
+        case 'added':
+          result = b.addedAt.compareTo(a.addedAt);
+        case 'progress':
+          result = b.progressRatio.compareTo(a.progressRatio);
+        case 'rating':
+          result = b.rating.compareTo(a.rating);
+        default:
+          final int ta = a.lastReadAt?.millisecondsSinceEpoch ?? 0;
+          final int tb = b.lastReadAt?.millisecondsSinceEpoch ?? 0;
+          result = tb.compareTo(ta);
+      }
+      if (result != 0) return result;
+      return a.title.compareTo(b.title);
     });
+  }
+
+  Future<void> setSortMode(String mode) async {
+    if (!sortLabels.containsKey(mode)) return;
+    _sortMode = mode;
+    await _prefs?.setString(_sortKey, mode);
+    _sortBooks();
+    notifyListeners();
   }
 
   Future<Book?> _loadBook(Map<String, dynamic> meta) async {
@@ -275,6 +318,86 @@ class LibraryStore extends ChangeNotifier {
     }
   }
 
+  /// 从绝对路径导入一本书（多选、目录扫描、智能导入共用）。
+  ///
+  /// 与 [importBook] 的区别：不弹系统选择器，调用方负责提供路径。
+  /// 返回 null 表示按内容哈希判定为重复，未重复导入。
+  Future<Book?> importPath(
+    String path, {
+    String? displayName,
+    bool skipDuplicates = true,
+  }) async {
+    final File source = File(path);
+    if (!await source.exists()) {
+      throw const FormatException('文件不存在或已被移动');
+    }
+    final String name = displayName ?? path.split(Platform.pathSeparator).last;
+    final int dot = name.lastIndexOf('.');
+    final String ext = (dot > 0 ? name.substring(dot + 1) : '').toLowerCase();
+    final int fileSize = await source.length();
+
+    if (ext == 'pdf') {
+      await PdfFormat.verifyHeader(source);
+      if (fileSize > 256 * 1024 * 1024) {
+        throw const FormatException('PDF 超过 256MB 上限');
+      }
+      final String hash = await _hashFile(source);
+      if (skipDuplicates && bookByHash(hash) != null) return null;
+      final Directory base = await getApplicationDocumentsDirectory();
+      final Directory dir = Directory('${base.path}/books');
+      await dir.create(recursive: true);
+      final String id = DateTime.now().microsecondsSinceEpoch.toString();
+      final File copy = await source.copy('${dir.path}/$id.pdf');
+      final Book book = Book(
+        id: id,
+        title: dot > 0 ? name.substring(0, dot) : name,
+        author: '本地 PDF',
+        format: 'PDF',
+        content: '',
+        sourcePath: copy.path,
+        contentHash: hash,
+        fileName: name,
+        fileSize: fileSize,
+      );
+      return _commitImportedBook(book);
+    }
+
+    if (!FormatEngine.supported.contains(ext)) {
+      throw FormatException('不支持的格式：$ext');
+    }
+    if (fileSize > FormatEngine.maxSourceBytes) {
+      throw const FormatException('单本读取上限 40MB，暂不导入超大文件');
+    }
+    final Uint8List bytes = await source.readAsBytes();
+    final ImportedDocument parsed = await FormatEngine.importBytes(bytes, name);
+    if (parsed.text.trim().isEmpty) {
+      throw const FormatException('文件中没有可以阅读的文字内容');
+    }
+    final String hash = sha256.convert(bytes).toString();
+    if (skipDuplicates && bookByHash(hash) != null) return null;
+
+    final String id = DateTime.now().microsecondsSinceEpoch.toString();
+    final Directory base = await getApplicationDocumentsDirectory();
+    final Directory booksDir = Directory('${base.path}/books');
+    if (!await booksDir.exists()) await booksDir.create(recursive: true);
+    final File target = File('${booksDir.path}/$id.$ext');
+    await target.writeAsBytes(bytes, flush: true);
+    final Book book = Book(
+      id: id,
+      title: parsed.title?.isNotEmpty == true
+          ? parsed.title!
+          : (dot > 0 ? name.substring(0, dot) : name),
+      author: parsed.author?.isNotEmpty == true ? parsed.author! : '本地导入',
+      format: parsed.format,
+      content: parsed.text,
+      sourcePath: target.path,
+      contentHash: hash,
+      fileName: name,
+      fileSize: fileSize,
+    );
+    return _commitImportedBook(book);
+  }
+
   Future<File> _stageDocumentStream(PlatformFile selected) async {
     final stream = selected.readStream;
     if (stream == null) {
@@ -363,27 +486,108 @@ class LibraryStore extends ChangeNotifier {
   }
 
   Future<void> touch(Book book) async {
-    final Book updated = Book(
-      id: book.id,
-      title: book.title,
-      author: book.author,
-      content: book.content,
-      format: book.format,
-      sourcePath: book.sourcePath,
-      lastReadAt: DateTime.now(),
-      chapterCount: book.chapterCount,
-      contentHash: book.contentHash,
-      fileName: book.fileName,
-      fileSize: book.fileSize,
-    );
-    updated.chapterIndex.value = book.chapterIndex.value;
-    updated.pageIndex.value = book.pageIndex.value;
-    updated.charOffset.value = book.charOffset.value;
+    // 以前这里重新 new 一个 Book，会把标签、评分、封面等后加的字段丢掉。
+    // 现在统一走 copyWith，只改 lastReadAt。
+    final Book updated = book.copyWith(lastReadAt: DateTime.now());
+    if (updated.readingStatus == ReadingStatus.unread.code) {
+      updated.readingStatus = ReadingStatus.reading.code;
+    }
     final int index = books.indexWhere((Book b) => b.id == book.id);
     if (index >= 0) {
       books[index] = updated;
     }
     _sortBooks();
+    await _persistMeta();
+    notifyListeners();
+  }
+
+  /// 保存编辑信息页的改动。返回 true 表示已写入索引。
+  Future<bool> updateBook(Book updated) async {
+    final int index = books.indexWhere((Book b) => b.id == updated.id);
+    if (index < 0) return false;
+    books[index] = updated;
+    _sortBooks();
+    await _persistMeta();
+    notifyListeners();
+    return true;
+  }
+
+  Future<void> setPinned(Book book, bool pinned) async {
+    book.pinned = pinned;
+    _sortBooks();
+    await _persistMeta();
+    notifyListeners();
+  }
+
+  Future<void> setStatus(Book book, ReadingStatus status) async {
+    book.readingStatus = status.code;
+    await _persistMeta();
+    notifyListeners();
+  }
+
+  List<String> get allTags {
+    final Set<String> value = <String>{};
+    for (final Book book in books) {
+      value.addAll(book.tags);
+    }
+    return value.toList()..sort();
+  }
+
+  List<String> get allCategories {
+    final Set<String> value = <String>{};
+    for (final Book book in books) {
+      if (book.category.trim().isNotEmpty) value.add(book.category.trim());
+    }
+    return value.toList()..sort();
+  }
+
+  List<String> get allCollections {
+    final Set<String> value = <String>{...CollectionStore.instance.names};
+    for (final Book book in books) {
+      value.addAll(book.collections);
+    }
+    return value.toList()..sort();
+  }
+
+  /// 重命名标签：一次改动所有书，避免逐本手改。
+  Future<void> renameTag(String from, String to) async {
+    final String target = to.trim();
+    if (target.isEmpty) return;
+    for (final Book book in books) {
+      if (!book.tags.contains(from)) continue;
+      book.tags = book.tags
+          .map((String tag) => tag == from ? target : tag)
+          .toSet()
+          .toList();
+    }
+    _sortBooks();
+    await _persistMeta();
+    notifyListeners();
+  }
+
+  Future<void> deleteTag(String tag) async {
+    for (final Book book in books) {
+      if (book.tags.contains(tag)) {
+        book.tags = book.tags.where((String t) => t != tag).toList();
+      }
+    }
+    await _persistMeta();
+    notifyListeners();
+  }
+
+  Future<void> renameCategory(String from, String to) async {
+    final String target = to.trim();
+    for (final Book book in books) {
+      if (book.category == from) book.category = target;
+    }
+    await _persistMeta();
+    notifyListeners();
+  }
+
+  Future<void> deleteCategory(String category) async {
+    for (final Book book in books) {
+      if (book.category == category) book.category = '';
+    }
     await _persistMeta();
     notifyListeners();
   }

@@ -1,16 +1,20 @@
 import 'package:flutter/material.dart';
 
+import 'package:read/src/theme/ui_mode.dart';
+
 const bool kEink = bool.fromEnvironment('EINK', defaultValue: false);
 
-/// 黑白为主的中性色板：图标只用黑/灰，不使用彩色强调。
+/// 中性色板。原版用暖白纸感 + 一点墨绿强调；墨水屏版纯黑白、无强调色。
+/// 图标仍以单色为主，强调色只用于进度、选中态等极少数地方。
 abstract final class ReadColors {
-  static const ink = Color(0xFF111111);
-  static const muted = Color(0xFF8A8F94);
-  static const faint = Color(0xFFB7BBC0);
-  static const background = Color(0xFFF5F6F7);
+  static const ink = Color(0xFF1A1A18);
+  static const muted = Color(0xFF77726A);
+  static const faint = Color(0xFFB4AEA3);
+  static const background = Color(0xFFFAF8F4);
   static const surface = Color(0xFFFFFFFF);
-  static const outline = Color(0xFFE7E9EB);
+  static const outline = Color(0xFFE7E1D6);
   static const inverse = Color(0xFF1B1B1B);
+  static const accent = Color(0xFF3F6B57);
 
   // 深色
   static const darkInk = Color(0xFFECEDEE);
@@ -30,6 +34,7 @@ class ReadPalette {
     required this.muted,
     required this.outline,
     required this.icon,
+    this.accent = ReadColors.accent,
   });
 
   final Brightness brightness;
@@ -39,6 +44,7 @@ class ReadPalette {
   final Color muted;
   final Color outline;
   final Color icon;
+  final Color accent;
 
   static const ReadPalette light = ReadPalette(
     brightness: Brightness.light,
@@ -48,6 +54,7 @@ class ReadPalette {
     muted: ReadColors.muted,
     outline: ReadColors.outline,
     icon: ReadColors.ink,
+    accent: ReadColors.accent,
   );
 
   static const ReadPalette dark = ReadPalette(
@@ -58,6 +65,7 @@ class ReadPalette {
     muted: ReadColors.darkMuted,
     outline: ReadColors.darkOutline,
     icon: ReadColors.darkInk,
+    accent: Color(0xFF7FA893),
   );
 
   static const ReadPalette eink = ReadPalette(
@@ -65,13 +73,17 @@ class ReadPalette {
     background: Colors.white,
     surface: Colors.white,
     ink: Colors.black,
-    muted: Colors.black,
-    outline: Colors.black,
+    muted: Color(0xFF3A3A3A),
+    outline: Color(0xFFBFBFBF),
     icon: Colors.black,
+    accent: Colors.black,
   );
 
-  static ReadPalette of(BuildContext context) =>
-      Theme.of(context).brightness == Brightness.dark ? dark : light;
+  /// 运行时读取界面语言：墨水屏版永远是黑白，原版跟随明暗模式。
+  static ReadPalette of(BuildContext context) {
+    if (ReadUi.instance.isEink) return eink;
+    return Theme.of(context).brightness == Brightness.dark ? dark : light;
+  }
 }
 
 /// 无动画路由（墨水屏必须）。
@@ -90,7 +102,7 @@ class _NoAnimationTransitionsBuilder extends PageTransitionsBuilder {
 }
 
 ThemeData buildTheme(Brightness brightness, {double fontScale = 1.0}) {
-  if (kEink) {
+  if (ReadUi.instance.isEink) {
     return ThemeData(
       useMaterial3: false,
       brightness: Brightness.light,
