@@ -27,14 +27,14 @@ class SyncConfig extends ChangeNotifier {
   String s3Prefix = 'Read';
   String s3AccessKey = '';
 
-  bool fullAuto = false;
+  bool fullAuto = true;
   bool progressAuto = true;
   int progressDebounceSeconds = 8;
   int fullDebounceMinutes = 2;
   int intervalMinutes = 0; // 0 = off
-  bool syncOnStart = false;
+  bool syncOnStart = true;
   bool syncOnBookOpen = true;
-  bool syncOnBookClose = false;
+  bool syncOnBookClose = true;
   bool syncOnNetwork = true;
   bool wifiOnly = false;
   bool progressOnMobile = true;
@@ -101,16 +101,16 @@ class SyncConfig extends ChangeNotifier {
         s3Bucket = _string(data['s3Bucket'], s3Bucket);
         s3Prefix = _string(data['s3Prefix'], s3Prefix);
         s3AccessKey = _string(data['s3AccessKey'], s3AccessKey);
-        fullAuto = data['fullAuto'] == true;
+        fullAuto = data['fullAuto'] != false;
         progressAuto = data['progressAuto'] != false;
         progressDebounceSeconds =
             (data['progressDebounceSeconds'] as num?)?.toInt() ?? 8;
         fullDebounceMinutes =
             (data['fullDebounceMinutes'] as num?)?.toInt() ?? 2;
         intervalMinutes = (data['intervalMinutes'] as num?)?.toInt() ?? 0;
-        syncOnStart = data['syncOnStart'] == true;
+        syncOnStart = data['syncOnStart'] != false;
         syncOnBookOpen = data['syncOnBookOpen'] != false;
-        syncOnBookClose = data['syncOnBookClose'] == true;
+        syncOnBookClose = data['syncOnBookClose'] != false;
         syncOnNetwork = data['syncOnNetwork'] != false;
         wifiOnly = data['wifiOnly'] == true;
         progressOnMobile = data['progressOnMobile'] != false;
