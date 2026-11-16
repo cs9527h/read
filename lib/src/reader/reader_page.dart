@@ -1431,36 +1431,42 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     if (text.isEmpty) return TextSpan(text: text, style: style);
     final chapterStart = _chapters[chapterIndex].start;
     final chapterLength = _chapters[chapterIndex].length;
-    final starts = <int>[0, text.length];
-    final ends = <int>[0, text.length];
-    final backgrounds = <Color?>[null, null];
+    // Each highlight is a *range*. The previous code appended identical
+    // start/end points to two parallel lists, creating zero-length intervals
+    // and silently rendering every highlight as normal text.
+    final ranges = <({int start, int end, Color color})>[];
+    final boundaries = <int>{0, text.length};
     for (final highlight in _highlights) {
-      final sourceStart = (highlight.start - chapterStart).clamp(0, chapterLength);
-      final sourceEnd = (highlight.end - chapterStart).clamp(0, chapterLength);
+      final sourceStart =
+          (highlight.start - chapterStart).clamp(0, chapterLength);
+      final sourceEnd =
+          (highlight.end - chapterStart).clamp(0, chapterLength);
       if (sourceEnd <= sourceStart) continue;
       final displayStart = chapter.display.displayOffset(sourceStart);
       final displayEnd = chapter.display.displayOffset(sourceEnd);
-      final localStart = (displayStart - page.displayStart).clamp(0, text.length);
-      final localEnd = (displayEnd - page.displayStart).clamp(0, text.length);
+      final localStart =
+          (displayStart - page.displayStart).clamp(0, text.length);
+      final localEnd =
+          (displayEnd - page.displayStart).clamp(0, text.length);
       if (localEnd <= localStart) continue;
-      starts.add(localStart);
-      starts.add(localEnd);
-      ends.add(localStart);
-      ends.add(localEnd);
-      backgrounds.add(Color(highlight.color));
-      backgrounds.add(null);
+      ranges.add((
+        start: localStart,
+        end: localEnd,
+        color: Color(highlight.color),
+      ));
+      boundaries.add(localStart);
+      boundaries.add(localEnd);
     }
-    final sorted = starts.toSet().toList()..sort();
+    final sorted = boundaries.toList()..sort();
     final spans = <InlineSpan>[];
     for (var i = 0; i < sorted.length - 1; i++) {
       final start = sorted[i];
       final end = sorted[i + 1];
       if (end <= start) continue;
       Color? background;
-      for (var h = 0; h < starts.length; h++) {
-        if (h >= ends.length || backgrounds[h] == null) continue;
-        if (start >= starts[h] && end <= ends[h]) {
-          background = backgrounds[h];
+      for (final range in ranges) {
+        if (start >= range.start && end <= range.end) {
+          background = range.color;
           break;
         }
       }
