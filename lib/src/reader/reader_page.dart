@@ -26,7 +26,9 @@ import 'package:read/src/services/library_store.dart';
 import 'package:read/src/services/reading_stats_store.dart';
 import 'package:read/src/sync/auto_sync_service.dart';
 import 'package:read/src/sync/progress_models.dart';
+import 'package:read/src/sync/metadata_sync_service.dart';
 import 'package:read/src/sync/progress_sync_service.dart';
+import 'package:read/src/sync/sync_page.dart';
 import 'package:read/src/sync/sync_config.dart';
 
 /// 阅读页：真实排版分页、翻页、菜单、书签、目录与全部阅读设置都从这里生效。
@@ -71,6 +73,9 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   bool _isReadingActive = true;
   StreamSubscription<String>? _volumeKeysSubscription;
   int? _batteryLevel;
+  ProgressRecord? _cloudRecord;
+  bool _cloudBusy = false;
+  bool _chapterTransition = false;
 
   final FlutterTts _tts = FlutterTts();
   bool _speaking = false;
@@ -88,6 +93,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     UserFontStore.instance.addListener(_onStoreChanged);
     _initChapters();
     _initBookmarks();
+    unawaited(_refreshCloudProgress());
     _applySystemUi();
     _clockTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) setState(() {});
@@ -131,11 +137,41 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   void _afterOpenSync(ProgressSyncReport? report) {
     if (!mounted || report == null) return;
     final hash = widget.book.contentHash;
-    if (hash == null || !report.downloadedHashes.contains(hash)) return;
+    if (hash == null || !report.downloadedHashes.contains(hash)) {
+      unawaited(_refreshCloudProgress());
+      return;
+    }
     if (SyncConfig.instance.autoJumpProgress) _reloadAtSyncedPosition();
+    unawaited(_refreshCloudProgress());
   }
 
-  Future<void> _manualProgressSync() async {
+  Future<void> _refreshCloudProgress() async {
+    final hash = widget.book.contentHash;
+    if (hash == null || !SyncConfig.instance.configured) {
+      if (mounted) setState(() => _cloudRecord = null);
+      return;
+    }
+    if (mounted) setState(() => _cloudBusy = true);
+    try {
+      final secrets = await SyncSecrets.load();
+      final store = SyncBackendFactory.create(SyncConfig.instance, secrets);
+      final record = await ProgressSyncService(LibraryStore.instance)
+          .fetchRemoteStore(
+        store,
+        secrets.encryptionPassword,
+        SyncBackendFactory.targetId(SyncConfig.instance),
+        hash,
+      );
+      if (mounted) setState(() => _cloudRecord = record);
+    } catch (_) {
+      // A read-only cloud probe must never interrupt reading.
+      if (mounted) setState(() => _cloudRecord = null);
+    } finally {
+      if (mounted) setState(() => _cloudBusy = false);
+    }
+  }
+
+  Future<void> _manualProgressSync({ProgressChoice? force}) async {
     if (!SyncConfig.instance.configured) {
       _showToast('请先在“我的 → 同步”配置云存储');
       return;
@@ -143,7 +179,9 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     try {
       final report = await AutoSyncService.instance.runProgress(
         widget.book,
-        resolver: _resolveProgressConflict,
+        resolver: force == null
+            ? _resolveProgressConflict
+            : (ProgressSyncConflict _) async => force,
       );
       if (!mounted) return;
       if (report == null) {
@@ -562,6 +600,10 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     if (_showScroll) {
       if (_scrollController?.hasClients != true) return;
       final ScrollPosition pos = _scrollController!.position;
+      if (d > 0 && pos.pixels >= pos.maxScrollExtent - 2) {
+        _advanceToNextChapter();
+        return;
+      }
       final double target = d > 0
           ? pos.pixels + pos.viewportDimension * 0.86
           : pos.pixels - pos.viewportDimension * 0.86;
@@ -607,7 +649,25 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     _saveProgress();
   }
 
+  void _advanceToNextChapter() {
+    if (_chapterTransition || _chapterIndex >= _chapters.length - 1) return;
+    _chapterTransition = true;
+    unawaited(_gotoChapter(_chapterIndex + 1).whenComplete(() async {
+      // Let the rebuilt PageView/ScrollView settle at the start before
+      // accepting another end-of-chapter gesture.
+      await Future<void>.delayed(const Duration(milliseconds: 280));
+      _chapterTransition = false;
+      if (mounted) setState(() {});
+    }));
+  }
+
   void _onPageChanged(int renderIndex) {
+    if (_chapterTransition) return;
+    final int pageCount = _renderPageCount;
+    if (renderIndex >= pageCount) {
+      _advanceToNextChapter();
+      return;
+    }
     final int column = _twoColumns ? renderIndex * 2 : renderIndex;
     setState(() => _pageIndex = column);
     _saveProgress();
@@ -628,6 +688,12 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
       widget.book.charOffset.value = _anchorOffset!;
     });
     _lastSavedOffset = _anchorOffset!;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final controller = _pageController;
+      if (controller != null && controller.hasClients) {
+        controller.jumpToPage(0);
+      }
+    });
     await LibraryStore.instance.saveProgress(widget.book);
   }
 
@@ -955,14 +1021,19 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     }
     if (_showScroll) return _buildScrollArea(p, foreground);
     final PageController? controller = _pageController;
+    final int pageCount = _renderPageCount;
+    final bool hasNextChapter = _chapterIndex < _chapters.length - 1;
     return PageView.builder(
       controller: controller,
-      itemCount: _renderPageCount,
+      itemCount: pageCount + (hasNextChapter ? 1 : 0),
       physics: _settings.pageTurnMode == 'none'
           ? const NeverScrollableScrollPhysics()
           : const PageScrollPhysics(),
       onPageChanged: _onPageChanged,
       itemBuilder: (BuildContext context, int renderIndex) {
+        if (renderIndex >= pageCount) {
+          return _buildChapterTransitionPage(foreground, secondary);
+        }
         final Widget page = _twoColumns
             ? _buildTwoColumnPage(p, renderIndex, foreground)
             : _buildSinglePage(p, renderIndex, foreground);
@@ -992,6 +1063,34 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
           child: guided,
         );
       },
+    );
+  }
+
+  Widget _buildChapterTransitionPage(Color foreground, Color secondary) {
+    final next = _chapters[_chapterIndex + 1];
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Icon(Icons.auto_stories_outlined, size: 34, color: secondary),
+            const SizedBox(height: 12),
+            Text('下一章',
+                style: TextStyle(fontSize: 12, color: secondary)),
+            const SizedBox(height: 4),
+            Text(
+              next.title.trim().isEmpty ? '第 ${_chapterIndex + 2} 章' : next.title,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w600,
+                color: foreground,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1453,6 +1552,11 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
       onNotification: (ScrollNotification notification) {
         if (notification is ScrollEndNotification) {
           _onScrollProgress(p, controller);
+          if (controller.hasClients &&
+              controller.position.maxScrollExtent > 0 &&
+              controller.offset >= controller.position.maxScrollExtent - 2) {
+            _advanceToNextChapter();
+          }
         }
         return false;
       },
@@ -1590,6 +1694,30 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     );
   }
 
+  IconData get _syncIcon {
+    if (!SyncConfig.instance.configured) return Icons.cloud_off_outlined;
+    if (_cloudRecord == null) return Icons.cloud_upload_outlined;
+    final cloud = _cloudRecord!;
+    final bool same;
+    if (cloud.format == 'PDF') {
+      same = cloud.page == widget.book.pageIndex.value;
+    } else {
+      same = cloud.offset == _currentAbsoluteOffset;
+    }
+    return same ? Icons.cloud_done_outlined : Icons.cloud_download_outlined;
+  }
+
+  String get _syncTooltip {
+    if (!SyncConfig.instance.configured) return '未配置云存储';
+    if (_cloudBusy) return '正在读取云端进度';
+    if (_cloudRecord == null) return '云端暂无本书进度';
+    final cloud = _cloudRecord!;
+    final bool same = cloud.format == 'PDF'
+        ? cloud.page == widget.book.pageIndex.value
+        : cloud.offset == _currentAbsoluteOffset;
+    return same ? '本机与云端进度一致' : '云端有不同进度，点击查看';
+  }
+
   Widget _topBar(Color background, Color foreground) {
     return Container(
       color: background.withValues(alpha: 0.96),
@@ -1648,14 +1776,17 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
           ),
           if (SyncConfig.instance.showReaderSyncButton)
             IconButton(
-              tooltip: '同步阅读进度',
-              icon: Icon(
-                AutoSyncService.instance.config.lastProgressAt.isEmpty
-                    ? Icons.cloud_sync_outlined
-                    : Icons.cloud_done_outlined,
-                size: 21,
-                color: foreground,
-              ),
+              tooltip: _syncTooltip,
+              icon: _cloudBusy
+                  ? SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: foreground,
+                      ),
+                    )
+                  : Icon(_syncIcon, size: 21, color: foreground),
               onPressed: _openSyncMenu,
             ),
           IconButton(
@@ -1767,46 +1898,173 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     _showToast('已返回上一个阅读位置');
   }
 
+  String _describePosition(int offset, int page, String format) {
+    if (format.toUpperCase() == 'PDF') return '第 ${page + 1} 页';
+    if (_chapters.isEmpty || widget.book.content.isEmpty) return '暂无位置';
+    int index = _chapters.length - 1;
+    for (int i = 0; i < _chapters.length; i++) {
+      if (offset < _chapters[i].end) {
+        index = i;
+        break;
+      }
+    }
+    final percent =
+        (offset / widget.book.content.length * 100).clamp(0, 100);
+    return '第 ${index + 1} 章 ${_chapters[index].title.trim()} · '
+        '${percent.toStringAsFixed(2)}%';
+  }
+
   Future<void> _openSyncMenu() async {
     setState(() => _menuVisible = false);
+    await _refreshCloudProgress();
+    if (!mounted) return;
+    final configured = SyncConfig.instance.configured;
+    final localText = _describePosition(
+      _currentAbsoluteOffset,
+      widget.book.pageIndex.value,
+      widget.book.format,
+    );
+    final cloud = _cloudRecord;
+    final cloudText = cloud == null
+        ? (configured ? '云端暂无本书进度' : '尚未配置云存储')
+        : _describePosition(cloud.offset, cloud.page, cloud.format);
+    final cloudDevice = cloud == null
+        ? ''
+        : '${cloud.device.length > 10 ? '${cloud.device.substring(0, 10)}…' : cloud.device}'
+            ' · ${DateTime.fromMillisecondsSinceEpoch(cloud.updatedAt).toString().substring(0, 16)}';
     final action = await showModalBottomSheet<String>(
       context: context,
       showDragHandle: true,
-      builder: (BuildContext ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            ListTile(
-              leading: const Icon(Icons.sync_rounded),
-              title: const Text('仅同步当前书进度'),
-              subtitle: const Text('轻量通道，不上传整个书库'),
-              onTap: () => Navigator.pop(ctx, 'progress'),
+      isScrollControlled: true,
+      builder: (BuildContext ctx) {
+        final theme = Theme.of(ctx);
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Row(
+                  children: <Widget>[
+                    const Expanded(
+                      child: Text('阅读进度同步',
+                          style: TextStyle(
+                              fontSize: 17, fontWeight: FontWeight.w600)),
+                    ),
+                    if (_cloudBusy)
+                      const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                    else
+                      IconButton(
+                        tooltip: '刷新云端进度',
+                        icon: const Icon(Icons.refresh_rounded, size: 19),
+                        onPressed: () => Navigator.pop(ctx, 'refresh'),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surfaceContainerHighest
+                        .withValues(alpha: 0.35),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text('本机进度',
+                          style: TextStyle(
+                              fontSize: 11, color: theme.hintColor)),
+                      const SizedBox(height: 3),
+                      Text(localText,
+                          style: const TextStyle(
+                              fontSize: 13, fontWeight: FontWeight.w500)),
+                      const SizedBox(height: 10),
+                      Text('云端进度',
+                          style: TextStyle(
+                              fontSize: 11, color: theme.hintColor)),
+                      const SizedBox(height: 3),
+                      Text(cloudText, style: const TextStyle(fontSize: 13)),
+                      if (cloudDevice.isNotEmpty) ...<Widget>[
+                        const SizedBox(height: 3),
+                        Text(cloudDevice,
+                            style: TextStyle(
+                                fontSize: 11, color: theme.hintColor)),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: <Widget>[
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: configured
+                            ? () => Navigator.pop(ctx, 'push')
+                            : () => Navigator.pop(ctx, 'settings'),
+                        icon: const Icon(Icons.cloud_upload_outlined, size: 18),
+                        label: const Text('同步本机'),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: cloud == null
+                            ? null
+                            : () => Navigator.pop(ctx, 'pull'),
+                        icon: const Icon(Icons.cloud_download_outlined,
+                            size: 18),
+                        label: const Text('采用云端'),
+                      ),
+                    ),
+                  ],
+                ),
+                if (!configured)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text('尚未配置 WebDAV / S3；配置后才能读取云端进度。',
+                        style:
+                            TextStyle(fontSize: 11, color: theme.hintColor)),
+                  ),
+                const SizedBox(height: 6),
+                ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.sync_rounded, size: 20),
+                  title: const Text('完整同步书库'),
+                  subtitle: Text(SyncConfig.instance.syncFiles
+                      ? '数据 + 可选图书原文件（文件会加密上传）'
+                      : '数据：书籍信息、书签、笔记、设置；不含图书文件'),
+                  trailing: const Icon(Icons.chevron_right, size: 18),
+                  onTap: () => Navigator.pop(ctx, 'full'),
+                ),
+                ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.settings_outlined, size: 20),
+                  title: const Text('云存储与同步范围'),
+                  subtitle: const Text('WebDAV / S3、自动同步、文件与数据分开控制'),
+                  trailing: const Icon(Icons.chevron_right, size: 18),
+                  onTap: () => Navigator.pop(ctx, 'settings'),
+                ),
+              ],
             ),
-            ListTile(
-              leading: const Icon(Icons.cloud_sync_outlined),
-              title: const Text('完整同步'),
-              subtitle: Text(SyncConfig.instance.syncFiles
-                  ? '元数据、书签、笔记、设置与可选图书文件'
-                  : '元数据、书签、笔记与设置（不含图书文件）'),
-              onTap: () => Navigator.pop(ctx, 'full'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.history_rounded),
-              title: const Text('同步历史'),
-              subtitle: Text(
-                SyncConfig.instance.lastSyncAt.isEmpty
-                    ? '尚未同步'
-                    : '上次 ${SyncConfig.instance.lastSyncStatus}',
-              ),
-              onTap: () => Navigator.pop(ctx, 'history'),
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
     if (!mounted || action == null) return;
-    if (action == 'progress') {
+    if (action == 'refresh') {
+      await _refreshCloudProgress();
+    } else if (action == 'push') {
       await _manualProgressSync();
+    } else if (action == 'pull') {
+      await _manualProgressSync(force: ProgressChoice.cloud);
     } else if (action == 'full') {
       if (!SyncConfig.instance.configured) {
         _showToast('请先在“我的 → 同步”配置云存储');
@@ -1818,9 +2076,15 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
           downloadMissing: SyncConfig.instance.syncFiles,
         );
         if (mounted) _showToast(report?.message ?? '没有需要同步的变化');
+        unawaited(_refreshCloudProgress());
       } catch (error) {
         if (mounted) _showToast('完整同步失败：$error');
       }
+    } else if (action == 'settings') {
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(builder: (_) => const SyncPage()),
+      );
+      unawaited(_refreshCloudProgress());
     }
   }
 

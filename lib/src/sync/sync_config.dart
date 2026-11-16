@@ -28,15 +28,16 @@ class SyncConfig extends ChangeNotifier {
   String s3AccessKey = '';
 
   bool fullAuto = false;
-  bool progressAuto = false;
+  bool progressAuto = true;
   int progressDebounceSeconds = 8;
   int fullDebounceMinutes = 2;
   int intervalMinutes = 0; // 0 = off
   bool syncOnStart = false;
-  bool syncOnBookOpen = false;
+  bool syncOnBookOpen = true;
   bool syncOnBookClose = false;
   bool syncOnNetwork = true;
   bool wifiOnly = false;
+  bool progressOnMobile = true;
   bool showReaderSyncButton = true;
 
   bool syncBooks = true;
@@ -50,11 +51,11 @@ class SyncConfig extends ChangeNotifier {
   bool encryptFiles = true;
   bool allowLegacyPlainFiles = false;
 
-  bool autoJumpProgress = false;
+  bool autoJumpProgress = true;
   bool promptCloudProgress = true;
   /// local | cloud | ask. Automatic runs default to local to protect the
   /// position the user is currently reading.
-  String conflictPolicy = 'local';
+  String conflictPolicy = 'ask';
 
   String lastSyncAt = '';
   String lastSyncStatus = '';
@@ -101,17 +102,18 @@ class SyncConfig extends ChangeNotifier {
         s3Prefix = _string(data['s3Prefix'], s3Prefix);
         s3AccessKey = _string(data['s3AccessKey'], s3AccessKey);
         fullAuto = data['fullAuto'] == true;
-        progressAuto = data['progressAuto'] == true;
+        progressAuto = data['progressAuto'] != false;
         progressDebounceSeconds =
             (data['progressDebounceSeconds'] as num?)?.toInt() ?? 8;
         fullDebounceMinutes =
             (data['fullDebounceMinutes'] as num?)?.toInt() ?? 2;
         intervalMinutes = (data['intervalMinutes'] as num?)?.toInt() ?? 0;
         syncOnStart = data['syncOnStart'] == true;
-        syncOnBookOpen = data['syncOnBookOpen'] == true;
+        syncOnBookOpen = data['syncOnBookOpen'] != false;
         syncOnBookClose = data['syncOnBookClose'] == true;
         syncOnNetwork = data['syncOnNetwork'] != false;
         wifiOnly = data['wifiOnly'] == true;
+        progressOnMobile = data['progressOnMobile'] != false;
         showReaderSyncButton = data['showReaderSyncButton'] != false;
         syncBooks = data['syncBooks'] != false;
         syncBookmarks = data['syncBookmarks'] != false;
@@ -120,9 +122,9 @@ class SyncConfig extends ChangeNotifier {
         syncFiles = data['syncFiles'] == true;
         encryptFiles = data['encryptFiles'] != false;
         allowLegacyPlainFiles = data['allowLegacyPlainFiles'] == true;
-        autoJumpProgress = data['autoJumpProgress'] == true;
+        autoJumpProgress = data['autoJumpProgress'] != false;
         promptCloudProgress = data['promptCloudProgress'] != false;
-        conflictPolicy = _string(data['conflictPolicy'], 'local');
+        conflictPolicy = _string(data['conflictPolicy'], 'ask');
         lastSyncAt = _string(data['lastSyncAt'], '');
         lastSyncStatus = _string(data['lastSyncStatus'], '');
         lastProgressAt = _string(data['lastProgressAt'], '');
@@ -170,6 +172,7 @@ class SyncConfig extends ChangeNotifier {
       'syncOnBookClose': syncOnBookClose,
       'syncOnNetwork': syncOnNetwork,
       'wifiOnly': wifiOnly,
+      'progressOnMobile': progressOnMobile,
       'showReaderSyncButton': showReaderSyncButton,
       'syncBooks': syncBooks,
       'syncBookmarks': syncBookmarks,

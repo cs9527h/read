@@ -117,6 +117,24 @@ class ProgressSyncService {
     );
   }
 
+  /// Reads one book's cloud position without merging or writing anything.
+  /// Used by the reader's sync sheet to show local vs cloud before choosing.
+  Future<ProgressRecord?> fetchRemoteStore(
+    RemoteObjectStore store,
+    String encryptionPassword,
+    String targetId,
+    String bookHash,
+  ) async {
+    final snapshot = await _ObjectStoreProgressTransport(store).read();
+    if (snapshot == null) return null;
+    final plaintext = await EncryptedSyncEnvelope.decrypt(
+      snapshot.bytes,
+      encryptionPassword,
+    );
+    final manifest = ProgressManifest.decode(plaintext);
+    return manifest.entries[bookHash];
+  }
+
   Future<ProgressSyncReport> _sync(
     ProgressTransport transport,
     String encryptionPassword,
