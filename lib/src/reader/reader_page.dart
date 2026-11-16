@@ -28,6 +28,8 @@ import 'package:read/src/sync/auto_sync_service.dart';
 import 'package:read/src/sync/progress_models.dart';
 import 'package:read/src/sync/progress_sync_service.dart';
 import 'package:read/src/sync/sync_config.dart';
+import 'package:read/src/sync/sync_page.dart';
+import 'package:read/src/sync/progress_history.dart';
 
 /// 阅读页：真实排版分页、翻页、菜单、书签、目录与全部阅读设置都从这里生效。
 class ReaderPage extends StatefulWidget {
@@ -61,6 +63,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   double _pageHeight = 800;
   int? _anchorOffset;
   double? _scrubPreview;
+  DateTime? _lastBoundarySwipeAt;
 
   Timer? _autoTurnTimer;
   Timer? _clockTimer;
@@ -562,6 +565,14 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     if (_showScroll) {
       if (_scrollController?.hasClients != true) return;
       final ScrollPosition pos = _scrollController!.position;
+      if (d > 0 && pos.pixels >= pos.maxScrollExtent - 1 && _chapterIndex < _chapters.length - 1) {
+        _gotoChapter(_chapterIndex + 1);
+        return;
+      }
+      if (d < 0 && pos.pixels <= pos.minScrollExtent + 1 && _chapterIndex > 0) {
+        _gotoChapter(_chapterIndex - 1, atEnd: true);
+        return;
+      }
       final double target = d > 0
           ? pos.pixels + pos.viewportDimension * 0.86
           : pos.pixels - pos.viewportDimension * 0.86;
@@ -572,7 +583,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
       );
       return;
     }
-    final int targetColumn = _pageIndex + d;
+    final int targetColumn = _pageIndex + d * (_twoColumns ? 2 : 1);
     if (targetColumn < 0) {
       if (_chapterIndex > 0) _gotoChapter(_chapterIndex - 1, atEnd: true);
       return;
@@ -955,7 +966,21 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     }
     if (_showScroll) return _buildScrollArea(p, foreground);
     final PageController? controller = _pageController;
-    return PageView.builder(
+    return NotificationListener<OverscrollNotification>(
+      onNotification: (OverscrollNotification notification) {
+        if (notification.dragDetails == null || notification.metrics.axis != Axis.horizontal) return false;
+        final DateTime now = DateTime.now();
+        if (_lastBoundarySwipeAt != null && now.difference(_lastBoundarySwipeAt!).inMilliseconds < 650) return false;
+        if (notification.overscroll > 0 && _pageIndex >= p.pages.length - (_twoColumns ? 2 : 1) && _chapterIndex < _chapters.length - 1) {
+          _lastBoundarySwipeAt = now;
+          _gotoChapter(_chapterIndex + 1);
+        } else if (notification.overscroll < 0 && _pageIndex == 0 && _chapterIndex > 0) {
+          _lastBoundarySwipeAt = now;
+          _gotoChapter(_chapterIndex - 1, atEnd: true);
+        }
+        return false;
+      },
+      child: PageView.builder(
       controller: controller,
       itemCount: _renderPageCount,
       physics: _settings.pageTurnMode == 'none'
@@ -992,6 +1017,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
           child: guided,
         );
       },
+      ),
     );
   }
 
@@ -1498,6 +1524,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     widget.book.pageIndex.value = 0;
     widget.book.charOffset.value = source;
     LibraryStore.instance.saveProgress(widget.book);
+    AutoSyncService.instance.scheduleProgress(widget.book);
   }
 
   // ---------------------------------------------------------------------------
@@ -1647,16 +1674,28 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
             onPressed: _openTtsSheet,
           ),
           if (SyncConfig.instance.showReaderSyncButton)
-            IconButton(
-              tooltip: '同步阅读进度',
-              icon: Icon(
-                AutoSyncService.instance.config.lastProgressAt.isEmpty
-                    ? Icons.cloud_sync_outlined
-                    : Icons.cloud_done_outlined,
-                size: 21,
-                color: foreground,
-              ),
-              onPressed: _openSyncMenu,
+            AnimatedBuilder(
+              animation: AutoSyncService.instance,
+              builder: (BuildContext context, Widget? child) {
+                final sync = AutoSyncService.instance;
+                final config = SyncConfig.instance;
+                final busy = sync.isProgressRunning || sync.isMetadataRunning;
+                final failed = config.lastError.isNotEmpty;
+                return IconButton(
+                  tooltip: !config.configured ? '尚未配置云同步' : busy ? '正在同步' : failed ? '同步失败：查看详情' : config.lastProgressAt.isEmpty ? '尚未同步阅读进度' : '查看同步状态',
+                  icon: busy
+                      ? SizedBox(width: 19, height: 19, child: CircularProgressIndicator(strokeWidth: 2, color: foreground))
+                      : Icon(
+                          !config.configured ? Icons.cloud_off_outlined
+                              : failed ? Icons.cloud_off_outlined
+                              : config.lastProgressAt.isEmpty ? Icons.cloud_sync_outlined
+                              : Icons.cloud_done_outlined,
+                          size: 21,
+                          color: foreground,
+                        ),
+                  onPressed: _openSyncMenu,
+                );
+              },
             ),
           IconButton(
             tooltip: '阅读设置',
@@ -1772,10 +1811,27 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     final action = await showModalBottomSheet<String>(
       context: context,
       showDragHandle: true,
-      builder: (BuildContext ctx) => SafeArea(
+      builder: (BuildContext ctx) {
+        final local = _overallProgress * 100;
+        final cloudPoints = ProgressHistoryStore.instance.forHash(widget.book.contentHash ?? '');
+        final cloud = cloudPoints.isEmpty ? null : cloudPoints.first;
+        final cloudPercent = cloud == null || cloud.offset < 0 || widget.book.content.isEmpty
+            ? null : cloud.offset / widget.book.content.length * 100;
+        return SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
+            ListTile(
+              title: const Text('本机阅读进度'),
+              subtitle: Text('${local.toStringAsFixed(2)}% · ${_chapterIndex + 1}/${_chapters.length} 章'),
+              leading: const Icon(Icons.smartphone_outlined),
+            ),
+            ListTile(
+              title: const Text('最近收到的云端进度'),
+              subtitle: Text(cloud == null ? '尚无已读取的云端进度，请先同步' :
+                  '${cloudPercent == null ? 'PDF 第 ${cloud.page + 1} 页' : '${cloudPercent.clamp(0, 100).toStringAsFixed(2)}%'} · ${cloud.updatedAt.toLocal()} · ${cloud.device.length > 8 ? cloud.device.substring(0, 8) : cloud.device}'),
+              leading: const Icon(Icons.cloud_outlined),
+            ),
             ListTile(
               leading: const Icon(Icons.sync_rounded),
               title: const Text('仅同步当前书进度'),
@@ -1802,7 +1858,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
             ),
           ],
         ),
-      ),
+      );
+      },
     );
     if (!mounted || action == null) return;
     if (action == 'progress') {
@@ -1821,6 +1878,10 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
       } catch (error) {
         if (mounted) _showToast('完整同步失败：$error');
       }
+    } else if (action == 'history') {
+      await Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (BuildContext ctx) => const SyncPage(),
+      ));
     }
   }
 
