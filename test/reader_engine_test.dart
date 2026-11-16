@@ -241,4 +241,68 @@ void main() {
     expect(result.pages.first.sourceStart, source.indexOf('山'));
   });
 
+  test('空章节正文返回单个空页而不崩溃', () {
+    final ReaderSettings s = settings();
+    final PaginatedChapter result = ReaderEngine.paginate(
+      chapterText: '',
+      chapterTitle: '空章节',
+      settings: s,
+      width: 320,
+      height: 500,
+      textScale: 1.0,
+    );
+    expect(result.pages.length, 1);
+    expect(result.pages.first.displayStart, 0);
+    expect(result.pages.first.displayEnd, 0);
+  });
+
+  test('超长无换行单行文本也能稳定分页且不漏字', () {
+    final String body = '超长单行文本用于验证无段落情况下分页的稳定性与完整性。' * 300;
+    final ReaderSettings s = settings(<String, Object?>{
+      'fontSize': 18.0,
+      'lineHeight': 1.6,
+      'indentMode': 'none',
+      'paragraphSpacingBefore': 0.0,
+      'paragraphSpacingAfter': 0.0,
+    });
+    final PaginatedChapter result = ReaderEngine.paginate(
+      chapterText: body,
+      chapterTitle: '',
+      settings: s,
+      width: 340,
+      height: 520,
+      textScale: 1.0,
+    );
+    expect(result.pages.length, greaterThan(1));
+    final String joined = result.pages.map((EnginePage p) => p.textOf(result.display)).join();
+    expect(joined, result.display.text);
+  });
+
+  test('不同字号下分页均保持字符连续，位置按锚点恢复', () {
+    final String body = '正文内容用于验证字号变化后的重新分页。' * 120;
+    for (final double size in <double>[12, 18, 26, 34]) {
+      final ReaderSettings s = settings(<String, Object?>{
+        'fontSize': size,
+        'indentMode': 'none',
+        'paragraphSpacingBefore': 0.0,
+        'paragraphSpacingAfter': 0.0,
+      });
+      final PaginatedChapter result = ReaderEngine.paginate(
+        chapterText: body,
+        chapterTitle: '',
+        settings: s,
+        width: 330,
+        height: 500,
+        textScale: 1.0,
+      );
+      final String joined = result.pages.map((EnginePage p) => p.textOf(result.display)).join();
+      expect(joined, result.display.text, reason: '字号 $size 下分页应不漏不重');
+      // 锚点应能定位到非首页。
+      final int mid = result.display.sourceLength ~/ 2;
+      final int page = result.pageForSourceOffset(mid);
+      expect(page, greaterThanOrEqualTo(0));
+      expect(result.pages[page].sourceStart, lessThanOrEqualTo(mid));
+    }
+  });
+
 }
