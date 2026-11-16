@@ -1982,41 +1982,54 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
             icon: ReadIcon(ReadGlyph.search, size: 20, color: foreground),
             onPressed: _searchInBook,
           ),
-          IconButton(
-            tooltip: '添加书签',
-            icon: ReadIcon(ReadGlyph.bookmark, size: 20, color: foreground),
-            onPressed: _toggleBookmark,
-          ),
-          if (_positionHistory.isNotEmpty)
-            IconButton(
-              tooltip: '返回上一个位置',
-              icon: ReadIcon(ReadGlyph.restore, size: 19, color: foreground),
-              onPressed: _goBackPosition,
-            ),
-          IconButton(
-            tooltip: '朗读',
-            icon: ReadIcon(ReadGlyph.headphones, size: 20, color: foreground),
-            onPressed: _openTtsSheet,
-          ),
-          if (SyncConfig.instance.showReaderSyncButton)
-            IconButton(
-              tooltip: _syncTooltip,
-              icon: _cloudBusy
-                  ? SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: foreground,
-                      ),
-                    )
-                  : ReadIcon(_syncIcon, size: 20, color: foreground),
-              onPressed: _openSyncMenu,
-            ),
+          // Keep the main toolbar narrow enough for a real phone. Secondary
+          // actions stay available with labels and do not squeeze the title.
           IconButton(
             tooltip: '阅读设置',
             icon: ReadIcon(ReadGlyph.type, size: 20, color: foreground),
             onPressed: _openSettings,
+          ),
+          PopupMenuButton<String>(
+            tooltip: '更多阅读操作',
+            icon: ReadIcon(ReadGlyph.ellipsis, size: 20, color: foreground),
+            onSelected: (String action) {
+              switch (action) {
+                case 'bookmark':
+                  _toggleBookmark();
+                case 'history':
+                  _goBackPosition();
+                case 'tts':
+                  _openTtsSheet();
+                case 'sync':
+                  _openSyncMenu();
+              }
+            },
+            itemBuilder: (BuildContext ctx) => <PopupMenuEntry<String>>[
+              const PopupMenuItem<String>(
+                value: 'bookmark',
+                child: Text('添加或移除书签'),
+              ),
+              if (_positionHistory.isNotEmpty)
+                const PopupMenuItem<String>(
+                  value: 'history',
+                  child: Text('返回上一个位置'),
+                ),
+              const PopupMenuItem<String>(
+                value: 'tts',
+                child: Text('朗读设置'),
+              ),
+              if (SyncConfig.instance.showReaderSyncButton)
+                PopupMenuItem<String>(
+                  value: 'sync',
+                  child: Row(
+                    children: <Widget>[
+                      ReadIcon(_syncIcon, size: 18, color: foreground),
+                      const SizedBox(width: 10),
+                      Expanded(child: Text(_syncTooltip)),
+                    ],
+                  ),
+                ),
+            ],
           ),
         ],
       ),
@@ -2029,8 +2042,11 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
       padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
       child: SafeArea(
         top: false,
-        child: Row(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: <Widget>[
+            Row(
+              children: <Widget>[
             Text(
               '${(_overallProgress * 100).toStringAsFixed(1)}%',
               style: TextStyle(fontSize: 12, color: secondary),
@@ -2048,6 +2064,11 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                 },
               ),
             ),
+            ],
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: <Widget>[
             for (final action in _settings.bottomActions)
               IconButton(
                 tooltip: switch (action) {
@@ -2080,6 +2101,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                 },
               ),
           ],
+              ],
+            ),
         ),
       ),
     );
