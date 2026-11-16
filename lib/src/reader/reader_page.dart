@@ -85,6 +85,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
 
   /// 只用于刷新页眉页脚，避免每次翻页 setState 重建整页。
   final ValueNotifier<int> _pageTick = ValueNotifier<int>(0);
+  // Chapter transitions replace the PageView and must invalidate its subtree.
+  final ValueNotifier<int> _chapterTick = ValueNotifier<int>(0);
 
   /// 进度落盘防抖：翻页先走内存，400ms 内的连续翻页只写一次磁盘。
   Timer? _progressTimer;
@@ -300,6 +302,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     _relayoutTimer?.cancel();
     _prefetchTimer?.cancel();
     _pageTick.dispose();
+    _chapterTick.dispose();
     if (Platform.isAndroid) {
       unawaited(_volumeKeysSubscription?.cancel() ?? Future<void>.value());
       unawaited(ReaderDeviceBridge.setVolumePaging(false).catchError((Object _) {}));
@@ -862,6 +865,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
         pagination.pages[page.clamp(0, pagination.pages.length - 1)].sourceStart;
     _lastSavedOffset = widget.book.charOffset.value;
     _pageTick.value++;
+    _chapterTick.value++;
     // A PageView can still be attached to the previous chapter's virtual
     // neighbor while it is being rebuilt from a swipe. Reaffirm the target
     // after the new PageView mounts, and guard against stale callbacks.
@@ -912,6 +916,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
       widget.book.charOffset.value = anchor;
     });
     _recreateController(page);
+    _chapterTick.value++;
     _lastSavedOffset = anchor;
     unawaited(LibraryStore.instance.saveProgress(widget.book));
     _prefetchNeighbors();
@@ -923,6 +928,9 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<int>(
+      valueListenable: _chapterTick,
+      builder: (BuildContext context, int _, Widget? __) {
     final Brightness brightness = MediaQuery.platformBrightnessOf(context);
     final ReaderTheme theme = _store.effectiveTheme(_settings, brightness);
     final Color background = Color(_settings.backgroundColor ?? theme.background);
@@ -979,6 +987,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
           _buildBrightnessOverlay(),
         ],
       ),
+    );
+      },
     );
   }
 
