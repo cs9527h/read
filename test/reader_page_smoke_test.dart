@@ -4,6 +4,7 @@ import 'package:read/src/model/book.dart';
 import 'package:read/src/reader/reader_page.dart';
 import 'package:read/src/reader/settings/reader_settings_store.dart';
 import 'package:read/src/reader/settings/user_font_store.dart';
+import 'package:read/src/ui/read_icon.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -36,8 +37,17 @@ void main() {
     // 点击屏幕中央呼出菜单，顶部出现章节标题入口。
     await tester.tapAt(const Offset(400, 300));
     await tester.pump(const Duration(milliseconds: 300));
-    expect(find.byIcon(Icons.search_rounded), findsOneWidget);
-    expect(find.byIcon(Icons.tune_rounded), findsOneWidget);
+    // 顶栏改用自有图标集（原版/墨水屏两套几何），不再用 Material 图标。
+    expect(
+      find.byWidgetPredicate(
+          (Widget w) => w is ReadIcon && w.glyph == ReadGlyph.search),
+      findsWidgets,
+    );
+    expect(
+      find.byWidgetPredicate(
+          (Widget w) => w is ReadIcon && w.glyph == ReadGlyph.type),
+      findsWidgets,
+    );
   });
   testWidgets('章末左滑哨兵页自动进入下一章', (tester) async {
     SharedPreferences.setMockInitialValues(<String, Object>{});
@@ -55,7 +65,7 @@ void main() {
     expect(book.chapterIndex.value, 0);
     final pageView = tester.widget<PageView>(find.byType(PageView));
     expect(pageView.childrenDelegate.estimatedChildCount, 2,
-        reason: '一页正文 + 一个下一章哨兵页');
+        reason: '本章一页 + 下一章首页（预取后为真实正文，不再是过渡卡片）');
     await tester.drag(find.byType(PageView), const Offset(-600, 0));
     await tester.pump(const Duration(milliseconds: 700));
     expect(book.chapterIndex.value, 1,

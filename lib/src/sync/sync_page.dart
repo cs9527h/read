@@ -15,10 +15,16 @@ import 'package:read/src/sync/progress_sync_service.dart';
 import 'package:read/src/sync/remote_store.dart';
 import 'package:read/src/sync/sync_config.dart';
 import 'package:read/src/sync/sync_history.dart';
+import 'package:read/src/sync/data_tools_page.dart';
 import 'package:read/src/theme.dart';
+import 'package:read/src/theme/ui_mode.dart';
+import 'package:read/src/ui/read_icon.dart';
 
 class SyncPage extends StatefulWidget {
-  const SyncPage({super.key});
+  const SyncPage({super.key, this.embedded = false});
+
+  /// 作为底部导航的一栏时不显示返回按钮，并展示「设备与数据」入口。
+  final bool embedded;
 
   @override
   State<SyncPage> createState() => _SyncPageState();
@@ -39,6 +45,13 @@ class _SyncPageState extends State<SyncPage> {
           surfaceTintColor: Colors.transparent,
           title: const Text('同步'),
           actions: <Widget>[
+            IconButton(
+              tooltip: '设备与数据',
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(builder: (_) => const DataToolsPage()),
+              ),
+              icon: ReadIcon(ReadGlyph.device, size: 21, color: palette.ink),
+            ),
             IconButton(
               tooltip: '立即同步',
               onPressed: _busy ? null : _fullSync,
@@ -65,12 +78,19 @@ class _SyncPageState extends State<SyncPage> {
             ],
           ),
         ),
-        body: TabBarView(
+        body: Column(
           children: <Widget>[
-            _StorageTab(onBusyChanged: _setBusy),
-            _OptionsTab(onBusyChanged: _setBusy),
-            _BackupTab(onBusyChanged: _setBusy),
-            const _HistoryTab(),
+            _DataToolsEntry(embedded: widget.embedded),
+            Expanded(
+              child: TabBarView(
+                children: <Widget>[
+                  _StorageTab(onBusyChanged: _setBusy),
+                  _OptionsTab(onBusyChanged: _setBusy),
+                  _BackupTab(onBusyChanged: _setBusy),
+                  const _HistoryTab(),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -98,6 +118,65 @@ class _SyncPageState extends State<SyncPage> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+}
+
+/// 同步页顶部的「设备与数据」入口：导出/导入、跨设备恢复、云端对比。
+class _DataToolsEntry extends StatelessWidget {
+  const _DataToolsEntry({required this.embedded});
+
+  final bool embedded;
+
+  @override
+  Widget build(BuildContext context) {
+    final ReadPalette palette = ReadPalette.of(context);
+    final bool configured = SyncConfig.instance.configured;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 2),
+      child: InkWell(
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute<void>(builder: (_) => const DataToolsPage()),
+        ),
+        borderRadius: BorderRadius.circular(ReadUi.instance.isEink ? 0 : 14),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+          decoration: BoxDecoration(
+            color: palette.surface,
+            border: Border.all(color: palette.outline),
+            borderRadius: BorderRadius.circular(ReadUi.instance.isEink ? 0 : 14),
+          ),
+          child: Row(
+            children: <Widget>[
+              ReadIcon(ReadGlyph.device, size: 20, color: palette.ink),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text('设备与数据',
+                        style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: palette.ink)),
+                    const SizedBox(height: 2),
+                    Text(
+                      configured
+                          ? '导出 / 导入本机设置 · 从其他设备恢复 · 云端数据对比'
+                          : '导出 / 导入本机设置 · 云端对比（需先配置云存储）',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 11, color: palette.muted),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              ReadIcon(ReadGlyph.chevronRight, size: 17, color: palette.muted),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -385,7 +464,7 @@ class _StatusCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: palette.surface,
         border: Border.all(color: palette.outline),
-        borderRadius: BorderRadius.circular(kEink ? 0 : 12),
+        borderRadius: BorderRadius.circular(ReadUi.instance.isEink ? 0 : 12),
       ),
       child: Row(
         children: <Widget>[
@@ -1060,7 +1139,7 @@ class _HistoryTab extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: palette.surface,
                     border: Border.all(color: palette.outline),
-                    borderRadius: BorderRadius.circular(kEink ? 0 : 10),
+                    borderRadius: BorderRadius.circular(ReadUi.instance.isEink ? 0 : 10),
                   ),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1126,7 +1205,7 @@ class _HistoryTab extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: palette.surface,
                     border: Border.all(color: palette.outline),
-                    borderRadius: BorderRadius.circular(kEink ? 0 : 10),
+                    borderRadius: BorderRadius.circular(ReadUi.instance.isEink ? 0 : 10),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,

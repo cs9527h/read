@@ -11,6 +11,7 @@ import 'package:read/src/services/chapter_splitter.dart';
 import 'package:read/src/services/library_store.dart';
 import 'package:read/src/services/reading_stats_store.dart';
 import 'package:read/src/theme.dart';
+import 'package:read/src/theme/ui_mode.dart';
 
 /// 现代书籍详情页：封面、元数据、进度、继续阅读、本书排版与删除。
 class BookDetailPage extends StatefulWidget {
@@ -147,7 +148,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
                         const SizedBox(width: 8),
                         Expanded(
                           child: ClipRRect(
-                            borderRadius: BorderRadius.circular(kEink ? 0 : 3),
+                            borderRadius: BorderRadius.circular(ReadUi.instance.isEink ? 0 : 3),
                             child: LinearProgressIndicator(
                               value: ratio,
                               minHeight: 3,
@@ -168,7 +169,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
                               ? Colors.black
                               : Colors.white,
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(kEink ? 0 : 10),
+                            borderRadius: BorderRadius.circular(ReadUi.instance.isEink ? 0 : 10),
                           ),
                         ),
                         onPressed: _openBook,
@@ -232,7 +233,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
               color: palette.surface,
-              borderRadius: BorderRadius.circular(kEink ? 0 : 12),
+              borderRadius: BorderRadius.circular(ReadUi.instance.isEink ? 0 : 12),
               border: Border.all(color: palette.outline),
             ),
             child: Column(
@@ -267,7 +268,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
         border: Border.all(color: palette.outline),
-        borderRadius: BorderRadius.circular(kEink ? 0 : 4),
+        borderRadius: BorderRadius.circular(ReadUi.instance.isEink ? 0 : 4),
       ),
       child: Text(text, style: TextStyle(fontSize: 10, color: palette.muted)),
     );
@@ -440,7 +441,7 @@ class _LargeCover extends StatelessWidget {
       decoration: BoxDecoration(
         color: dark ? const Color(0xFF191919) : const Color(0xFFF1F1F1),
         border: Border.all(color: palette.outline),
-        borderRadius: BorderRadius.circular(kEink ? 0 : 8),
+        borderRadius: BorderRadius.circular(ReadUi.instance.isEink ? 0 : 8),
       ),
       padding: const EdgeInsets.all(12),
       child: Column(

@@ -15,6 +15,7 @@ import 'package:read/src/reader/settings/reader_theme.dart';
 import 'package:read/src/reader/settings/user_font_store.dart';
 import 'package:read/src/reader/widgets/reader_settings_sheet.dart';
 import 'package:read/src/theme.dart';
+import 'package:read/src/ui/read_icon.dart';
 import 'package:read/src/services/book_search.dart';
 import 'package:read/src/services/bookmark_meta_store.dart';
 import 'package:read/src/services/bookmark_store.dart';
@@ -76,6 +77,20 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   ProgressRecord? _cloudRecord;
   bool _cloudBusy = false;
   bool _chapterTransition = false;
+
+  /// 只用于刷新页眉页脚，避免每次翻页 setState 重建整页。
+  final ValueNotifier<int> _pageTick = ValueNotifier<int>(0);
+
+  /// 进度落盘防抖：翻页先走内存，400ms 内的连续翻页只写一次磁盘。
+  Timer? _progressTimer;
+  Timer? _relayoutTimer;
+
+  /// 分页缓存：key = 版式签名|章节索引。命中时切章零计算。
+  final Map<String, PaginatedChapter> _paginationCache = <String, PaginatedChapter>{};
+  PaginatedChapter? _prevPagination;
+  PaginatedChapter? _nextPagination;
+  int _controllerEpoch = 0;
+  String _signature = '';
 
   final FlutterTts _tts = FlutterTts();
   bool _speaking = false;
@@ -276,12 +291,17 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     _autoTurnTimer?.cancel();
     _clockTimer?.cancel();
     _statsTimer?.cancel();
+    _progressTimer?.cancel();
+    _relayoutTimer?.cancel();
+    _prefetchTimer?.cancel();
+    _pageTick.dispose();
     if (Platform.isAndroid) {
       unawaited(_volumeKeysSubscription?.cancel() ?? Future<void>.value());
       unawaited(ReaderDeviceBridge.setVolumePaging(false).catchError((Object _) {}));
       unawaited(ReaderDeviceBridge.setWindowBrightness(null).catchError((Object _) {}));
     }
     _flushStats();
+    _flushProgress();
     AutoSyncService.instance.onBookClosed();
     unawaited(_tts.stop());
     _pageController?.dispose();
@@ -301,7 +321,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
       _autoTurnTimer?.cancel();
       _autoTurnTimer = null;
       _flushStats();
-      _saveProgress();
+      _flushProgress();
     }
     unawaited(_refreshDeviceControls());
   }
@@ -333,11 +353,18 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     final ReaderSettings next = _store.resolve(widget.book.id);
     if (next != _settings) {
       final int anchor = _currentAbsoluteOffset;
-      setState(() {
-        _settings = next;
-        _anchorOffset = anchor;
-        _layoutKey = '';
-        _pagination = null;
+      _anchorOffset = anchor;
+      // 保留当前 PaginatedChapter，等新版式算完再替换：调字号时不会闪出
+      // 「正在排版…」空白页。重排本身做 180ms 防抖，拖动滑块只算最后一次。
+      _settings = next;
+      _layoutKey = '';
+      _paginationCache.clear();
+      _relayoutTimer?.cancel();
+      _relayoutTimer = Timer(const Duration(milliseconds: 180), () {
+        if (!mounted) return;
+        setState(() {
+          _layoutKey = '';
+        });
       });
       _startAutoTurn();
       _applySystemUi();
@@ -365,6 +392,10 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
       _chapterIndex = savedChapter;
       _anchorOffset = savedOffset >= 0 ? savedOffset : 0;
       _loading = false;
+      // 章节列表到位后必须让版式签名失效，否则首次 build 时算出的 key
+      // 会挡住真正的分页。
+      _layoutKey = '';
+      _paginationCache.clear();
     });
     LibraryStore.instance.noteChapterCount(widget.book, chapters.length);
   }
@@ -448,36 +479,48 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     return scaler.scale(100) / 100;
   }
 
+  // ---------------------------------------------------------------------------
+  // 排版 / 分页（带缓存与相邻章预取）
+  // ---------------------------------------------------------------------------
+
+  String _buildSignature(double width, double bodyHeight) => <String>[
+        width.toStringAsFixed(1),
+        bodyHeight.toStringAsFixed(1),
+        _twoColumns.toString(),
+        _textScale.toStringAsFixed(2),
+        _settings.toJsonString(),
+      ].join('|');
+
   void _scheduleLayout(double contentWidth, double contentHeight) {
     if (contentWidth <= 0 || contentHeight <= 0) return;
     final double bodyHeight = contentHeight - _headerHeight - _footerHeight;
     final double measureWidth = _twoColumns
         ? (contentWidth - _settings.columnGap) / 2
         : contentWidth;
-    final String key = <String>[
-      contentWidth.toStringAsFixed(1),
-      bodyHeight.toStringAsFixed(1),
-      _twoColumns.toString(),
-      _textScale.toStringAsFixed(2),
-      _settings.toJsonString(),
-      _chapterIndex.toString(),
-      _chapterIndex < _chapters.length ? _chapters[_chapterIndex].length.toString() : '0',
-    ].join('|');
-    if (key == _layoutKey) return;
     if (measureWidth <= 0 || bodyHeight <= 0) return;
+    final String signature = _buildSignature(measureWidth, bodyHeight);
+    final String key = '$signature|$_chapterIndex';
+    if (key == _layoutKey) return;
     _layoutKey = key;
+    _signature = signature;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _relayout(measureWidth, bodyHeight);
     });
   }
 
-  void _relayout(double width, double height) {
-    if (_chapterIndex < 0 || _chapterIndex >= _chapters.length) return;
-    final Chapter chapter = _chapters[_chapterIndex];
-    final int savedOffset = (_anchorOffset ?? widget.book.charOffset.value)
-        .clamp(0, chapter.length);
-    _anchorOffset = null;
+  void _rememberPagination(String key, PaginatedChapter pagination) {
+    _paginationCache[key] = pagination;
+    if (_paginationCache.length > 9) {
+      _paginationCache.remove(_paginationCache.keys.first);
+    }
+  }
+
+  PaginatedChapter? _cachedFor(int index) =>
+      _paginationCache['$_signature|$index'];
+
+  PaginatedChapter _computeFor(int index, double width, double height) {
+    final Chapter chapter = _chapters[index];
     final PaginatedChapter pagination = ReaderEngine.paginate(
       chapterText: chapter.slice(widget.book.content),
       chapterTitle: chapter.title,
@@ -486,6 +529,18 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
       height: height,
       textScale: _textScale,
     );
+    _rememberPagination('$_signature|$index', pagination);
+    return pagination;
+  }
+
+  void _relayout(double width, double height) {
+    if (_chapterIndex < 0 || _chapterIndex >= _chapters.length) return;
+    final Chapter chapter = _chapters[_chapterIndex];
+    final int savedOffset = (_anchorOffset ?? widget.book.charOffset.value)
+        .clamp(0, chapter.length);
+    _anchorOffset = null;
+    final PaginatedChapter pagination = _cachedFor(_chapterIndex) ??
+        _computeFor(_chapterIndex, width, height);
     final int page = pagination.pageForSourceOffset(savedOffset);
     _pageWidth = width;
     _pageHeight = height;
@@ -493,51 +548,72 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
       _pagination = pagination;
       _pageIndex = page;
     });
-    _resetControllers(page);
-    widget.book.chapterIndex.value = _chapterIndex;
-    widget.book.pageIndex.value = _renderPageIndex(page);
-    if (pagination.pages.isNotEmpty) {
-      widget.book.charOffset.value =
-          pagination.pages[page.clamp(0, pagination.pages.length - 1)].sourceStart;
-    }
+    _recreateController(page);
+    _syncProgressValues(page);
     _lastSavedOffset = widget.book.charOffset.value;
-    LibraryStore.instance.saveProgress(widget.book);
+    unawaited(LibraryStore.instance.saveProgress(widget.book));
+    _prefetchNeighbors(width, height);
   }
 
-  void _resetControllers(int page) {
-    _pageController?.dispose();
-    _pageController = PageController(initialPage: _renderPageIndex(page));
-    _scrollController?.dispose();
-    _scrollController = ScrollController();
+  /// 相邻章预分页：空闲时算，命中缓存后跨章翻页不再有「正在排版」。
+  /// 用一次性延时而不是每帧回调，避免在测试/低端机上反复触发重建。
+  Timer? _prefetchTimer;
+  void _prefetchNeighbors([double? width, double? height]) {
+    final double w = width ?? _pageWidth;
+    final double h = height ?? _pageHeight;
+    if (w <= 0 || h <= 0 || _signature.isEmpty || _prefetchTimer != null) return;
+    _prefetchTimer = Timer(const Duration(milliseconds: 80), () {
+      _prefetchTimer = null;
+      if (!mounted) return;
+      bool changed = false;
+      final int next = _chapterIndex + 1;
+      if (next < _chapters.length && _cachedFor(next) == null &&
+          _chapters[next].length <= 60000) {
+        _nextPagination = _computeFor(next, w, h);
+        changed = true;
+      } else if (next < _chapters.length) {
+        _nextPagination = _cachedFor(next);
+      }
+      final int prev = _chapterIndex - 1;
+      if (prev >= 0 && _cachedFor(prev) == null &&
+          _chapters[prev].length <= 60000) {
+        _prevPagination = _computeFor(prev, w, h);
+        changed = true;
+      } else if (prev >= 0) {
+        _prevPagination = _cachedFor(prev);
+      }
+      if (changed && mounted && !_menuVisible) {
+        // itemCount 里多出来的相邻章页需要立刻生效。
+        setState(() {});
+      }
+    });
   }
 
-  int get _renderPageCount {
-    final PaginatedChapter? p = _pagination;
-    if (p == null) return 0;
-    return _twoColumns ? (p.pages.length + 1) ~/ 2 : p.pages.length;
-  }
-
-  int _renderPageIndex(int columnPage) =>
-      _twoColumns ? columnPage ~/ 2 : columnPage;
-
-  int get _currentAbsoluteOffset {
-    final PaginatedChapter? p = _pagination;
-    if (_chapters.isEmpty || _chapterIndex >= _chapters.length) return 0;
-    if (_showScroll) {
-      final chapter = _chapters[_chapterIndex];
-      return chapter.start +
-          widget.book.charOffset.value.clamp(0, chapter.length);
+  void _recreateController(int columnPage) {
+    final PageController? old = _pageController;
+    _pageController = PageController(
+      initialPage: _virtualPrevCount + _renderPageIndex(columnPage),
+    );
+    _controllerEpoch++;
+    // 旧控制器可能还在本帧的 PageView 上，延后一帧再释放，避免
+    // "A PageController was used after being disposed"。
+    if (old != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => old.dispose());
     }
-    if (p == null || p.pages.isEmpty) {
-      final chapter = _chapters[_chapterIndex];
-      final saved = _anchorOffset ?? widget.book.charOffset.value;
-      return chapter.start + saved.clamp(0, chapter.length);
-    }
-    final int column = _pageIndex.clamp(0, p.pages.length - 1);
-    return _chapters[_chapterIndex].start + p.pages[column].sourceStart;
   }
 
-  void _saveProgress() {
+  void _syncProgressValues(int columnPage) {
+    widget.book.chapterIndex.value = _chapterIndex;
+    widget.book.pageIndex.value = _renderPageIndex(columnPage);
+    if (_pagination != null && _pagination!.pages.isNotEmpty) {
+      widget.book.charOffset.value = _pagination!.pages[
+              columnPage.clamp(0, _pagination!.pages.length - 1)]
+          .sourceStart;
+    }
+  }
+
+  /// 页码只影响页眉页脚，用 ValueNotifier 精准刷新，不触发整页 rebuild。
+  void _markProgress() {
     final PaginatedChapter? p = _pagination;
     if (p == null || p.pages.isEmpty) return;
     final int column = _pageIndex.clamp(0, p.pages.length - 1);
@@ -550,8 +626,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     widget.book.chapterIndex.value = _chapterIndex;
     widget.book.pageIndex.value = _renderPageIndex(column);
     widget.book.charOffset.value = offset;
-    LibraryStore.instance.saveProgress(widget.book);
-    AutoSyncService.instance.scheduleProgress(widget.book);
+    _pageTick.value++;
+
     if (_chapters.isNotEmpty) {
       final double percent =
           (_chapterIndex + (column / math.max(1, p.pages.length))) /
@@ -560,6 +636,52 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
         ReadingStatsStore.instance.markFinished(widget.book.id);
       }
     }
+
+    _progressTimer?.cancel();
+    _progressTimer = Timer(const Duration(milliseconds: 400), _flushProgress);
+  }
+
+  void _flushProgress() {
+    _progressTimer?.cancel();
+    if (!mounted) return;
+    unawaited(LibraryStore.instance.saveProgress(widget.book));
+    AutoSyncService.instance.scheduleProgress(widget.book);
+  }
+
+  /// 立即落盘的旧入口，供朗读、退出、生命周期切换使用。
+  void _saveProgress() {
+    final PaginatedChapter? p = _pagination;
+    if (p == null || p.pages.isEmpty) return;
+    _markProgress();
+    _flushProgress();
+  }
+
+  int get _renderPageCount {
+    final PaginatedChapter? p = _pagination;
+    if (p == null) return 0;
+    return _twoColumns ? (p.pages.length + 1) ~/ 2 : p.pages.length;
+  }
+
+  int _renderPageIndex(int columnPage) =>
+      _twoColumns ? columnPage ~/ 2 : columnPage;
+
+  int get _virtualPrevCount => _chapterIndex > 0 ? 1 : 0;
+
+  int get _currentAbsoluteOffset {
+    final PaginatedChapter? p = _pagination;
+    if (_chapters.isEmpty || _chapterIndex >= _chapters.length) return 0;
+    if (_showScroll) {
+      final Chapter chapter = _chapters[_chapterIndex];
+      return chapter.start +
+          widget.book.charOffset.value.clamp(0, chapter.length);
+    }
+    if (p == null || p.pages.isEmpty) {
+      final Chapter chapter = _chapters[_chapterIndex];
+      final int saved = _anchorOffset ?? widget.book.charOffset.value;
+      return chapter.start + saved.clamp(0, chapter.length);
+    }
+    final int column = _pageIndex.clamp(0, p.pages.length - 1);
+    return _chapters[_chapterIndex].start + p.pages[column].sourceStart;
   }
 
   void _flushStats() {
@@ -601,7 +723,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
       if (_scrollController?.hasClients != true) return;
       final ScrollPosition pos = _scrollController!.position;
       if (d > 0 && pos.pixels >= pos.maxScrollExtent - 2) {
-        _advanceToNextChapter();
+        _advanceChapter(1);
         return;
       }
       final double target = d > 0
@@ -616,12 +738,12 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     }
     final int targetColumn = _pageIndex + d;
     if (targetColumn < 0) {
-      if (_chapterIndex > 0) _gotoChapter(_chapterIndex - 1, atEnd: true);
+      if (_chapterIndex > 0) _advanceChapter(-1, atEnd: true);
       return;
     }
     if (targetColumn >= p.pages.length) {
       if (_chapterIndex < _chapters.length - 1) {
-        _gotoChapter(_chapterIndex + 1);
+        _advanceChapter(1);
       } else {
         ReadingStatsStore.instance.markFinished(widget.book.id);
         ScaffoldMessenger.of(context).showSnackBar(
@@ -630,7 +752,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
       }
       return;
     }
-    final int renderIndex = _renderPageIndex(targetColumn);
+    final int renderIndex = _virtualPrevCount + _renderPageIndex(targetColumn);
     final PageController? controller = _pageController;
     if (controller != null && controller.hasClients) {
       if (_settings.pageTurnMode == 'none') {
@@ -645,56 +767,74 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
         );
       }
     }
-    setState(() => _pageIndex = targetColumn);
-    _saveProgress();
+    // 不调用 setState：正文内容没变，只有页码与进度变了。
+    _pageIndex = targetColumn;
+    _markProgress();
   }
 
-  void _advanceToNextChapter() {
-    if (_chapterTransition || _chapterIndex >= _chapters.length - 1) return;
+  /// 跨章推进：先保证目标章有分页，再一次性替换状态，避免空白页。
+  void _advanceChapter(int delta, {bool atEnd = false}) {
+    if (_chapterTransition) return;
+    final int target = _chapterIndex + delta;
+    if (target < 0 || target >= _chapters.length) return;
     _chapterTransition = true;
-    unawaited(_gotoChapter(_chapterIndex + 1).whenComplete(() async {
-      // Let the rebuilt PageView/ScrollView settle at the start before
-      // accepting another end-of-chapter gesture.
-      await Future<void>.delayed(const Duration(milliseconds: 280));
-      _chapterTransition = false;
-      if (mounted) setState(() {});
-    }));
+    _gotoChapter(target, atEnd: atEnd).whenComplete(() {
+      // 只锁一个短窗口，防止同一次手势连跳两章；不再固定卡 280ms。
+      Future<void>.delayed(const Duration(milliseconds: 120), () {
+        _chapterTransition = false;
+      });
+    });
   }
 
   void _onPageChanged(int renderIndex) {
     if (_chapterTransition) return;
+    final int prevCount = _virtualPrevCount;
     final int pageCount = _renderPageCount;
-    if (renderIndex >= pageCount) {
-      _advanceToNextChapter();
+    if (renderIndex < prevCount) {
+      _advanceChapter(-1, atEnd: true);
       return;
     }
-    final int column = _twoColumns ? renderIndex * 2 : renderIndex;
-    setState(() => _pageIndex = column);
-    _saveProgress();
+    if (renderIndex >= prevCount + pageCount) {
+      _advanceChapter(1);
+      return;
+    }
+    final int column =
+        _twoColumns ? (renderIndex - prevCount) * 2 : (renderIndex - prevCount);
+    if (column == _pageIndex) return;
+    _pageIndex = column;
+    _markProgress();
   }
 
   Future<void> _gotoChapter(int index, {bool atEnd = false}) async {
     if (index < 0 || index >= _chapters.length) return;
     _rememberPosition();
-    final Chapter chapter = _chapters[index];
+    final PaginatedChapter pagination =
+        _cachedFor(index) ?? _computeFor(index, _pageWidth, _pageHeight);
+    if (pagination.pages.isEmpty) return;
+    final int page = atEnd ? pagination.pages.length - 1 : 0;
     setState(() {
       _chapterIndex = index;
-      _pageIndex = 0;
-      _anchorOffset = atEnd ? math.max(0, chapter.length - 1) : 0;
-      _pagination = null;
-      _layoutKey = '';
-      widget.book.chapterIndex.value = index;
-      widget.book.pageIndex.value = 0;
-      widget.book.charOffset.value = _anchorOffset!;
+      _pagination = pagination;
+      _pageIndex = page;
+      _layoutKey = '$_signature|$index';
+      _nextPagination = null;
+      _prevPagination = null;
     });
-    _lastSavedOffset = _anchorOffset!;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final controller = _pageController;
-      if (controller != null && controller.hasClients) {
-        controller.jumpToPage(0);
-      }
-    });
+    _recreateController(page);
+    _syncProgressValues(page);
+    widget.book.charOffset.value =
+        pagination.pages[page.clamp(0, pagination.pages.length - 1)].sourceStart;
+    _lastSavedOffset = widget.book.charOffset.value;
+    _pageTick.value++;
     await LibraryStore.instance.saveProgress(widget.book);
+    AutoSyncService.instance.scheduleProgress(widget.book);
+    _prefetchNeighbors();
+  }
+
+  void _advanceToNextChapter() {
+    if (_chapterIndex < _chapters.length - 1) {
+      _advanceChapter(1);
+    }
   }
 
   void _jumpToAbsolute(int absoluteOffset, {bool remember = true}) {
@@ -707,18 +847,25 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
       }
     }
     final Chapter chapter = _chapters[chapterIndex];
+    final int anchor = (absoluteOffset - chapter.start).clamp(0, chapter.length);
+    final PaginatedChapter pagination =
+        _cachedFor(chapterIndex) ?? _computeFor(chapterIndex, _pageWidth, _pageHeight);
+    final int page = pagination.pageForSourceOffset(anchor);
     setState(() {
       _chapterIndex = chapterIndex;
-      _pageIndex = 0;
-      _anchorOffset = (absoluteOffset - chapter.start).clamp(0, chapter.length);
-      _pagination = null;
-      _layoutKey = '';
+      _pagination = pagination;
+      _pageIndex = page;
+      _layoutKey = '$_signature|$chapterIndex';
+      _nextPagination = null;
+      _prevPagination = null;
       widget.book.chapterIndex.value = chapterIndex;
-      widget.book.pageIndex.value = 0;
-      widget.book.charOffset.value = _anchorOffset!;
+      widget.book.pageIndex.value = _renderPageIndex(page);
+      widget.book.charOffset.value = anchor;
     });
-    _lastSavedOffset = _anchorOffset!;
-    LibraryStore.instance.saveProgress(widget.book);
+    _recreateController(page);
+    _lastSavedOffset = anchor;
+    unawaited(LibraryStore.instance.saveProgress(widget.book));
+    _prefetchNeighbors();
   }
 
   // ---------------------------------------------------------------------------
@@ -755,13 +902,22 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                       _scheduleLayout(inner.maxWidth, inner.maxHeight);
                       return Column(
                         children: <Widget>[
-                          _buildHeader(secondary),
+                          // 页码/进度只在这里刷新，翻页不再重建正文。
+                          ValueListenableBuilder<int>(
+                            valueListenable: _pageTick,
+                            builder: (BuildContext context, int _, Widget? __) =>
+                                _buildHeader(secondary),
+                          ),
                           Expanded(
                             child: _buildTapLayer(
                               _buildPageArea(foreground, secondary),
                             ),
                           ),
-                          _buildFooter(secondary),
+                          ValueListenableBuilder<int>(
+                            valueListenable: _pageTick,
+                            builder: (BuildContext context, int _, Widget? __) =>
+                                _buildFooter(secondary),
+                          ),
                         ],
                       );
                     },
@@ -1022,21 +1178,48 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     if (_showScroll) return _buildScrollArea(p, foreground);
     final PageController? controller = _pageController;
     final int pageCount = _renderPageCount;
+    final int prevCount = _virtualPrevCount;
     final bool hasNextChapter = _chapterIndex < _chapters.length - 1;
     return PageView.builder(
+      // 换 controller 时用新 key 重建，避免 PageView 内部页码与控制器不一致。
+      key: ValueKey<int>(_controllerEpoch),
       controller: controller,
-      itemCount: pageCount + (hasNextChapter ? 1 : 0),
+      itemCount: prevCount + pageCount + (hasNextChapter ? 1 : 0),
       physics: _settings.pageTurnMode == 'none'
           ? const NeverScrollableScrollPhysics()
           : const PageScrollPhysics(),
       onPageChanged: _onPageChanged,
       itemBuilder: (BuildContext context, int renderIndex) {
-        if (renderIndex >= pageCount) {
-          return _buildChapterTransitionPage(foreground, secondary);
+        if (renderIndex < prevCount) {
+          final PaginatedChapter? prev = _prevPagination;
+          if (prev == null || prev.pages.isEmpty) {
+            return const SizedBox.shrink();
+          }
+          final int lastRender =
+              _twoColumns ? ((prev.pages.length + 1) ~/ 2) - 1 : prev.pages.length - 1;
+          return _withGuides(
+            _twoColumns
+                ? _buildTwoColumnPage(prev, lastRender, foreground)
+                : _buildSinglePage(prev, lastRender, foreground),
+            secondary,
+          );
         }
+        if (renderIndex >= prevCount + pageCount) {
+          final PaginatedChapter? next = _nextPagination;
+          if (next == null || next.pages.isEmpty) {
+            return _buildChapterTransitionPage(foreground, secondary);
+          }
+          return _withGuides(
+            _twoColumns
+                ? _buildTwoColumnPage(next, 0, foreground)
+                : _buildSinglePage(next, 0, foreground),
+            secondary,
+          );
+        }
+        final int localIndex = renderIndex - prevCount;
         final Widget page = _twoColumns
-            ? _buildTwoColumnPage(p, renderIndex, foreground)
-            : _buildSinglePage(p, renderIndex, foreground);
+            ? _buildTwoColumnPage(p, localIndex, foreground)
+            : _buildSinglePage(p, localIndex, foreground);
         final Widget guided = _withGuides(page, secondary);
         if (_settings.pageTurnMode != 'cover' || controller == null) {
           return guided;
@@ -1046,7 +1229,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
           builder: (BuildContext context, Widget? child) {
             double delta = 0;
             if (controller.hasClients && controller.position.haveDimensions) {
-              delta = (controller.page ?? renderIndex.toDouble()) - renderIndex;
+              delta = (controller.page ?? renderIndex.toDouble()) - renderIndex.toDouble();
             }
             final double direction = _settings.reverseDirection ? -1 : 1;
             return Transform.translate(
@@ -1067,6 +1250,9 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   }
 
   Widget _buildChapterTransitionPage(Color foreground, Color secondary) {
+    if (_chapterIndex + 1 >= _chapters.length) {
+      return const SizedBox.shrink();
+    }
     final next = _chapters[_chapterIndex + 1];
     return Center(
       child: Padding(
@@ -1074,7 +1260,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Icon(Icons.auto_stories_outlined, size: 34, color: secondary),
+            ReadIcon(ReadGlyph.book, size: 34, color: secondary),
             const SizedBox(height: 12),
             Text('下一章',
                 style: TextStyle(fontSize: 12, color: secondary)),
@@ -1694,9 +1880,9 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     );
   }
 
-  IconData get _syncIcon {
-    if (!SyncConfig.instance.configured) return Icons.cloud_off_outlined;
-    if (_cloudRecord == null) return Icons.cloud_upload_outlined;
+  ReadGlyph get _syncIcon {
+    if (!SyncConfig.instance.configured) return ReadGlyph.cloudOff;
+    if (_cloudRecord == null) return ReadGlyph.cloud;
     final cloud = _cloudRecord!;
     final bool same;
     if (cloud.format == 'PDF') {
@@ -1704,7 +1890,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     } else {
       same = cloud.offset == _currentAbsoluteOffset;
     }
-    return same ? Icons.cloud_done_outlined : Icons.cloud_download_outlined;
+    return same ? ReadGlyph.cloudCheck : ReadGlyph.cloudDownload;
   }
 
   String get _syncTooltip {
@@ -1726,8 +1912,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
         children: <Widget>[
           IconButton(
             tooltip: '返回',
-            icon: Icon(Icons.arrow_back_ios_new_rounded,
-                size: 20, color: foreground),
+            icon: ReadIcon(ReadGlyph.arrowLeft, size: 20, color: foreground),
             onPressed: () => Navigator.of(context).maybePop(),
           ),
           Expanded(
@@ -1745,33 +1930,23 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
           ),
           IconButton(
             tooltip: '书内搜索',
-            icon: Icon(Icons.search_rounded, size: 21, color: foreground),
+            icon: ReadIcon(ReadGlyph.search, size: 20, color: foreground),
             onPressed: _searchInBook,
           ),
           IconButton(
             tooltip: '添加书签',
-            icon: Icon(
-              _bookmarks.contains(_currentAbsoluteOffset)
-                  ? Icons.bookmark_rounded
-                  : Icons.bookmark_border_rounded,
-              size: 21,
-              color: foreground,
-            ),
+            icon: ReadIcon(ReadGlyph.bookmark, size: 20, color: foreground),
             onPressed: _toggleBookmark,
           ),
           if (_positionHistory.isNotEmpty)
             IconButton(
               tooltip: '返回上一个位置',
-              icon: Icon(Icons.undo_rounded, size: 19, color: foreground),
+              icon: ReadIcon(ReadGlyph.restore, size: 19, color: foreground),
               onPressed: _goBackPosition,
             ),
           IconButton(
             tooltip: '朗读',
-            icon: Icon(
-              _speaking ? Icons.stop_circle_outlined : Icons.headphones_outlined,
-              size: 21,
-              color: foreground,
-            ),
+            icon: ReadIcon(ReadGlyph.headphones, size: 20, color: foreground),
             onPressed: _openTtsSheet,
           ),
           if (SyncConfig.instance.showReaderSyncButton)
@@ -1786,12 +1961,12 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                         color: foreground,
                       ),
                     )
-                  : Icon(_syncIcon, size: 21, color: foreground),
+                  : ReadIcon(_syncIcon, size: 20, color: foreground),
               onPressed: _openSyncMenu,
             ),
           IconButton(
             tooltip: '阅读设置',
-            icon: Icon(Icons.tune_rounded, size: 21, color: foreground),
+            icon: ReadIcon(ReadGlyph.type, size: 20, color: foreground),
             onPressed: _openSettings,
           ),
         ],
@@ -1832,13 +2007,14 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                   'search' => '书内搜索',
                   _ => '阅读设置',
                 },
-                icon: Icon(
+                icon: ReadIcon(
                   switch (action) {
-                    'toc' => Icons.list_rounded,
-                    'bookmark' => Icons.collections_bookmark_outlined,
-                    'search' => Icons.search_rounded,
-                    _ => Icons.text_fields_rounded,
+                    'toc' => ReadGlyph.toc,
+                    'bookmark' => ReadGlyph.bookmark,
+                    'search' => ReadGlyph.search,
+                    _ => ReadGlyph.type,
                   },
+                  size: 20,
                   color: foreground,
                 ),
                 onPressed: () {
@@ -1873,11 +2049,16 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
       isScrollControlled: true,
       useSafeArea: true,
       backgroundColor: Colors.transparent,
+      sheetAnimationStyle: const AnimationStyle(
+        duration: Duration(milliseconds: 240),
+        curve: Curves.easeOutCubic,
+      ),
       builder: (BuildContext ctx) => ReaderSettingsSheet(
         bookId: widget.book.id,
+        // 只让版式签名失效，不把分页清空：新结果算好后再替换，
+        // 这样连续拖字号时不会闪白，也不会反复重建控制器。
         onRepaginate: () => setState(() {
           _layoutKey = '';
-          _pagination = null;
         }),
       ),
     );

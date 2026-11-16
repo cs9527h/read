@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:read/src/services/reading_stats_store.dart';
 import 'package:read/src/theme.dart';
+import 'package:read/src/theme/ui_mode.dart';
 
 enum _Period { day, week, month, year, all }
 
@@ -227,7 +228,7 @@ class _Segmented extends StatelessWidget {
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
         color: palette.surface,
-        borderRadius: BorderRadius.circular(kEink ? 0 : 10),
+        borderRadius: BorderRadius.circular(ReadUi.instance.isEink ? 0 : 10),
         border: Border.all(color: palette.outline),
       ),
       child: Row(
@@ -240,7 +241,7 @@ class _Segmented extends StatelessWidget {
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: i == selected ? palette.ink : Colors.transparent,
-                    borderRadius: BorderRadius.circular(kEink ? 0 : 8),
+                    borderRadius: BorderRadius.circular(ReadUi.instance.isEink ? 0 : 8),
                   ),
                   child: Text(
                     labels[i],
@@ -308,7 +309,7 @@ class _StatCard extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       decoration: BoxDecoration(
         color: palette.surface,
-        borderRadius: BorderRadius.circular(kEink ? 0 : 12),
+        borderRadius: BorderRadius.circular(ReadUi.instance.isEink ? 0 : 12),
         border: Border.all(color: palette.outline),
       ),
       child: Column(
@@ -349,7 +350,7 @@ class _BarChart extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(12, 14, 12, 8),
       decoration: BoxDecoration(
         color: palette.surface,
-        borderRadius: BorderRadius.circular(kEink ? 0 : 12),
+        borderRadius: BorderRadius.circular(ReadUi.instance.isEink ? 0 : 12),
         border: Border.all(color: palette.outline),
       ),
       child: Column(
@@ -370,7 +371,7 @@ class _BarChart extends StatelessWidget {
                             color: (seconds[day] ?? 0) > 0
                                 ? palette.ink.withValues(alpha: 0.85)
                                 : palette.outline,
-                            borderRadius: BorderRadius.circular(kEink ? 0 : 3),
+                            borderRadius: BorderRadius.circular(ReadUi.instance.isEink ? 0 : 3),
                           ),
                         ),
                       ),
@@ -413,7 +414,7 @@ class _TimeList extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: palette.surface,
-        borderRadius: BorderRadius.circular(kEink ? 0 : 12),
+        borderRadius: BorderRadius.circular(ReadUi.instance.isEink ? 0 : 12),
         border: Border.all(color: palette.outline),
       ),
       child: Column(

@@ -1,6 +1,6 @@
 # read
 
-> **状态（2026-11-16）**：`0.6.0+8` 预览版。V2 P0 同步安全批次已落地：图书原文件默认 AES-256-GCM 加密上传、下载先认证解密再校验 SHA-256、旧明文默认拒绝；重试任务绑定书籍哈希与云目标、8 次失败转持久失败可手动重试；冲突策略“询问”保留双方并展示设备/章节/比例/时间；失败分类与下一步建议写入历史。逐项证据见 [docs/V2_200_STATUS.md](docs/V2_200_STATUS.md) 与 [docs/V1_100_STATUS.md](docs/V1_100_STATUS.md)。**200 项中仅 21 项有代码+单测证据，128 项部分完成、50 项未开始、1 项因无真实云账号阻塞；真机双设备、真实云账号与 Windows 宽屏验收尚未完成，不能宣称全部通过。**
+> **状态（2026-11-16）**：`0.7.0+10`。本轮是阅读体验主线改造：点封面直接进阅读器（移除继续阅读中转页）、原版/墨水屏双界面语言与统一图标系统、底部导航改为书架/同步/设置/更多、同步页新增设备与数据工具（导入导出设置、跨设备恢复、云端数据对比）、书架菜单与编辑页补齐、云端状态三态判定、阅读器分页缓存与邻章预取。逐项说明见 [docs/RELEASE_0_7_0.md](docs/RELEASE_0_7_0.md)。
 
 极简全平台电子书阅读器。目标：**可靠的本地阅读 + 多端接着读**，去掉主题商店、社交与会员广告。
 
@@ -13,6 +13,11 @@
 | 模块 | 状态 |
 |---|---|
 | 书架、导入、持久化、最近阅读、删除 | 已实现 |
+| 点封面直接阅读、长按多选、单书菜单 10 项 | 0.7.0 已实现 |
+| 双界面语言（原版 / 墨水屏）+ `ReadGlyph` 58 语义图标 | 0.7.0 已实现；`--dart-define=EINK=true` 切换构建变体 |
+| 设备与数据：导入导出设置、跨设备恢复、云端数据对比 | 0.7.0 已实现 |
+| 云端三态（仅本地/已同步/仅云端）+ 云朵徽章 | 0.7.0 已实现，判定见 `CloudPresence.stateFor` |
+| 书籍编辑页：书名/作者/分类/评分/状态/置顶/私密/标签/书箱 + 封面菜单 8 项 | 0.7.0 已实现；AI 封面未接服务，界面标注「未接入」 |
 | TXT 编码探测、分章、真实测量分页、字符锚点 | 已实现，单测覆盖 |
 | EPUB / Markdown / HTML 文本章节导入 | 已实现（仅文本，非完整版式引擎） |
 | 阅读设置：字体/字号/字重/字距/行距/段距/缩进/对齐/边距/页眉页脚 | 已实现，待真机走查 |
@@ -44,15 +49,25 @@
 
 ## 自动化结果
 
-- `flutter analyze --no-fatal-infos`：0 error，0 warning，106 info（Flutter 3.50 `material.dart` deprecated 与旧 lint）。
-- `flutter test --no-test-assets`：92/92 通过。
-- 覆盖：分页与偏移映射、三层设置、章节识别、同步文档往返、墓碑、双方编辑、条件写冲突、损坏密文拒绝、设备原生通道契约、同步端到端上传→远端合并→本地应用。
+- `flutter analyze --no-fatal-infos`：0 error，0 warning，135 info（Flutter 3.50 `material.dart` deprecated 与 `prefer_const` 等风格提示）。
+- `flutter test --no-pub`：119/119 通过。
+- 覆盖：分页与偏移映射、三层设置、章节识别、同步文档往返、墓碑、双方编辑、条件写冲突、损坏密文拒绝、设备原生通道契约、同步端到端上传→远端合并→本地应用、书籍元数据往返、书架/设置服务。
+- CI（`build-android` + `build-windows-experimental`）：analyze、单测、普通版 APK、墨水屏 APK 全部通过，产物 `read-apks` 合计 83.0 MB。产物级结论以 CI 为准——本机开发环境没有 Android SDK，`flutter build bundle` 在本机失败不具参考价值。
 
 ## 版本与发布
 
-当前：**0.6.0+8**。打 `v*` 标签触发 `.github/workflows/release.yml`，构建 `read-android.apk` 与 `read-eink.apk` 并附 `APK_SHA256.txt`。
+当前：**0.7.0+10**。打 `v*` 标签触发 `.github/workflows/release.yml`，构建 `read-android.apk` 与 `read-eink.apk` 并附 `APK_SHA256.txt`。
 
-CI 使用仓库内固定的预览密钥（`tools/android/read-preview.jks.b64`），预览版之间可覆盖升级；这是公开测试密钥，不能用于正式分发。启动图标为黑底白色羽毛，CI 复制到各 dpi。
+CI 使用仓库内固定的预览密钥（`tools/android/read-preview.jks.b64`），预览版之间可覆盖升级；这是公开测试密钥，不能用于正式分发。
+
+两个包的桌面图标已分套，装在同一台设备上可以分辨：
+
+| 变体 | 包名 | 图标 | 资源 |
+|---|---|---|---|
+| 原版 | `app.readen.read` | 墨绿渐变底 + 象牙羽毛 + 柔和投影 | `assets/app_icon_classic` |
+| 墨水屏版 | `app.readen.read.eink` | 纯黑底 + 白色细线羽毛 | `assets/app_icon` |
+
+`tools/android/apply_icons.sh classic|eink` 负责在各自构建前写入 mipmap；缺目录或参数错误会直接失败，不会静默复用上一套图标。
 
 ## 构建
 

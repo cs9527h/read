@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:pdfrx/pdfrx.dart';
 import 'package:read/src/model/book.dart';
 import 'package:read/src/services/library_store.dart';
-import 'package:read/src/theme.dart';
+import 'package:read/src/theme/ui_mode.dart';
 
 /// Native PDF page reader; reflow and OCR are not implemented.
 class PdfReaderPage extends StatefulWidget {
@@ -26,7 +26,7 @@ class _PdfReaderPageState extends State<PdfReaderPage> {
         path,
         initialPageNumber: widget.book.pageIndex.value + 1,
         params: PdfViewerParams(
-          backgroundColor: kEink ? Colors.white : const Color(0xFFEDEDED),
+          backgroundColor: ReadUi.instance.isEink ? Colors.white : const Color(0xFFEDEDED),
           onPageChanged: (int? pageNumber) {
             if (pageNumber == null || pageNumber < 1) return;
             widget.book.chapterIndex.value = 0;

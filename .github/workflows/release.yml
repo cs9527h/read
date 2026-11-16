@@ -48,8 +48,8 @@ jobs:
           cp tools/android/native/MainActivity.kt android/app/src/main/kotlin/app/readen/read/MainActivity.kt
           test -s android/app/src/main/kotlin/app/readen/read/MainActivity.kt
 
-      - name: 应用黑白羽毛图标
-        run: bash tools/android/apply_icons.sh
+      - name: 应用原版桌面图标
+        run: bash tools/android/apply_icons.sh classic
 
       - name: 配置固定预览签名
         run: python3 tools/android/setup_signing.py
@@ -103,6 +103,9 @@ jobs:
           gradle.write_text(body, encoding='utf-8')
           print('E-ink applicationId set to app.readen.read.eink')
           PYCODE
+
+      - name: 换成墨水屏桌面图标
+        run: bash tools/android/apply_icons.sh eink
 
       - name: 构建墨水屏 APK
         run: flutter build apk --release --dart-define=EINK=true

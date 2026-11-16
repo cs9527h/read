@@ -37,7 +37,7 @@ void main() {
 
     await tester.enterText(find.byType(TextField), '没有这本书');
     await tester.pumpAndSettle();
-    expect(find.text('没有找到这本书'), findsOneWidget);
+    expect(find.text('没有符合条件的书'), findsOneWidget);
 
     store.books.clear();
   });

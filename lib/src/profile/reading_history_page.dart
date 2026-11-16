@@ -6,6 +6,7 @@ import 'package:read/src/reader/reader_page.dart';
 import 'package:read/src/services/library_store.dart';
 import 'package:read/src/services/reading_stats_store.dart';
 import 'package:read/src/theme.dart';
+import 'package:read/src/theme/ui_mode.dart';
 
 /// 我的阅读：按阅读状态筛选的书单。
 /// 「搁置」目前没有独立状态字段，因此只提供有真实依据的三档。
@@ -68,7 +69,7 @@ class _ReadingHistoryPageState extends State<ReadingHistoryPage> {
                                 : palette.muted,
                           ),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(kEink ? 0 : 16),
+                            borderRadius: BorderRadius.circular(ReadUi.instance.isEink ? 0 : 16),
                           ),
                         ),
                       ),
@@ -139,12 +140,12 @@ class _HistoryRow extends StatelessWidget {
 
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(kEink ? 0 : 10),
+      borderRadius: BorderRadius.circular(ReadUi.instance.isEink ? 0 : 10),
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: palette.surface,
-          borderRadius: BorderRadius.circular(kEink ? 0 : 10),
+          borderRadius: BorderRadius.circular(ReadUi.instance.isEink ? 0 : 10),
           border: Border.all(color: palette.outline),
         ),
         child: Row(
@@ -155,7 +156,7 @@ class _HistoryRow extends StatelessWidget {
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: palette.ink.withValues(alpha: 0.85),
-                borderRadius: BorderRadius.circular(kEink ? 0 : 5),
+                borderRadius: BorderRadius.circular(ReadUi.instance.isEink ? 0 : 5),
               ),
               child: Text(
                 book.title.characters.take(1).toString(),

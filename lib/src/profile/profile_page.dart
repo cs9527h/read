@@ -10,6 +10,7 @@ import 'package:read/src/sync/sync_page.dart';
 import 'package:read/src/sync/sync_config.dart';
 import 'package:read/src/theme.dart';
 import 'package:read/src/version.dart';
+import 'package:read/src/theme/ui_mode.dart';
 
 /// 我的：头像 + 同步状态 + 分区列表。
 class ProfilePage extends StatelessWidget {
@@ -38,7 +39,7 @@ class ProfilePage extends StatelessWidget {
                       height: 52,
                       decoration: BoxDecoration(
                         color: palette.ink,
-                        borderRadius: BorderRadius.circular(kEink ? 0 : 12),
+                        borderRadius: BorderRadius.circular(ReadUi.instance.isEink ? 0 : 12),
                       ),
                       child: Icon(
                         Icons.person_outline_rounded,
@@ -175,7 +176,7 @@ class _Section extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: palette.surface,
-        borderRadius: BorderRadius.circular(kEink ? 0 : 12),
+        borderRadius: BorderRadius.circular(ReadUi.instance.isEink ? 0 : 12),
         border: Border.all(color: palette.outline),
       ),
       child: Column(children: children),
