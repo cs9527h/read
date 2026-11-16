@@ -72,13 +72,17 @@
 
 ## 验证情况（如实说明）
 
-| 项目 | 结果 |
-| --- | --- |
-| `flutter analyze lib` | 0 error，0 warning（120 条 info，均为 `material.dart` deprecation 与 `prefer_const` 风格提示） |
-| `flutter test --no-pub` | 119 / 119 通过 |
-| `flutter build bundle` | 失败：`Android SDK could not be found` |
+| 项目 | 结果 | 证据 |
+| --- | --- | --- |
+| `flutter analyze --no-fatal-infos`（本地） | 0 error，0 warning，135 info | info 全为 `material.dart` deprecation 与 `prefer_const` 等风格提示 |
+| `flutter test --no-pub`（本地） | 119 / 119 通过 | 含分页映射、同步、书架、服务层 |
+| `flutter analyze --no-fatal-infos`（CI） | 通过 | run 43821968124 步骤 12 |
+| `flutter test`（CI） | 通过 | 同上 步骤 13 |
+| `flutter build apk --release`（普通版） | 成功 | 同上 步骤 14–15 |
+| `flutter build apk --release --dart-define=EINK=true`（墨水屏版） | 成功 | 同上 步骤 17–18 |
+| 产物 | `read-android.apk` + `read-eink.apk`，合计 83.0 MB | artifact `read-apks` |
 
-`flutter build bundle` 的失败原因是本机构建环境缺少 Android SDK，与代码本身无关；本仓库的 CI（`.github/workflows/build-android.yml`）会在具备 SDK 的 runner 上完成真机产物编译。此版本未取得本地产物级构建结论，发布前应以 CI 产物为准。
+本机（Ubuntu 沙箱）没有 Android SDK，`flutter build bundle` 在本机必然失败，因此产物级结论一律以上表 CI 运行为准，不用本机结果代替。CI 运行为 `build-android` #43821968124 / `build-windows-experimental` #43821968095，提交 `5833fc3`。
 
 ## 桌面图标分套
 

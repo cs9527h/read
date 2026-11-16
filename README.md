@@ -51,7 +51,8 @@
 
 - `flutter analyze --no-fatal-infos`：0 error，0 warning，135 info（Flutter 3.50 `material.dart` deprecated 与 `prefer_const` 等风格提示）。
 - `flutter test --no-pub`：119/119 通过。
-- 覆盖：分页与偏移映射、三层设置、章节识别、同步文档往返、墓碑、双方编辑、条件写冲突、损坏密文拒绝、设备原生通道契约、同步端到端上传→远端合并→本地应用。
+- 覆盖：分页与偏移映射、三层设置、章节识别、同步文档往返、墓碑、双方编辑、条件写冲突、损坏密文拒绝、设备原生通道契约、同步端到端上传→远端合并→本地应用、书籍元数据往返、书架/设置服务。
+- CI（`build-android` + `build-windows-experimental`）：analyze、单测、普通版 APK、墨水屏 APK 全部通过，产物 `read-apks` 合计 83.0 MB。产物级结论以 CI 为准——本机开发环境没有 Android SDK，`flutter build bundle` 在本机失败不具参考价值。
 
 ## 版本与发布
 
