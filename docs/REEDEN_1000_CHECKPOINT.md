@@ -29,13 +29,15 @@
 |---|---|---|---|---|
 | 1 | R0001-R0040（审计+台账基线） | 已推送 | 14a82b0 | 建保护分支、基线测试、生成1000台账 |
 | 2 | 阅读内核 P0（EPUB spine）+ 对标矩阵 | 已推送+CI绿 | bef009e(+a5b137d,22db52d) | 合入 PR#46 同源修复；3 份能力矩阵；CI build-android/windows success |
-| 3 | 分章跨行吞正文 bug | 已推送 | bd56614 | 标题正则 \s→[ \t]；chapter_splitter 8/8；全量 152/152 |
-| 4 | 待定 | 未开始 | - | - |
+| 3 | 分章跨行吞正文 bug | 已推送+CI绿 | bd56614 | 标题正则 \s→[ \t]；chapter_splitter 8/8；全量 152/152 |
+| 4 | 台账证据更新 | 已推送+CI绿 | 5d33421 | R0282 升已验证；CI build-android/windows 均 success |
+| 5 | 发布准备（版本 1.1.1+13 + 发布说明） | 进行中 | 待提交 | bump 版本保升级兼容；RELEASE_1_1_1.md |
 
 ## GitHub 状态
 - 工作分支：`work/reeden-1000`（已推送 origin）
-- PR：#47（work/reeden-1000 → main），CI：build-android success、build-windows success（bef009e）
-- 尚未合并 main、尚未发布新 tag。合并/发布前需确认 bd56614 的 CI 也通过。
+- PR：#47（work/reeden-1000 → main），CI 全绿：bef009e 与 5d33421 的 build-android/build-windows 均 success
+- APK 构建产物 `read-apks`（约 87MB）由 CI 生成
+- 待办：合并 PR #47 → main；打 tag `v1.1.1-preview` 触发 release workflow 上传 APK/SHA256
 
 ## 下一轮恢复命令
 ```bash
