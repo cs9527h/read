@@ -37,6 +37,10 @@ class AutoSyncService extends ChangeNotifier with WidgetsBindingObserver {
   bool _initialized = false;
   bool _foreground = true;
 
+  /// Expose live network activity for the reader's sync indicator.
+  bool get isProgressRunning => _progressRunning;
+  bool get isMetadataRunning => _metadataRunning;
+
   Future<void> init() async {
     if (_initialized) return;
     _initialized = true;
