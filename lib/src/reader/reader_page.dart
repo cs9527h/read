@@ -1214,6 +1214,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
       // 换 controller 时用新 key 重建，避免 PageView 内部页码与控制器不一致。
       key: ValueKey<int>(_controllerEpoch),
       controller: controller,
+      reverse: _settings.reverseDirection,
       itemCount: prevCount + pageCount + (hasNextChapter ? 1 : 0),
       physics: _settings.pageTurnMode == 'none'
           ? const NeverScrollableScrollPhysics()
@@ -1885,8 +1886,11 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
             const Duration(milliseconds: 500)) {
           return;
         }
-        final double width =
-            _pageWidth > 0 ? _pageWidth : MediaQuery.sizeOf(context).width;
+        // In dual-column mode _pageWidth measures a single column. Tap
+        // zones must span the entire visible page rather than half of it.
+        final double width = _pageWidth > 0
+            ? (_twoColumns ? _pageWidth * 2 + _settings.columnGap : _pageWidth)
+            : MediaQuery.sizeOf(context).width;
         final double x = down.dx;
         final String action = x < width * 0.3
             ? _settings.tapLeft
