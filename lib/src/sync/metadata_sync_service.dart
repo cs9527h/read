@@ -6,6 +6,7 @@ import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 
 import '../services/library_store.dart';
+import 'encrypted_file_envelope.dart';
 import 'encrypted_sync_envelope.dart';
 import 'metadata_sync_source.dart';
 import 'remote_store.dart';
@@ -71,6 +72,8 @@ class MetadataSyncService {
     required bool includeFiles,
     required bool downloadMissingFiles,
     required String targetId,
+    bool encryptFiles = true,
+    bool allowLegacyPlainFiles = false,
   }) async {
     if (encryptionPassword.length < 12) {
       throw const FormatException('同步密码至少需要 12 个字符');
@@ -147,12 +150,16 @@ class MetadataSyncService {
       filesUploaded = await _uploadLocalFiles(
         store: store,
         remoteFiles: remoteFiles,
+        encryptionPassword: encryptionPassword,
+        encryptFiles: encryptFiles,
       );
       if (downloadMissingFiles) {
         filesDownloaded = await _downloadMissingFiles(
           store: store,
           remoteFiles: remoteFiles,
           document: finalMerge.document,
+          encryptionPassword: encryptionPassword,
+          allowLegacyPlainFiles: allowLegacyPlainFiles,
         );
         missing = 0;
       }
@@ -209,6 +216,8 @@ class MetadataSyncService {
   Future<int> _uploadLocalFiles({
     required RemoteObjectStore store,
     required Set<String> remoteFiles,
+    required String encryptionPassword,
+    required bool encryptFiles,
   }) async {
     var count = 0;
     for (final book in LibraryStore.instance.books) {
@@ -219,11 +228,27 @@ class MetadataSyncService {
       final size = await file.length();
       if (size <= 0 || size > maxSyncFileBytes) continue;
       final ext = p.extension(path).replaceFirst('.', '').toLowerCase();
-      final key = '$filesPrefix$hash.$ext';
+      final plainKey = '$filesPrefix$hash.$ext';
+      final key = encryptFiles ? '$plainKey.enc' : plainKey;
       if (remoteFiles.contains(key)) continue;
       final bytes = await file.readAsBytes();
+      final payload = encryptFiles
+          ? await EncryptedFileEnvelope.encrypt(
+              Uint8List.fromList(bytes),
+              encryptionPassword,
+            )
+          : Uint8List.fromList(bytes);
       try {
-        await store.write(Uint8List.fromList(bytes), key);
+        await store.write(payload, key);
+        if (encryptFiles && remoteFiles.contains(plainKey)) {
+          await _history.add(SyncHistoryEntry(
+            at: DateTime.now(),
+            kind: 'full',
+            status: 'skipped',
+            message: '云端仍有旧明文图书对象 $plainKey；新文件已加密上传，'
+                '旧对象需用户确认后再清理',
+          ));
+        }
         count++;
       } on RemoteConflictException {
         // Another device uploaded the same content-addressed file first.
@@ -237,6 +262,8 @@ class MetadataSyncService {
     required RemoteObjectStore store,
     required Set<String> remoteFiles,
     required SyncDocument document,
+    required String encryptionPassword,
+    required bool allowLegacyPlainFiles,
   }) async {
     var count = 0;
     for (final record in document.records.values) {
@@ -246,11 +273,43 @@ class MetadataSyncService {
       if (hash is! String || fileName is! String) continue;
       if (LibraryStore.instance.hasHash(hash)) continue;
       final ext = p.extension(fileName).replaceFirst('.', '').toLowerCase();
-      final key = '$filesPrefix$hash.$ext';
-      if (!remoteFiles.contains(key)) continue;
-      final snapshot = await store.read(key);
+      final plainKey = '$filesPrefix$hash.$ext';
+      final encryptedKey = '$plainKey.enc';
+      final encrypted = remoteFiles.contains(encryptedKey);
+      final plainAvailable = remoteFiles.contains(plainKey);
+      if (!encrypted && !plainAvailable) continue;
+      if (!encrypted && !allowLegacyPlainFiles) {
+        await _history.add(SyncHistoryEntry(
+          at: DateTime.now(),
+          kind: 'full',
+          status: 'failed',
+          message: '发现旧明文云端图书 $plainKey，已拒绝自动下载；'
+              '请在同步选项确认允许旧明文文件后重试',
+        ));
+        continue;
+      }
+      final snapshot = await store.read(encrypted ? encryptedKey : plainKey);
       if (snapshot == null) continue;
-      if (sha256.convert(snapshot.bytes).toString() != hash) {
+      final Uint8List original;
+      if (encrypted) {
+        try {
+          original = await EncryptedFileEnvelope.decrypt(
+            snapshot.bytes,
+            encryptionPassword,
+          );
+        } on FormatException catch (error) {
+          await _history.add(SyncHistoryEntry(
+            at: DateTime.now(),
+            kind: 'full',
+            status: 'failed',
+            message: '云端加密图书解密失败，已拒绝导入：$fileName · $error',
+          ));
+          continue;
+        }
+      } else {
+        original = snapshot.bytes;
+      }
+      if (sha256.convert(original).toString() != hash) {
         await _history.add(SyncHistoryEntry(
           at: DateTime.now(),
           kind: 'full',
@@ -265,7 +324,7 @@ class MetadataSyncService {
       final lastRead = record.fields['last_read_at'];
       try {
         await LibraryStore.instance.importSyncedFile(
-          bytes: snapshot.bytes,
+          bytes: original,
           hash: hash,
           fileName: fileName,
           title: title,

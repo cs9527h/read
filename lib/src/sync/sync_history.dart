@@ -16,6 +16,8 @@ class SyncHistoryEntry {
     this.downloaded = 0,
     this.conflicts = 0,
     this.device = '',
+    this.errorType = '',
+    this.suggestion = '',
   });
 
   final DateTime at;
@@ -26,6 +28,9 @@ class SyncHistoryEntry {
   final int downloaded;
   final int conflicts;
   final String device;
+  /// Stable failure category (auth/timeout/rate_limit/…) and next step.
+  final String errorType;
+  final String suggestion;
 
   Map<String, Object?> toJson() => <String, Object?>{
         'at': at.toIso8601String(),
@@ -36,6 +41,8 @@ class SyncHistoryEntry {
         'downloaded': downloaded,
         'conflicts': conflicts,
         'device': device,
+        'error_type': errorType,
+        'suggestion': suggestion,
       };
 
   static SyncHistoryEntry? fromJson(Object? raw) {
@@ -51,6 +58,8 @@ class SyncHistoryEntry {
       downloaded: (raw['downloaded'] as num?)?.toInt() ?? 0,
       conflicts: (raw['conflicts'] as num?)?.toInt() ?? 0,
       device: raw['device'] as String? ?? '',
+      errorType: raw['error_type'] as String? ?? '',
+      suggestion: raw['suggestion'] as String? ?? '',
     );
   }
 }
@@ -141,6 +150,9 @@ class PendingSyncTask {
     required this.nextAt,
     this.attempts = 0,
     this.lastError = '',
+    this.bookHash = '',
+    this.targetId = '',
+    this.permanentlyFailed = false,
   });
 
   factory PendingSyncTask.fromJson(Map<String, dynamic> json) => PendingSyncTask(
@@ -151,6 +163,9 @@ class PendingSyncTask {
             DateTime.tryParse(json['next_at'] as String? ?? '') ?? DateTime.now(),
         attempts: (json['attempts'] as num?)?.toInt() ?? 0,
         lastError: json['last_error'] as String? ?? '',
+        bookHash: json['book_hash'] as String? ?? '',
+        targetId: json['target_id'] as String? ?? '',
+        permanentlyFailed: json['permanently_failed'] == true,
       );
 
   final String kind;
@@ -159,12 +174,23 @@ class PendingSyncTask {
   int attempts;
   String lastError;
 
+  /// The exact book this task belongs to. Progress retries must never fall
+  /// back to "the first book in the library".
+  String bookHash;
+  String targetId;
+  bool permanentlyFailed;
+
+  String get key => '$kind|$bookHash|$targetId';
+
   Map<String, Object?> toJson() => <String, Object?>{
         'kind': kind,
         'created_at': createdAt.toIso8601String(),
         'next_at': nextAt.toIso8601String(),
         'attempts': attempts,
         'last_error': lastError,
+        'book_hash': bookHash,
+        'target_id': targetId,
+        'permanently_failed': permanentlyFailed,
       };
 }
 
@@ -193,27 +219,35 @@ class SyncTaskQueue extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> enqueue(String kind) async {
-    // Coalesce repeated notifications into one pending operation per kind.
-    if (_tasks.any((PendingSyncTask t) => t.kind == kind)) return;
+  Future<void> enqueue(
+    String kind, {
+    String bookHash = '',
+    String targetId = '',
+  }) async {
+    // Coalesce only the exact same operation; different books stay separate.
+    final key = '$kind|$bookHash|$targetId';
+    if (_tasks.any((PendingSyncTask t) => t.key == key)) return;
     _tasks.add(PendingSyncTask(
       kind: kind,
       createdAt: DateTime.now(),
       nextAt: DateTime.now(),
+      bookHash: bookHash,
+      targetId: targetId,
     ));
     await _persist();
     notifyListeners();
   }
 
   PendingSyncTask? nextDue(DateTime now) {
-    final due = _tasks.where((PendingSyncTask t) => !t.nextAt.isAfter(now));
+    final due = _tasks.where((PendingSyncTask t) =>
+        !t.permanentlyFailed && !t.nextAt.isAfter(now));
     if (due.isEmpty) return null;
     return due.reduce((PendingSyncTask a, PendingSyncTask b) =>
         a.nextAt.isBefore(b.nextAt) ? a : b);
   }
 
   Future<void> complete(PendingSyncTask task) async {
-    _tasks.removeWhere((PendingSyncTask t) => t.kind == task.kind);
+    _tasks.removeWhere((PendingSyncTask t) => t.key == task.key);
     await _persist();
     notifyListeners();
   }
@@ -224,11 +258,33 @@ class SyncTaskQueue extends ChangeNotifier {
     final seconds = 1 << (task.attempts.clamp(1, 6)); // 2s … 64s
     task.nextAt = DateTime.now().add(Duration(seconds: seconds));
     if (task.attempts >= 8) {
-      _tasks.removeWhere((PendingSyncTask t) => t.kind == task.kind);
+      // Never silently discard a failure: keep it as a durable dead letter
+      // until the user retries or clears it.
+      task.permanentlyFailed = true;
+      await SyncHistoryStore.instance.add(SyncHistoryEntry(
+        at: DateTime.now(),
+        kind: task.kind,
+        status: 'failed',
+        message: '重试 8 次仍失败，已保留任务：${task.bookHash.isEmpty ? task.kind : task.bookHash}'
+            ' · ${task.lastError}',
+      ));
     }
     await _persist();
     notifyListeners();
   }
+
+  Future<void> retry(PendingSyncTask task) async {
+    task
+      ..attempts = 0
+      ..permanentlyFailed = false
+      ..lastError = ''
+      ..nextAt = DateTime.now();
+    await _persist();
+    notifyListeners();
+  }
+
+  List<PendingSyncTask> get failedTasks =>
+      _tasks.where((PendingSyncTask t) => t.permanentlyFailed).toList();
 
   Future<void> clear() async {
     _tasks.clear();

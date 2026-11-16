@@ -6,7 +6,9 @@ import 'package:flutter/widgets.dart';
 import '../model/book.dart';
 import '../services/library_store.dart';
 import 'metadata_sync_service.dart';
+import 'progress_conflict_store.dart';
 import 'progress_sync_service.dart';
+import 'sync_failure.dart';
 import 'remote_store.dart';
 import 'sync_config.dart';
 import 'progress_history.dart';
@@ -42,6 +44,7 @@ class AutoSyncService extends ChangeNotifier with WidgetsBindingObserver {
     await SyncHistoryStore.instance.init();
     await SyncTaskQueue.instance.init();
     await ProgressHistoryStore.instance.init();
+    await ProgressConflictStore.instance.init();
     library.addListener(_onLibraryChanged);
     _connectivity = Connectivity().onConnectivityChanged.listen(
       (List<ConnectivityResult> results) {
@@ -165,11 +168,13 @@ class AutoSyncService extends ChangeNotifier with WidgetsBindingObserver {
     }
     _progressRunning = true;
     notifyListeners();
+    final targetId = SyncBackendFactory.targetId(config);
+    var bookHash = book.contentHash ?? '';
     try {
+      bookHash = await library.ensureContentHash(book);
       final secrets = await SyncSecrets.load();
       final store = SyncBackendFactory.create(config, secrets);
       await _prepare(store);
-      final targetId = SyncBackendFactory.targetId(config);
       final service = ProgressSyncService(library);
       final report = await service.syncStore(
         store,
@@ -177,7 +182,13 @@ class AutoSyncService extends ChangeNotifier with WidgetsBindingObserver {
         targetId: targetId,
         onlyBook: book,
         resolveConflict: resolver ?? _policyResolver,
+        continueOnUnresolved: resolver == null && config.conflictPolicy == 'ask',
       );
+      if (resolver != null && report.conflicts > 0) {
+        await ProgressConflictStore.instance.remove(
+          '$targetId|${await library.ensureContentHash(book)}',
+        );
+      }
       await config.markProgress('阅读进度同步完成');
       await SyncHistoryStore.instance.add(SyncHistoryEntry(
         at: DateTime.now(),
@@ -191,9 +202,28 @@ class AutoSyncService extends ChangeNotifier with WidgetsBindingObserver {
       ));
       return report;
     } catch (error) {
-      await config.markProgress('阅读进度同步失败', error: '$error');
+      final failure = SyncFailure.classify(
+        error,
+        operation: '同步阅读进度',
+        object: '《${book.title}》',
+      );
+      await SyncHistoryStore.instance.add(SyncHistoryEntry(
+        at: failure.occurredAt,
+        kind: 'progress',
+        status: 'failed',
+        message: failure.message,
+        errorType: failure.label,
+        suggestion: failure.suggestion,
+      ));
+      await config.markProgress('阅读进度同步失败', error: failure.message);
       if (!silent) rethrow;
-      if (enqueueOnFailure) await SyncTaskQueue.instance.enqueue('progress');
+      if (enqueueOnFailure) {
+        await SyncTaskQueue.instance.enqueue(
+          'progress',
+          bookHash: bookHash,
+          targetId: targetId,
+        );
+      }
       return null;
     } finally {
       _progressRunning = false;
@@ -227,13 +257,28 @@ class AutoSyncService extends ChangeNotifier with WidgetsBindingObserver {
         includeFiles: config.syncFiles,
         downloadMissingFiles: downloadMissing,
         targetId: SyncBackendFactory.targetId(config),
+        encryptFiles: config.encryptFiles,
+        allowLegacyPlainFiles: config.allowLegacyPlainFiles,
       );
       await config.markSync(
         report.status == 'conflict' ? '同步完成（有冲突）' : '同步完成',
       );
       return report;
     } catch (error) {
-      await config.markSync('同步失败', error: '$error');
+      final failure = SyncFailure.classify(
+        error,
+        operation: '全量同步',
+        object: '书架与云端目标',
+      );
+      await SyncHistoryStore.instance.add(SyncHistoryEntry(
+        at: failure.occurredAt,
+        kind: 'full',
+        status: 'failed',
+        message: failure.message,
+        errorType: failure.label,
+        suggestion: failure.suggestion,
+      ));
+      await config.markSync('同步失败', error: failure.message);
       if (!silent) rethrow;
       if (enqueueOnFailure) await SyncTaskQueue.instance.enqueue('full');
       return null;
@@ -261,6 +306,26 @@ class AutoSyncService extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<ProgressChoice?> _policyResolver(ProgressSyncConflict conflict) async {
+    if (config.conflictPolicy == 'ask') {
+      // Ask never silently picks a side: keep both records, stop writing this
+      // book, and surface a durable pending conflict for the user.
+      await ProgressConflictStore.instance.put(PendingProgressConflict(
+        targetId: SyncBackendFactory.targetId(config),
+        bookHash: conflict.local.hash,
+        title: conflict.title,
+        local: conflict.local,
+        remote: conflict.remote,
+        createdAt: DateTime.now(),
+      ));
+      await SyncHistoryStore.instance.add(SyncHistoryEntry(
+        at: DateTime.now(),
+        kind: 'progress',
+        status: 'conflict',
+        message: '《${conflict.title}》已保留为待解决冲突，未自动覆盖任何一方',
+        conflicts: 1,
+      ));
+      return null;
+    }
     await SyncHistoryStore.instance.add(SyncHistoryEntry(
       at: DateTime.now(),
       kind: 'progress',
@@ -270,7 +335,7 @@ class AutoSyncService extends ChangeNotifier with WidgetsBindingObserver {
     ));
     return config.conflictPolicy == 'cloud'
         ? ProgressChoice.cloud
-        : ProgressChoice.local; // ask is not allowed to block auto sync
+        : ProgressChoice.local;
   }
 
   Future<void> _drainQueue() async {
@@ -279,10 +344,17 @@ class AutoSyncService extends ChangeNotifier with WidgetsBindingObserver {
     if (task == null) return;
     try {
       if (task.kind == 'progress') {
-        final book = _currentBook ?? (library.books.isEmpty ? null : library.books.first);
+        final currentTarget = SyncBackendFactory.targetId(config);
+        if (task.targetId.isNotEmpty && task.targetId != currentTarget) {
+          throw StateError('队列任务绑定的云端目标已变化，已暂停以避免写入错误位置');
+        }
+        final Book? book = task.bookHash.isNotEmpty
+            ? library.bookByHash(task.bookHash)
+            : _currentBook;
         if (book == null) {
-          await SyncTaskQueue.instance.complete(task);
-          return;
+          throw StateError(task.bookHash.isEmpty
+              ? '旧版进度任务缺少书籍绑定，请打开目标书籍后重新同步'
+              : '队列任务绑定的书籍不在本机，已保留任务等待恢复');
         }
         final report = await runProgress(book, silent: true);
         if (report == null) {

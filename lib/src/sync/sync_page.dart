@@ -8,7 +8,10 @@ import 'package:read/src/services/library_store.dart';
 import 'package:read/src/sync/auto_sync_service.dart';
 import 'package:read/src/sync/backup_service.dart';
 import 'package:read/src/sync/metadata_sync_service.dart';
+import 'package:read/src/sync/progress_conflict_store.dart';
 import 'package:read/src/sync/progress_history.dart';
+import 'package:read/src/sync/progress_models.dart';
+import 'package:read/src/sync/progress_sync_service.dart';
 import 'package:read/src/sync/remote_store.dart';
 import 'package:read/src/sync/sync_config.dart';
 import 'package:read/src/sync/sync_history.dart';
@@ -404,7 +407,9 @@ class _StatusCard extends StatelessWidget {
             ),
           ),
           if (SyncTaskQueue.instance.tasks.isNotEmpty)
-            Text('${SyncTaskQueue.instance.tasks.length} 待重试',
+            Text(
+                '${SyncTaskQueue.instance.tasks.length} 待处理'
+                '${SyncTaskQueue.instance.failedTasks.isEmpty ? '' : ' · ${SyncTaskQueue.instance.failedTasks.length} 已失败'}',
                 style: TextStyle(color: palette.muted, fontSize: 11)),
         ],
       ),
@@ -422,6 +427,73 @@ class _OptionsTab extends StatefulWidget {
 
 class _OptionsTabState extends State<_OptionsTab> {
   SyncConfig get _config => SyncConfig.instance;
+
+  @override
+  void initState() {
+    super.initState();
+    ProgressConflictStore.instance.addListener(_onConflictsChanged);
+  }
+
+  @override
+  void dispose() {
+    ProgressConflictStore.instance.removeListener(_onConflictsChanged);
+    super.dispose();
+  }
+
+  void _onConflictsChanged() {
+    if (mounted) setState(() {});
+  }
+
+  String _positionLine(PendingProgressConflict conflict, ProgressRecord record) {
+    final book = LibraryStore.instance.bookByHash(conflict.bookHash);
+    var chapter = '';
+    var ratio = '';
+    if (record.format == 'PDF') {
+      ratio = '第 ${record.page + 1} 页';
+    } else if (book != null && book.content.isNotEmpty) {
+      final chapters = splitChapters(book.content);
+      for (var i = 0; i < chapters.length; i++) {
+        if (record.offset >= chapters[i].start && record.offset < chapters[i].end) {
+          chapter = chapters[i].title.trim();
+          ratio = '${(record.offset / book.content.length * 100).toStringAsFixed(1)}%';
+          break;
+        }
+      }
+      ratio = ratio.isEmpty ? '字符 ${record.offset}' : ratio;
+    } else {
+      ratio = '字符 ${record.offset}';
+    }
+    final device = record.device.length > 8
+        ? '${record.device.substring(0, 8)}…'
+        : record.device;
+    final time = _formatTime(
+      DateTime.fromMillisecondsSinceEpoch(record.updatedAt).toIso8601String(),
+    );
+    return <String>[if (chapter.isNotEmpty) chapter, ratio, device, time]
+        .join(' · ');
+  }
+
+  Future<void> _resolveConflict(
+    PendingProgressConflict conflict,
+    ProgressChoice choice,
+  ) async {
+    final book = LibraryStore.instance.bookByHash(conflict.bookHash);
+    if (book == null) {
+      _toast(context, '本机没有这本书，无法合并该冲突；请先导入同一原文件');
+      return;
+    }
+    try {
+      await AutoSyncService.instance.runProgress(
+        book,
+        resolver: (ProgressSyncConflict _) async => choice,
+        enqueueOnFailure: true,
+      );
+      await ProgressConflictStore.instance.remove(conflict.id);
+      if (mounted) _toast(context, '冲突已解决并写入云端新修订');
+    } catch (error) {
+      if (mounted) _toast(context, '解决冲突失败：$error');
+    }
+  }
 
   int get _intervalValue {
     const standard = <int>[0, 5, 10, 15, 30, 60, 240, 720];
@@ -566,6 +638,19 @@ class _OptionsTabState extends State<_OptionsTab> {
             (bool v) => _update(() async => _config.syncStats = v)),
         _switch('书籍原文件（可选，内容哈希寻址）', _config.syncFiles,
             (bool v) => _update(() async => _config.syncFiles = v)),
+        _switch('上传前加密图书文件（推荐）', _config.encryptFiles,
+            (bool v) => _update(() async => _config.encryptFiles = v)),
+        _switch('允许读取旧明文云文件', _config.allowLegacyPlainFiles,
+            (bool v) => _update(() async => _config.allowLegacyPlainFiles = v)),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Text(
+            '默认使用同步密码对图书文件做 AES-256-GCM 加密，云端对象以 .enc 结尾。'
+            '旧版本上传的明文对象不会自动删除；开启“允许读取旧明文”后才会下载，'
+            '开启前会拒绝并保留失败记录。',
+            style: TextStyle(fontSize: 11, color: palette.muted, height: 1.5),
+          ),
+        ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 6, 16, 4),
           child: Text(
@@ -577,18 +662,62 @@ class _OptionsTabState extends State<_OptionsTab> {
         ListTile(
           dense: true,
           title: const Text('进度冲突策略'),
-          subtitle: const Text('自动同步不会弹窗阻塞'),
+          subtitle: const Text('询问模式会保留双方，不自动覆盖'),
           trailing: DropdownButton<String>(
             value: _config.conflictPolicy,
             items: const <DropdownMenuItem<String>>[
               DropdownMenuItem<String>(value: 'local', child: Text('保留本机')),
               DropdownMenuItem<String>(value: 'cloud', child: Text('采用云端')),
-              DropdownMenuItem<String>(value: 'ask', child: Text('仅手动时询问')),
+              DropdownMenuItem<String>(value: 'ask', child: Text('询问（保留冲突）')),
             ],
             onChanged: (String? value) =>
                 _update(() async => _config.conflictPolicy = value ?? 'local'),
           ),
         ),
+        if (ProgressConflictStore.instance.items.isNotEmpty) ...<Widget>[
+          _section(palette, '待解决冲突'),
+          for (final conflict in ProgressConflictStore.instance.items)
+            Card(
+              margin: const EdgeInsets.fromLTRB(0, 4, 0, 4),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text('《${conflict.title}》',
+                        style: const TextStyle(
+                            fontSize: 14, fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 4),
+                    Text('本机：${_positionLine(conflict, conflict.local)}',
+                        style: TextStyle(fontSize: 11, color: palette.muted)),
+                    Text('云端：${_positionLine(conflict, conflict.remote)}',
+                        style: TextStyle(fontSize: 11, color: palette.muted)),
+                    const SizedBox(height: 4),
+                    Text('自动同步未覆盖任何一方，选择后会生成可持续同步的新修订。',
+                        style: TextStyle(fontSize: 11, color: palette.muted)),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: Wrap(
+                        spacing: 8,
+                        children: <Widget>[
+                          TextButton(
+                            onPressed: () => _resolveConflict(
+                                conflict, ProgressChoice.local),
+                            child: const Text('保留本机'),
+                          ),
+                          TextButton(
+                            onPressed: () => _resolveConflict(
+                                conflict, ProgressChoice.cloud),
+                            child: const Text('采用云端'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
         _switch('打开书时自动跳到云端进度', _config.autoJumpProgress,
             (bool v) => _update(() async => _config.autoJumpProgress = v)),
         _switch('发现云端更新时提示', _config.promptCloudProgress,
@@ -953,6 +1082,15 @@ class _HistoryTab extends StatelessWidget {
                             const SizedBox(height: 4),
                             Text(entry.message,
                                 style: TextStyle(fontSize: 12, color: palette.muted, height: 1.4)),
+                            if (entry.errorType.isNotEmpty) ...<Widget>[
+                              const SizedBox(height: 2),
+                              Text('类型：${entry.errorType}',
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      color: Theme.of(context).colorScheme.error)),
+                              Text('处理建议：${entry.suggestion}',
+                                  style: TextStyle(fontSize: 11, color: palette.muted)),
+                            ],
                             if (entry.conflicts > 0) ...<Widget>[
                               const SizedBox(height: 4),
                               Text('冲突 ${entry.conflicts} 条',
@@ -1024,11 +1162,38 @@ class _HistoryTab extends StatelessWidget {
                 ListTile(
                   dense: true,
                   contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.schedule_rounded, size: 18),
-                  title: Text('${task.kind} · 第 ${task.attempts} 次'),
-                  subtitle: Text(task.lastError.isEmpty ? '等待网络' : task.lastError),
-                  trailing: Text(_formatTime(task.nextAt.toIso8601String()),
-                      style: TextStyle(fontSize: 11, color: palette.muted)),
+                  leading: Icon(
+                    task.permanentlyFailed
+                        ? Icons.error_outline_rounded
+                        : Icons.schedule_rounded,
+                    size: 18,
+                  ),
+                  title: Text(
+                    '${_kindLabel(task.kind)} · 第 ${task.attempts} 次'
+                    '${task.bookHash.isEmpty ? '' : ' · ${task.bookHash.substring(0, task.bookHash.length.clamp(0, 8))}…'}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: task.permanentlyFailed
+                          ? Theme.of(context).colorScheme.error
+                          : null,
+                    ),
+                  ),
+                  subtitle: Text(
+                    task.permanentlyFailed
+                        ? '已持久失败，重试不会自动丢弃：${task.lastError}'
+                        : (task.lastError.isEmpty ? '等待网络' : task.lastError),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  trailing: task.permanentlyFailed
+                      ? TextButton(
+                          onPressed: () => SyncTaskQueue.instance.retry(task),
+                          child: const Text('重试'),
+                        )
+                      : Text(
+                          _formatTime(task.nextAt.toIso8601String()),
+                          style: TextStyle(fontSize: 11, color: palette.muted),
+                        ),
                 ),
             ],
           ],

@@ -82,6 +82,7 @@ class ProgressSyncService {
     ProgressSyncCredentials credentials, {
     required ProgressConflictResolver resolveConflict,
     Book? onlyBook,
+    bool continueOnUnresolved = false,
   }) async {
     final client = WebDavEncryptedObject(
       fileUrl: credentials.fileUrl,
@@ -94,6 +95,7 @@ class ProgressSyncService {
       credentials.fileUrl.toString(),
       resolveConflict,
       onlyBook,
+      continueOnUnresolved,
     );
   }
 
@@ -103,6 +105,7 @@ class ProgressSyncService {
     required String targetId,
     required ProgressConflictResolver resolveConflict,
     Book? onlyBook,
+    bool continueOnUnresolved = false,
   }) async {
     return _sync(
       _ObjectStoreProgressTransport(store),
@@ -110,6 +113,7 @@ class ProgressSyncService {
       targetId,
       resolveConflict,
       onlyBook,
+      continueOnUnresolved,
     );
   }
 
@@ -119,6 +123,7 @@ class ProgressSyncService {
     String targetId,
     ProgressConflictResolver resolveConflict,
     Book? onlyBook,
+    bool continueOnUnresolved,
   ) async {
     final preferences = await SharedPreferences.getInstance();
     final device = await _getOrMakeDeviceId(preferences);
@@ -228,7 +233,15 @@ class ProgressSyncService {
         final selection = await resolveConflict(
           ProgressSyncConflict(booksByHash[hash]!.first.title, here, there),
         );
-        if (selection == null) throw const ProgressSyncCancelled();
+        if (selection == null) {
+          if (continueOnUnresolved) {
+            // Keep the cloud position for this book, write nothing for it,
+            // and continue so other books are never blocked.
+            merged[hash] = there;
+            continue;
+          }
+          throw const ProgressSyncCancelled();
+        }
         choice = selection;
       } else {
         choice = decision == ProgressDecision.local

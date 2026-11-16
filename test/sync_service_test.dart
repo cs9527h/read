@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -6,6 +7,7 @@ import 'package:read/src/model/book.dart';
 import 'package:read/src/services/bookmark_meta_store.dart';
 import 'package:read/src/services/bookmark_store.dart';
 import 'package:read/src/services/library_store.dart';
+import 'package:read/src/sync/encrypted_file_envelope.dart';
 import 'package:read/src/sync/encrypted_sync_envelope.dart';
 import 'package:read/src/sync/metadata_sync_service.dart';
 import 'package:read/src/sync/remote_store.dart';
@@ -63,6 +65,50 @@ const String password = 'correct horse battery';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  test('图书原文件默认加密上传，云端无明文对象', () async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    await LibraryStore.instance.init();
+    LibraryStore.instance.books.clear();
+    final temp = File('${Directory.systemTemp.path}/read-sync-encrypted.txt');
+    final bytes = Uint8List.fromList(
+      List<int>.generate(4096, (i) => (i * 7) % 251),
+    );
+    await temp.writeAsBytes(bytes);
+    final book = Book(
+      id: 'enc-book',
+      title: '加密书',
+      author: '本机',
+      content: '正文' * 100,
+      format: 'TXT',
+      sourcePath: temp.path,
+      contentHash: hash,
+      fileName: 'book.txt',
+      fileSize: bytes.length,
+    );
+    LibraryStore.instance.books.add(book);
+    final store = FakeRemoteStore();
+    final report = await MetadataSyncService().sync(
+      store: store,
+      encryptionPassword: password,
+      includeBookmarks: false,
+      includeSettings: false,
+      includeStats: false,
+      includeFiles: true,
+      downloadMissingFiles: false,
+      targetId: 'fake-target-enc',
+    );
+    expect(report.filesUploaded, 1);
+    expect(store.objects.containsKey('files/$hash.txt.enc'), isTrue);
+    expect(store.objects.containsKey('files/$hash.txt'), isFalse);
+    final restored = await EncryptedFileEnvelope.decrypt(
+      store.objects['files/$hash.txt.enc']!,
+      password,
+    );
+    expect(restored, bytes);
+    await temp.delete();
+  });
+
 
   test('全量同步：上传后合并远端标题与书签，条件写入不覆盖', () async {
     SharedPreferences.setMockInitialValues(<String, Object>{});
