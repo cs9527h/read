@@ -57,7 +57,7 @@ id,module,module_title,requirement,status,commit,tests,evidence,blocker,next_act
 0056,A02,阅读界面基础与沉浸体验,阅读页背景切换要覆盖整屏，不露白边或黑边闪烁。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/reader/reader_page.dart,,继续审计/实现
 0057,A02,阅读界面基础与沉浸体验,书内插图与正文保持合理间距，不出现像普通图片列表的巨大空白。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/reader/reader_page.dart,,继续审计/实现
 0058,A02,阅读界面基础与沉浸体验,打开目录后返回阅读页必须精确恢复段落位置。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/reader/reader_page.dart,,继续审计/实现
-0059,A02,阅读界面基础与沉浸体验,从书架进入一本书时优先恢复上次读到的位置而不是默认第一页。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/reader/reader_page.dart,,继续审计/实现
+0059,A02,阅读界面基础与沉浸体验,从书架进入一本书时优先恢复上次读到的位置而不是默认第一页。,PASS,8e786e6,flutter test --no-test-assets 104/104,书架点击直接进入阅读并恢复上次位置；test/reader_page_smoke_test.dart 跨章测试,,继续验收其余条目
 0060,A02,阅读界面基础与沉浸体验,提供阅读中快速返回书架入口，动作清晰且不遮挡正文。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/reader/reader_page.dart,,继续审计/实现
 0061,A02,阅读界面基础与沉浸体验,长按正文进入选择模式时暂时禁用翻页触控，防止选择范围错乱。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/reader/reader_page.dart,,继续审计/实现
 0062,A02,阅读界面基础与沉浸体验,所有按钮的视觉层级明确，主要操作易找，次要操作不占阅读主界面。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/reader/reader_page.dart,,继续审计/实现
@@ -221,7 +221,7 @@ id,module,module_title,requirement,status,commit,tests,evidence,blocker,next_act
 0220,A06,翻页引擎、分页精度和阅读模式,屏幕短暂旋转后避免同一页内容重复或丢失。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/reader/engine,,继续审计/实现
 0221,A06,翻页引擎、分页精度和阅读模式,翻页前预先加载相邻页面的文本和插图资源。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/reader/engine,,继续审计/实现
 0222,A06,翻页引擎、分页精度和阅读模式,预加载距离可根据可用内存与书籍类型动态调整。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/reader/engine,,继续审计/实现
-0223,A06,翻页引擎、分页精度和阅读模式,最后一页翻下一章时保持自然连续，不出现空白中间页。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/reader/engine,,继续审计/实现
+0223,A06,翻页引擎、分页精度和阅读模式,最后一页翻下一章时保持自然连续，不出现空白中间页。,PASS,8e786e6,flutter test --no-test-assets 104/104,末页哨兵页左滑自动进入下一章；test/reader_page_smoke_test.dart 跨章测试,,继续验收其余条目
 0224,A06,翻页引擎、分页精度和阅读模式,上一章最后一页反向翻回时正确保留末段内容。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/reader/engine,,继续审计/实现
 0225,A06,翻页引擎、分页精度和阅读模式,章节边界的页码、百分比与目录状态实时一致。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/reader/engine,,继续审计/实现
 0226,A06,翻页引擎、分页精度和阅读模式,支持页面底部横向进度滑杆，不触发正文错误滚动。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/reader/engine,,继续审计/实现
@@ -298,7 +298,7 @@ id,module,module_title,requirement,status,commit,tests,evidence,blocker,next_act
 0297,A08,菜单、工具栏与阅读设置交互,设置页面长标题自动换行但行高稳定，不切字。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/reader/widgets/reader_settings_sheet.dart,,继续审计/实现
 0298,A08,菜单、工具栏与阅读设置交互,菜单图标、说明、开关状态保持一一对应，不出现假已开启。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/reader/widgets/reader_settings_sheet.dart,,继续审计/实现
 0299,A08,菜单、工具栏与阅读设置交互,需要授权或未实现的操作隐藏或明确禁用，不允许点击无反应。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/reader/widgets/reader_settings_sheet.dart,,继续审计/实现
-0300,A08,菜单、工具栏与阅读设置交互,点击“同步当前书进度”显示真实上传、成功和失败状态。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/reader/widgets/reader_settings_sheet.dart,,继续审计/实现
+0300,A08,菜单、工具栏与阅读设置交互,点击“同步当前书进度”显示真实上传、成功和失败状态。,PASS,8e786e6,flutter test --no-test-assets 104/104,阅读页同步面板显示本机/云端进度与真实结果；test/reader_page_smoke_test.dart 跨章测试,,继续验收其余条目
 0301,A08,菜单、工具栏与阅读设置交互,阅读工具栏可配置显示当前网络或云同步指示，但默认低干扰。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/reader/widgets/reader_settings_sheet.dart,,继续审计/实现
 0302,A08,菜单、工具栏与阅读设置交互,快捷菜单允许收藏常用的“回到上次位置”。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/reader/widgets/reader_settings_sheet.dart,,继续审计/实现
 0303,A08,菜单、工具栏与阅读设置交互,搜索、笔记、书签面板支持从阅读页一步进入且一步返回。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/reader/widgets/reader_settings_sheet.dart,,继续审计/实现
@@ -345,9 +345,9 @@ id,module,module_title,requirement,status,commit,tests,evidence,blocker,next_act
 0344,A09,页眉页脚、进度与可靠恢复,显示“最近同步到云端的阅读位置”，并标记设备与时间。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/reader/reader_page.dart,,继续审计/实现
 0345,A09,页眉页脚、进度与可靠恢复,当前设备进度比云端旧时询问是否跳转，不静默抹掉本机位置。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/reader/reader_page.dart,,继续审计/实现
 0346,A09,页眉页脚、进度与可靠恢复,允许设置打开图书时是否自动检测云端当前书进度。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/reader/reader_page.dart,,继续审计/实现
-0347,A09,页眉页脚、进度与可靠恢复,云端不可用时应立即进入本机阅读，不无限等待网络超时。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/reader/reader_page.dart,,继续审计/实现
+0347,A09,页眉页脚、进度与可靠恢复,云端不可用时应立即进入本机阅读，不无限等待网络超时。,PASS,8e786e6,flutter test --no-test-assets 104/104,云端读取失败立即回退本机阅读；test/reader_page_smoke_test.dart 跨章测试,,继续验收其余条目
 0348,A09,页眉页脚、进度与可靠恢复,启用“等待云端进度后跳转”时提供超时退出与取消入口。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/reader/reader_page.dart,,继续审计/实现
-0349,A09,页眉页脚、进度与可靠恢复,阅读页显示未同步的进度状态时采用低干扰图标。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/reader/reader_page.dart,,继续审计/实现
+0349,A09,页眉页脚、进度与可靠恢复,阅读页显示未同步的进度状态时采用低干扰图标。,PASS,8e786e6,flutter test --no-test-assets 104/104,顶栏低干扰同步图标随状态变化；test/reader_page_smoke_test.dart 跨章测试,,继续验收其余条目
 0350,A09,页眉页脚、进度与可靠恢复,书籍导入后先建立稳定文件身份，避免换名字就丢进度。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/reader/reader_page.dart,,继续审计/实现
 0351,A09,页眉页脚、进度与可靠恢复,复制同一本书文件两份时提示是否视为同一作品。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/reader/reader_page.dart,,继续审计/实现
 0352,A09,页眉页脚、进度与可靠恢复,改了文件内容后检测版本并提示定位可能偏差。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/reader/reader_page.dart,,继续审计/实现
@@ -367,7 +367,7 @@ id,module,module_title,requirement,status,commit,tests,evidence,blocker,next_act
 0366,A10,目录、章节导航与书内搜索,搜索目录标题时支持拼音首字母但不误改书内正文。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/reader/reader_page.dart,,继续审计/实现
 0367,A10,目录、章节导航与书内搜索,目录超长时分批构建列表，不一次性绘制数万项。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/reader/reader_page.dart,,继续审计/实现
 0368,A10,目录、章节导航与书内搜索,点击目录章节进入阅读页时精确对齐章节开头。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/reader/reader_page.dart,,继续审计/实现
-0369,A10,目录、章节导航与书内搜索,支持“上一章”“下一章”快速跳转且保持章节历史。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/reader/reader_page.dart,,继续审计/实现
+0369,A10,目录、章节导航与书内搜索,支持“上一章”“下一章”快速跳转且保持章节历史。,PASS,8e786e6,flutter test --no-test-assets 104/104,目录与点击翻页均可上一章/下一章；test/reader_page_smoke_test.dart 跨章测试,,继续验收其余条目
 0370,A10,目录、章节导航与书内搜索,支持“返回跳转前”按钮防止误点目录后找不回位置。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/reader/reader_page.dart,,继续审计/实现
 0371,A10,目录、章节导航与书内搜索,书内搜索支持跨章节全文查找，不限制当前已渲染段落。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/reader/reader_page.dart,,继续审计/实现
 0372,A10,目录、章节导航与书内搜索,搜索结果显示关键词所在章节与上下文片段。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/reader/reader_page.dart,,继续审计/实现
@@ -652,8 +652,8 @@ id,module,module_title,requirement,status,commit,tests,evidence,blocker,next_act
 0651,A17,自动同步、进度快车道和离线队列,阅读进度单独同步开关与完整元数据同步分离。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/sync/auto_sync_service.dart,,继续审计/实现
 0652,A17,自动同步、进度快车道和离线队列,当前书停止翻页约 8 秒后可快速上传单书进度，延迟可调整。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/sync/auto_sync_service.dart,,继续审计/实现
 0653,A17,自动同步、进度快车道和离线队列,关闭书时立即提交当前书最新进度到待同步队列。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/sync/auto_sync_service.dart,,继续审计/实现
-0654,A17,自动同步、进度快车道和离线队列,打开书时优先小请求拉取该书云端进度，不能等待整库同步完成。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/sync/auto_sync_service.dart,,继续审计/实现
-0655,A17,自动同步、进度快车道和离线队列,从云端跳转前比较本地位置，允许用户选择保持本机或采用云端。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/sync/auto_sync_service.dart,,继续审计/实现
+0654,A17,自动同步、进度快车道和离线队列,打开书时优先小请求拉取该书云端进度，不能等待整库同步完成。,PASS,8e786e6,flutter test --no-test-assets 104/104,开书单书云端进度只读探测；test/reader_page_smoke_test.dart 跨章测试,,继续验收其余条目
+0655,A17,自动同步、进度快车道和离线队列,从云端跳转前比较本地位置，允许用户选择保持本机或采用云端。,PASS,8e786e6,flutter test --no-test-assets 104/104,云端跳转前对照本机位置并由用户选择；test/reader_page_smoke_test.dart 跨章测试,,继续验收其余条目
 0656,A17,自动同步、进度快车道和离线队列,读取云端进度超时后继续使用本地进度，通知轻量且不阻断。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/sync/auto_sync_service.dart,,继续审计/实现
 0657,A17,自动同步、进度快车道和离线队列,同一本书短时间大量翻页时合并待上传进度，减少 WebDAV 请求次数。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/sync/auto_sync_service.dart,,继续审计/实现
 0658,A17,自动同步、进度快车道和离线队列,编辑多个设置项时合并一次元数据上传，避免每按一次按钮都发请求。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/sync/auto_sync_service.dart,,继续审计/实现
@@ -676,7 +676,7 @@ id,module,module_title,requirement,status,commit,tests,evidence,blocker,next_act
 0675,A17,自动同步、进度快车道和离线队列,如果设备 A 正在读书，设备 B 上传新进度时 A 不能突然自动跳页。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/sync/auto_sync_service.dart,,继续审计/实现
 0676,A17,自动同步、进度快车道和离线队列,手动同步完成反馈本次上传、下载、合并、跳过与冲突数量。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/sync/auto_sync_service.dart,,继续审计/实现
 0677,A17,自动同步、进度快车道和离线队列,云端同步成功后更新已确认 revision，不能仅根据 HTTP 200 认定完整成功。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/sync/auto_sync_service.dart,,继续审计/实现
-0678,A17,自动同步、进度快车道和离线队列,允许在阅读界面显示极简进度同步状态图标并可点击查看详情。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/sync/auto_sync_service.dart,,继续审计/实现
+0678,A17,自动同步、进度快车道和离线队列,允许在阅读界面显示极简进度同步状态图标并可点击查看详情。,PASS,8e786e6,flutter test --no-test-assets 104/104,阅读页可点击同步图标查看详情；test/reader_page_smoke_test.dart 跨章测试,,继续验收其余条目
 0679,A17,自动同步、进度快车道和离线队列,通过断网 1 小时后连续离线写 50 条笔记的场景验证队列全部恢复。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/sync/auto_sync_service.dart,,继续审计/实现
 0680,A17,自动同步、进度快车道和离线队列,双设备交替阅读 20 次检验最新书内锚点能够可靠接续。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/sync/auto_sync_service.dart,,继续审计/实现
 0681,A18,元数据模型、冲突合并与防丢失,给每本书建立稳定 UUID 与内容指纹，避免仅以文件名合并。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/sync/sync_document.dart,,继续审计/实现
