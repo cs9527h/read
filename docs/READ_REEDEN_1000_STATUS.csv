@@ -125,7 +125,7 @@ R0123,4,电子书格式、编码与解析兼容,TXT 中的 CRLF、LF 与 CR 换�
 /
 / 归一（reader_engine buildDisplay）"
 R0124,4,电子书格式、编码与解析兼容,TXT 在超大文件情况下采用分段索引，不一次性加载全部文本。,未开始,lib/src/formats/format_engine.dart; lib/src/formats/pdf_format.dart,超大 TXT 分段索引未实现（有 40MB 上限抛错）
-R0125,4,电子书格式、编码与解析兼容,EPUB 2 应正确解析 OPF、NCX、章节顺序与图片资源。,已实现待验证,lib/src/formats/format_engine.dart; lib/src/formats/pdf_format.dart,EPUB2 OPF/spine 解析（format_engine）
+R0125,4,电子书格式、编码与解析兼容,EPUB 2 应正确解析 OPF、NCX、章节顺序与图片资源。,已验证完成,lib/src/formats/format_engine.dart; lib/src/formats/pdf_format.dart,EPUB2 OPF/spine 解析：本轮合入 #46 修复，format_engine_test.dart 新增真实 ZIP spine 回归用例通过
 R0126,4,电子书格式、编码与解析兼容,EPUB 3 应正确解析 navigation document 和语义结构。,已实现待验证,lib/src/formats/format_engine.dart; lib/src/formats/pdf_format.dart,EPUB3 nav 语义部分解析
 R0127,4,电子书格式、编码与解析兼容,EPUB 的 CSS、字体、内联图片应在安全沙箱下合理渲染。,部分实现,lib/src/formats/format_engine.dart; lib/src/formats/pdf_format.dart,EPUB CSS/字体/内联图未完整渲染（转纯文本）
 R0128,4,电子书格式、编码与解析兼容,EPUB 缺失封面时生成优雅占位封面，不阻止阅读。,部分实现,lib/src/formats/format_engine.dart; lib/src/formats/pdf_format.dart,EPUB 缺封面占位未实现
@@ -219,7 +219,7 @@ R0215,6,字体、排版、主题与内容样式,支持竖排文字模式，并�
 R0216,6,字体、排版、主题与内容样式,支持繁简文字展示转换，不改变原始书籍文件。,未开始,lib/src/reader/settings/reader_settings.dart; lib/src/reader/widgets/reader_settings_sheet.dart,繁简转换未实现
 R0217,6,字体、排版、主题与内容样式,支持书籍原始 CSS 与用户覆盖样式的优先级切换。,未开始,lib/src/reader/settings/reader_settings.dart; lib/src/reader/widgets/reader_settings_sheet.dart,原书 CSS 与用户覆盖优先级未实现
 R0218,6,字体、排版、主题与内容样式,切换“尊重原书排版”时不应丢失阅读锚点。,未开始,lib/src/reader/settings/reader_settings.dart; lib/src/reader/widgets/reader_settings_sheet.dart,尊重原书排版开关未实现
-R0219,6,字体、排版、主题与内容样式,保留 EPUB 章节标题层级、段首装饰及引用样式。,部分实现,lib/src/reader/settings/reader_settings.dart; lib/src/reader/widgets/reader_settings_sheet.dart,EPUB 标题层级保留部分（转纯文本损失样式）
+R0219,6,字体、排版、主题与内容样式,保留 EPUB 章节标题层级、段首装饰及引用样式。,已实现待验证,lib/src/reader/settings/reader_settings.dart; lib/src/reader/widgets/reader_settings_sheet.dart,EPUB 章节标题：本轮 #46 修复保证显式标题渲染一次且开篇正文不被误作标题（format_engine_test 通过）；CSS 样式仍为纯文本损失
 R0220,6,字体、排版、主题与内容样式,支持原书嵌入字体的启用和禁用。,未开始,lib/src/reader/settings/reader_settings.dart; lib/src/reader/widgets/reader_settings_sheet.dart,嵌入字体启停未实现
 R0221,6,字体、排版、主题与内容样式,支持阅读时显示或隐藏页眉书名。,已实现待验证,lib/src/reader/settings/reader_settings.dart; lib/src/reader/widgets/reader_settings_sheet.dart,页眉书名显隐（headerShow）
 R0222,6,字体、排版、主题与内容样式,支持在页脚显示页码、百分比、章节名和电量的组合。,已实现待验证,lib/src/reader/settings/reader_settings.dart; lib/src/reader/widgets/reader_settings_sheet.dart,页脚页码/百分比/章节/电量组合（footer 设置）

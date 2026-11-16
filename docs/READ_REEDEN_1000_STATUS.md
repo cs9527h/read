@@ -2,20 +2,20 @@
 
 > 对应《READ 阅读器：全面对标 Reeden 的 1000 条详细开发与验收要求》R0001–R1000。
 > **本台账基于真实源码审计 + 本地基线测试，状态如实标注，不以界面存在或口头保证代替验收。**
-> 基线：cs9527h/read main@d23c86b；Flutter 3.50 analyze 0 error/0 warning；flutter test 149/149 通过。
+> 基线：cs9527h/read main@d23c86b；Flutter 3.50 analyze 0 error/0 warning；flutter test 150/150 通过（含本轮新增 EPUB spine 回归）。
 
 ## 判定标准（严格，不虚报）
 
 | 状态 | 含义 | 计数 |
 |---|---|---:|
-| ✅ 已验证完成 | 有真实源码 + 本环境可运行的自动化测试通过证据 | 39 |
+| ✅ 已验证完成 | 有真实源码 + 本环境可运行的自动化测试通过证据 | 40 |
 | 🟡 已实现待验证 | 有真实源码，但缺自动化证据或需真机/真账号人工验收 | 259 |
-| ◐ 部分实现 | 有相邻能力或框架，但本条未完整落地 | 303 |
+| ◐ 部分实现 | 有相邻能力或框架，但本条未完整落地 | 302 |
 | ⛔ 客观阻塞 | 需第三方授权/真实网盘账号/多设备/真机等本环境无法满足的条件 | 52 |
 | ⬜ 未开始 | 代码层面尚未实现 | 347 |
 | **合计** | | **1000** |
 
-**已验证完成占比：39/1000**。此数字只反映有源码 + 自动化测试证据的条目，绝不代表整体完成度。
+**已验证完成占比：40/1000**。此数字只反映有源码 + 自动化测试证据的条目，绝不代表整体完成度。
 
 ## 模块汇总
 
@@ -24,9 +24,9 @@
 | 01 项目审计与工程约束 | 11 | 17 | 11 | 1 | 0 | 40 |
 | 02 首次启动、导航与基础体验 | 4 | 18 | 13 | 0 | 5 | 40 |
 | 03 本地导入、传书与文件管理 | 1 | 7 | 17 | 1 | 14 | 40 |
-| 04 电子书格式、编码与解析兼容 | 0 | 14 | 9 | 2 | 15 | 40 |
+| 04 电子书格式、编码与解析兼容 | 1 | 13 | 9 | 2 | 15 | 40 |
 | 05 阅读器基础行为和内容定位 | 6 | 17 | 12 | 1 | 4 | 40 |
-| 06 字体、排版、主题与内容样式 | 0 | 21 | 9 | 0 | 10 | 40 |
+| 06 字体、排版、主题与内容样式 | 0 | 22 | 8 | 0 | 10 | 40 |
 | 07 翻页模式、手势与动画 | 0 | 12 | 20 | 2 | 6 | 40 |
 | 08 目录、导航、全文搜索与定位 | 5 | 3 | 17 | 1 | 14 | 40 |
 | 09 脚注、复杂排版与阅读辅助 | 0 | 1 | 7 | 2 | 30 | 40 |
@@ -192,7 +192,7 @@
 | R0122 | ⬜ 未开始 | TXT 编码识别错误时允许用户手动选择编码并立即预览。 | lib/src/formats/format_engine.dart; lib/src/formats/pdf_format.dart | 手动选择编码 UI 未实现 |
 | R0123 | 🟡 已实现待验证 | TXT 中的 CRLF、LF 与 CR 换行符应得到一致的段落处理。 | lib/src/formats/format_engine.dart; lib/src/formats/pdf_format.dart | 换行  / / 归一（reader_engine buildDisplay） |
 | R0124 | ⬜ 未开始 | TXT 在超大文件情况下采用分段索引，不一次性加载全部文本。 | lib/src/formats/format_engine.dart; lib/src/formats/pdf_format.dart | 超大 TXT 分段索引未实现（有 40MB 上限抛错） |
-| R0125 | 🟡 已实现待验证 | EPUB 2 应正确解析 OPF、NCX、章节顺序与图片资源。 | lib/src/formats/format_engine.dart; lib/src/formats/pdf_format.dart | EPUB2 OPF/spine 解析（format_engine） |
+| R0125 | ✅ 已验证完成 | EPUB 2 应正确解析 OPF、NCX、章节顺序与图片资源。 | lib/src/formats/format_engine.dart; lib/src/formats/pdf_format.dart | EPUB2 OPF/spine 解析：本轮合入 #46 修复，format_engine_test.dart 新增真实 ZIP spine 回归用例通过 |
 | R0126 | 🟡 已实现待验证 | EPUB 3 应正确解析 navigation document 和语义结构。 | lib/src/formats/format_engine.dart; lib/src/formats/pdf_format.dart | EPUB3 nav 语义部分解析 |
 | R0127 | ◐ 部分实现 | EPUB 的 CSS、字体、内联图片应在安全沙箱下合理渲染。 | lib/src/formats/format_engine.dart; lib/src/formats/pdf_format.dart | EPUB CSS/字体/内联图未完整渲染（转纯文本） |
 | R0128 | ◐ 部分实现 | EPUB 缺失封面时生成优雅占位封面，不阻止阅读。 | lib/src/formats/format_engine.dart; lib/src/formats/pdf_format.dart | EPUB 缺封面占位未实现 |
@@ -296,7 +296,7 @@
 | R0216 | ⬜ 未开始 | 支持繁简文字展示转换，不改变原始书籍文件。 | lib/src/reader/settings/reader_settings.dart; lib/src/reader/widgets/reader_settings_sheet.dart | 繁简转换未实现 |
 | R0217 | ⬜ 未开始 | 支持书籍原始 CSS 与用户覆盖样式的优先级切换。 | lib/src/reader/settings/reader_settings.dart; lib/src/reader/widgets/reader_settings_sheet.dart | 原书 CSS 与用户覆盖优先级未实现 |
 | R0218 | ⬜ 未开始 | 切换“尊重原书排版”时不应丢失阅读锚点。 | lib/src/reader/settings/reader_settings.dart; lib/src/reader/widgets/reader_settings_sheet.dart | 尊重原书排版开关未实现 |
-| R0219 | ◐ 部分实现 | 保留 EPUB 章节标题层级、段首装饰及引用样式。 | lib/src/reader/settings/reader_settings.dart; lib/src/reader/widgets/reader_settings_sheet.dart | EPUB 标题层级保留部分（转纯文本损失样式） |
+| R0219 | 🟡 已实现待验证 | 保留 EPUB 章节标题层级、段首装饰及引用样式。 | lib/src/reader/settings/reader_settings.dart; lib/src/reader/widgets/reader_settings_sheet.dart | EPUB 章节标题：本轮 #46 修复保证显式标题渲染一次且开篇正文不被误作标题（format_engine_test 通过）；CSS 样式仍为纯文本损失 |
 | R0220 | ⬜ 未开始 | 支持原书嵌入字体的启用和禁用。 | lib/src/reader/settings/reader_settings.dart; lib/src/reader/widgets/reader_settings_sheet.dart | 嵌入字体启停未实现 |
 | R0221 | 🟡 已实现待验证 | 支持阅读时显示或隐藏页眉书名。 | lib/src/reader/settings/reader_settings.dart; lib/src/reader/widgets/reader_settings_sheet.dart | 页眉书名显隐（headerShow） |
 | R0222 | 🟡 已实现待验证 | 支持在页脚显示页码、百分比、章节名和电量的组合。 | lib/src/reader/settings/reader_settings.dart; lib/src/reader/widgets/reader_settings_sheet.dart | 页脚页码/百分比/章节/电量组合（footer 设置） |
