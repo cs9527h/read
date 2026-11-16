@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:archive/archive.dart';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:read/src/formats/format_engine.dart';
 
@@ -68,6 +70,38 @@ void main() {
           Uint8List.fromList(<int>[0xff, 0xfe, 0x4e]), 'broken.txt'),
       throwsFormatException,
     );
+  });
+
+  test('EPUB spine keeps opening prose once and does not duplicate headings', () async {
+    final archive = Archive();
+    void addFile(String name, String content) {
+      final data = utf8.encode(content);
+      archive.addFile(ArchiveFile(name, data.length, data));
+    }
+    addFile('META-INF/container.xml',
+        '<container><rootfiles><rootfile full-path="OEBPS/content.opf"/></rootfiles></container>');
+    addFile('OEBPS/content.opf',
+        '<package><metadata><title>验证书</title></metadata>'
+        '<manifest>'
+        '<item id="one" href="one.xhtml" media-type="application/xhtml+xml"/>'
+        '<item id="two" href="two.xhtml" media-type="application/xhtml+xml"/>'
+        '</manifest><spine><itemref idref="one"/><itemref idref="two"/></spine></package>');
+    addFile('OEBPS/one.xhtml',
+        '<html><body><p>开篇正文。</p><p>后续内容。</p></body></html>');
+    addFile('OEBPS/two.xhtml',
+        '<html><body><h1>第二章 远行</h1><p>第二章正文内容。</p></body></html>');
+    final zip = ZipEncoder().encode(archive);
+    final result = await FormatEngine.importBytes(
+        Uint8List.fromList(zip), 'book.epub');
+    expect(result.format, 'EPUB');
+    expect(result.text.split('开篇正文。').length - 1, 1,
+        reason: 'No-heading spine prose must not be used as a duplicated title');
+    expect(result.text.split('第二章 远行').length - 1, 1,
+        reason: 'An explicit leading heading should render exactly once');
+    expect(result.text, contains('后续内容。'));
+    expect(result.text, contains('第二章正文内容。'));
+    expect(result.text.indexOf('开篇正文。'),
+        lessThan(result.text.indexOf('第二章正文内容。')));
   });
 
 }
