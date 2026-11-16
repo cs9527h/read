@@ -5,6 +5,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'package:read/src/services/library_store.dart';
 import 'package:read/src/theme.dart';
+import 'package:read/src/theme/ui_mode.dart';
 
 /// 存储管理：统计书籍目录与缓存目录的真实占用。
 class StoragePage extends StatefulWidget {
@@ -146,7 +147,7 @@ class _StoragePageState extends State<StoragePage> {
                       foregroundColor: palette.ink,
                       side: BorderSide(color: palette.outline),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(kEink ? 0 : 10),
+                        borderRadius: BorderRadius.circular(ReadUi.instance.isEink ? 0 : 10),
                       ),
                     ),
                   ),
@@ -184,7 +185,7 @@ class _Card extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: palette.surface,
-          borderRadius: BorderRadius.circular(kEink ? 0 : 12),
+          borderRadius: BorderRadius.circular(ReadUi.instance.isEink ? 0 : 12),
           border: Border.all(color: palette.outline),
         ),
         child: child,

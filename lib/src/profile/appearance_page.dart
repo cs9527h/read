@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:read/src/services/appearance_store.dart';
 import 'package:read/src/theme.dart';
+import 'package:read/src/theme/ui_mode.dart';
 
 /// 应用外观：只放真正生效的设置项。
 class AppearancePage extends StatelessWidget {
@@ -56,7 +57,7 @@ class AppearancePage extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
                 decoration: BoxDecoration(
                   color: palette.surface,
-                  borderRadius: BorderRadius.circular(kEink ? 0 : 12),
+                  borderRadius: BorderRadius.circular(ReadUi.instance.isEink ? 0 : 12),
                   border: Border.all(color: palette.outline),
                 ),
                 child: Row(
@@ -96,7 +97,7 @@ class AppearancePage extends StatelessWidget {
               Container(
                 decoration: BoxDecoration(
                   color: palette.surface,
-                  borderRadius: BorderRadius.circular(kEink ? 0 : 12),
+                  borderRadius: BorderRadius.circular(ReadUi.instance.isEink ? 0 : 12),
                   border: Border.all(color: palette.outline),
                 ),
                 child: SwitchListTile(
@@ -153,7 +154,7 @@ class _ModeButton extends StatelessWidget {
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: selected ? palette.ink : palette.surface,
-            borderRadius: BorderRadius.circular(kEink ? 0 : 10),
+            borderRadius: BorderRadius.circular(ReadUi.instance.isEink ? 0 : 10),
             border: Border.all(color: selected ? palette.ink : palette.outline),
           ),
           child: Text(

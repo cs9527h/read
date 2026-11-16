@@ -464,7 +464,7 @@ class _StatusCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: palette.surface,
         border: Border.all(color: palette.outline),
-        borderRadius: BorderRadius.circular(kEink ? 0 : 12),
+        borderRadius: BorderRadius.circular(ReadUi.instance.isEink ? 0 : 12),
       ),
       child: Row(
         children: <Widget>[
@@ -1139,7 +1139,7 @@ class _HistoryTab extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: palette.surface,
                     border: Border.all(color: palette.outline),
-                    borderRadius: BorderRadius.circular(kEink ? 0 : 10),
+                    borderRadius: BorderRadius.circular(ReadUi.instance.isEink ? 0 : 10),
                   ),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1205,7 +1205,7 @@ class _HistoryTab extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: palette.surface,
                     border: Border.all(color: palette.outline),
-                    borderRadius: BorderRadius.circular(kEink ? 0 : 10),
+                    borderRadius: BorderRadius.circular(ReadUi.instance.isEink ? 0 : 10),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
