@@ -35,18 +35,26 @@
 
 ## GitHub 状态
 - 工作分支：`work/reeden-1000`（已推送 origin）
-- PR：#47（work/reeden-1000 → main），CI 全绿：bef009e 与 5d33421 的 build-android/build-windows 均 success
-- APK 构建产物 `read-apks`（约 87MB）由 CI 生成
-- 待办：合并 PR #47 → main；打 tag `v1.1.1-preview` 触发 release workflow 上传 APK/SHA256
+- PR #47 已合并 main（squash `7bd405d`）；合并前 CI 全绿：bef009e/5d33421/19a82d9 的 apk+windows 均 success
+- 已打 tag `v1.1.1-preview` @ `7bd405d`，已触发 release workflow（构建手机 APK + 墨水屏 APK + SHA256）
+- 发布说明：`docs/RELEASE_1_1_1.md`；包名不变（app.readen.read / app.readen.read.eink），支持覆盖安装
 
 ## 下一轮恢复命令
 ```bash
 cd /workspace/read-app
 git checkout work/reeden-1000
+git pull --rebase   # 如需同步 main 合并后的状态
 /opt/flutter350/bin/flutter analyze --no-fatal-infos
 /opt/flutter350/bin/flutter test
 cat docs/READ_REEDEN_1000_STATUS.md | head -20
 ```
+
+## 下一批建议（按未开始项优先级）
+1. 模块 09（脚注/复杂排版，30 未开始）与模块 15（笔记导出，34 未开始）——可本地实现+测试，价值高。
+2. 模块 18（词典/生词本）先做本地词库骨架 + 生词本 CRUD（可测），在线服务标授权阻塞。
+3. 模块 16 阅读目标（分钟/字数/年度本数）+ 单元测试。
+4. 继续把「已实现待验证」中有本地测试可行的条目升级为已验证，逐批 commit + CI。
+> 每批结束：更新 classify.py → 重跑 gen_ledger.py → commit → push → 合并 → 必要时打 tag。
 
 ## 已识别的真实高价值修复候选（按优先级）
 1. **EPUB spine 开篇正文被误当作重复标题** —— PR #46（fix/read-epub-chapter-content-20261116-0723, commits c6a55fa+7a7af5c5）已修好且 CI 绿，未合并。涉及 R0125/R0126/R0219。可 cherry-pick 或按 diff 手工移植。
