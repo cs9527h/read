@@ -10,7 +10,6 @@ import 'package:read/src/sync/data_tools_page.dart';
 import 'package:read/src/theme.dart';
 import 'package:read/src/theme/ui_mode.dart';
 import 'package:read/src/ui/read_icon.dart';
-import 'package:read/src/ui/sheet.dart';
 import 'package:read/src/version.dart';
 
 /// 设置：外观、阅读排版、书架显示、数据入口。
