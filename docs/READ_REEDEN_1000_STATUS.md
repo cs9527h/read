@@ -2,20 +2,20 @@
 
 > 对应《READ 阅读器：全面对标 Reeden 的 1000 条详细开发与验收要求》R0001–R1000。
 > **本台账基于真实源码审计 + 本地基线测试，状态如实标注，不以界面存在或口头保证代替验收。**
-> 基线：cs9527h/read main@d23c86b；Flutter 3.50 analyze 0 error/0 warning；flutter test 150/150 通过（含本轮新增 EPUB spine 回归）。
+> 基线 main@d23c86b；analyze 0 error/warning；flutter test 152/152（含 EPUB spine + 分章跨行两项新回归）。CI build-android/build-windows 均 success。
 
 ## 判定标准（严格，不虚报）
 
 | 状态 | 含义 | 计数 |
 |---|---|---:|
-| ✅ 已验证完成 | 有真实源码 + 本环境可运行的自动化测试通过证据 | 40 |
-| 🟡 已实现待验证 | 有真实源码，但缺自动化证据或需真机/真账号人工验收 | 259 |
+| ✅ 已验证完成 | 有真实源码 + 本环境可运行的自动化测试通过证据 | 39 |
+| 🟡 已实现待验证 | 有真实源码，但缺自动化证据或需真机/真账号人工验收 | 260 |
 | ◐ 部分实现 | 有相邻能力或框架，但本条未完整落地 | 302 |
 | ⛔ 客观阻塞 | 需第三方授权/真实网盘账号/多设备/真机等本环境无法满足的条件 | 52 |
 | ⬜ 未开始 | 代码层面尚未实现 | 347 |
 | **合计** | | **1000** |
 
-**已验证完成占比：40/1000**。此数字只反映有源码 + 自动化测试证据的条目，绝不代表整体完成度。
+**已验证完成占比：39/1000**。此数字只反映有源码 + 自动化测试证据的条目，绝不代表整体完成度。
 
 ## 模块汇总
 
@@ -28,7 +28,7 @@
 | 05 阅读器基础行为和内容定位 | 6 | 17 | 12 | 1 | 4 | 40 |
 | 06 字体、排版、主题与内容样式 | 0 | 22 | 8 | 0 | 10 | 40 |
 | 07 翻页模式、手势与动画 | 0 | 12 | 20 | 2 | 6 | 40 |
-| 08 目录、导航、全文搜索与定位 | 5 | 3 | 17 | 1 | 14 | 40 |
+| 08 目录、导航、全文搜索与定位 | 4 | 4 | 17 | 1 | 14 | 40 |
 | 09 脚注、复杂排版与阅读辅助 | 0 | 1 | 7 | 2 | 30 | 40 |
 | 10 PDF 阅读、标注与性能 | 0 | 9 | 17 | 3 | 11 | 40 |
 | 11 漫画、图像与图文混排 | 0 | 1 | 0 | 2 | 37 | 40 |
@@ -369,8 +369,8 @@
 | 编号 | 状态 | 需求 | 代码路径 | 证据/阻塞说明 |
 |---|---|---|---|---|
 | R0281 | 🟡 已实现待验证 | 从 EPUB 原始导航结构生成可展开的章节目录。 | lib/src/services/book_search.dart; lib/src/services/chapter_splitter.dart; lib/src/reader/reader_page.dart | EPUB 导航 spine 生成目录（format_engine） |
-| R0282 | ✅ 已验证完成 | 从 TXT 通过正则规则识别常见“第X章”标题。 | lib/src/services/book_search.dart; lib/src/services/chapter_splitter.dart; lib/src/reader/reader_page.dart | TXT 正则识别“第X章”+预览修订（chapter_splitter + 测试） |
-| R0283 | ✅ 已验证完成 | TXT 自动识别章节前提供结果预览和手工修订入口。 | lib/src/services/book_search.dart; lib/src/services/chapter_splitter.dart; lib/src/reader/reader_page.dart | TXT 正则识别“第X章”+预览修订（chapter_splitter + 测试） |
+| R0282 | ✅ 已验证完成 | 从 TXT 通过正则规则识别常见“第X章”标题。 | lib/src/services/book_search.dart; lib/src/services/chapter_splitter.dart; lib/src/reader/reader_page.dart | TXT 正则识别“第X章”：本轮修复标题正则跨行吞正文 bug（\s→[ 	]），chapter_splitter_test 8/8 通过，原文零丢失（bd56614） |
+| R0283 | 🟡 已实现待验证 | TXT 自动识别章节前提供结果预览和手工修订入口。 | lib/src/services/book_search.dart; lib/src/services/chapter_splitter.dart; lib/src/reader/reader_page.dart | 分章结果预览+手工修订：manual_chapter_store 支持，UI 修订入口待真机核对 |
 | R0284 | ◐ 部分实现 | 目录按卷、章、节分层展示并支持折叠。 | lib/src/services/book_search.dart; lib/src/services/chapter_splitter.dart; lib/src/reader/reader_page.dart | 卷/章/节分层折叠部分（Chapter 结构） |
 | R0285 | ◐ 部分实现 | 当前阅读章节在目录里自动高亮并滚动到可见位置。 | lib/src/services/book_search.dart; lib/src/services/chapter_splitter.dart; lib/src/reader/reader_page.dart | 当前章目录高亮滚动需核对 |
 | R0286 | ◐ 部分实现 | 目录项显示章节名称和可选阅读进度。 | lib/src/services/book_search.dart; lib/src/services/chapter_splitter.dart; lib/src/reader/reader_page.dart | 目录项进度显示未实现 |

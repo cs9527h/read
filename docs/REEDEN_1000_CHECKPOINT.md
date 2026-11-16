@@ -16,10 +16,10 @@
 - 台账生成：`.../gen_ledger.py`（→ docs/READ_REEDEN_1000_STATUS.md + .csv）
 - 更新某条状态：编辑 classify.py 的 OVERRIDE，重跑 classify.py + gen_ledger.py
 
-## 1000 项台账状态（第 1 批基线审计后）
+## 1000 项台账状态（第 3 批后）
 - ✅ 已验证完成 V：39
-- 🟡 已实现待验证 I：259
-- ◐ 部分实现 P：303
+- 🟡 已实现待验证 I：260
+- ◐ 部分实现 P：302
 - ⛔ 客观阻塞 B：52（真机/真网盘账号/多设备/第三方授权）
 - ⬜ 未开始 N：347
 - 合计 1000。**绝不虚报完成。**
@@ -27,8 +27,15 @@
 ## 逐批进度
 | 批次 | 范围 | 状态 | commit | 说明 |
 |---|---|---|---|---|
-| 1 | R0001-R0040（审计+台账基线） | 完成（本地） | 待提交 | 建保护分支、基线测试、生成1000台账 |
-| 2 | 待定（阅读内核 P0） | 未开始 | - | - |
+| 1 | R0001-R0040（审计+台账基线） | 已推送 | 14a82b0 | 建保护分支、基线测试、生成1000台账 |
+| 2 | 阅读内核 P0（EPUB spine）+ 对标矩阵 | 已推送+CI绿 | bef009e(+a5b137d,22db52d) | 合入 PR#46 同源修复；3 份能力矩阵；CI build-android/windows success |
+| 3 | 分章跨行吞正文 bug | 已推送 | bd56614 | 标题正则 \s→[ \t]；chapter_splitter 8/8；全量 152/152 |
+| 4 | 待定 | 未开始 | - | - |
+
+## GitHub 状态
+- 工作分支：`work/reeden-1000`（已推送 origin）
+- PR：#47（work/reeden-1000 → main），CI：build-android success、build-windows success（bef009e）
+- 尚未合并 main、尚未发布新 tag。合并/发布前需确认 bd56614 的 CI 也通过。
 
 ## 下一轮恢复命令
 ```bash

@@ -282,8 +282,8 @@ R0278,7,翻页模式、手势与动画,支持可关闭的轻微触觉反馈，�
 R0279,7,翻页模式、手势与动画,对不同翻页模式分别测量掉帧比例与交互延时。,客观阻塞,lib/src/reader/reader_page.dart; lib/src/reader/settings/reader_settings.dart,掉帧比例/交互延时需真机测量
 R0280,7,翻页模式、手势与动画,动画验收必须提交实际设备录屏，不以设计预览代替效果。,客观阻塞,lib/src/reader/reader_page.dart; lib/src/reader/settings/reader_settings.dart,动画真机录屏验收需 Android 设备
 R0281,8,目录、导航、全文搜索与定位,从 EPUB 原始导航结构生成可展开的章节目录。,已实现待验证,lib/src/services/book_search.dart; lib/src/services/chapter_splitter.dart; lib/src/reader/reader_page.dart,EPUB 导航 spine 生成目录（format_engine）
-R0282,8,目录、导航、全文搜索与定位,从 TXT 通过正则规则识别常见“第X章”标题。,已验证完成,lib/src/services/book_search.dart; lib/src/services/chapter_splitter.dart; lib/src/reader/reader_page.dart,TXT 正则识别“第X章”+预览修订（chapter_splitter + 测试）
-R0283,8,目录、导航、全文搜索与定位,TXT 自动识别章节前提供结果预览和手工修订入口。,已验证完成,lib/src/services/book_search.dart; lib/src/services/chapter_splitter.dart; lib/src/reader/reader_page.dart,TXT 正则识别“第X章”+预览修订（chapter_splitter + 测试）
+R0282,8,目录、导航、全文搜索与定位,从 TXT 通过正则规则识别常见“第X章”标题。,已验证完成,lib/src/services/book_search.dart; lib/src/services/chapter_splitter.dart; lib/src/reader/reader_page.dart,TXT 正则识别“第X章”：本轮修复标题正则跨行吞正文 bug（\s→[ 	]），chapter_splitter_test 8/8 通过，原文零丢失（bd56614）
+R0283,8,目录、导航、全文搜索与定位,TXT 自动识别章节前提供结果预览和手工修订入口。,已实现待验证,lib/src/services/book_search.dart; lib/src/services/chapter_splitter.dart; lib/src/reader/reader_page.dart,分章结果预览+手工修订：manual_chapter_store 支持，UI 修订入口待真机核对
 R0284,8,目录、导航、全文搜索与定位,目录按卷、章、节分层展示并支持折叠。,部分实现,lib/src/services/book_search.dart; lib/src/services/chapter_splitter.dart; lib/src/reader/reader_page.dart,卷/章/节分层折叠部分（Chapter 结构）
 R0285,8,目录、导航、全文搜索与定位,当前阅读章节在目录里自动高亮并滚动到可见位置。,部分实现,lib/src/services/book_search.dart; lib/src/services/chapter_splitter.dart; lib/src/reader/reader_page.dart,当前章目录高亮滚动需核对
 R0286,8,目录、导航、全文搜索与定位,目录项显示章节名称和可选阅读进度。,部分实现,lib/src/services/book_search.dart; lib/src/services/chapter_splitter.dart; lib/src/reader/reader_page.dart,目录项进度显示未实现
