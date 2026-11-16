@@ -266,7 +266,7 @@ class _BookshelfPageState extends State<BookshelfPage> {
                                   final Book book = visibleBooks[index];
                                   return _BookRow(
                                     book: book,
-                                    onOpen: () => _openBook(book),
+                                    onOpen: () => _openReader(book),
                                     onMenu: () => _showBookMenu(store, book),
                                   );
                                 },
@@ -286,7 +286,7 @@ class _BookshelfPageState extends State<BookshelfPage> {
                                 final Book book = visibleBooks[index];
                                 return _BookCell(
                                   book: book,
-                                  onOpen: () => _openBook(book),
+                                  onOpen: () => _openReader(book),
                                   onMenu: () => _showBookMenu(store, book),
                                 );
                               },
