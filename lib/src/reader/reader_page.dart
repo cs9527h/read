@@ -478,7 +478,9 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   bool get _twoColumns {
     if (_settings.columns == 'one') return false;
     if (_settings.columns == 'two') return true;
-    return _pageWidth > 620 && _pageWidth > _pageHeight * 1.05;
+    // _pageWidth is the previous measured column width, not viewport width.
+    final Size viewport = MediaQuery.sizeOf(context);
+    return viewport.width >= 860 && viewport.width > viewport.height * 1.05;
   }
 
   double get _headerHeight => _settings.minimalMode || !_settings.headerShow
@@ -1227,8 +1229,10 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
               _twoColumns ? ((prev.pages.length + 1) ~/ 2) - 1 : prev.pages.length - 1;
           return _withGuides(
             _twoColumns
-                ? _buildTwoColumnPage(prev, lastRender, foreground)
-                : _buildSinglePage(prev, lastRender, foreground),
+                ? _buildTwoColumnPage(prev, lastRender, foreground,
+                    chapterIndex: _chapterIndex - 1)
+                : _buildSinglePage(prev, lastRender, foreground,
+                    chapterIndex: _chapterIndex - 1),
             secondary,
           );
         }
@@ -1239,8 +1243,10 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
           }
           return _withGuides(
             _twoColumns
-                ? _buildTwoColumnPage(next, 0, foreground)
-                : _buildSinglePage(next, 0, foreground),
+                ? _buildTwoColumnPage(next, 0, foreground,
+                    chapterIndex: _chapterIndex + 1)
+                : _buildSinglePage(next, 0, foreground,
+                    chapterIndex: _chapterIndex + 1),
             secondary,
           );
         }
@@ -1350,11 +1356,12 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   Widget _selectablePage(
     PaginatedChapter chapter,
     EnginePage page,
-    TextStyle style,
-  ) {
+    TextStyle style, {
+    required int chapterIndex,
+  }) {
     final displayText = page.textOf(chapter.display);
     return SelectableText.rich(
-      _highlightedSpan(chapter, page, style),
+      _highlightedSpan(chapter, page, style, chapterIndex),
       textAlign: ReaderEngine.textAlignOf(_settings.align),
       contextMenuBuilder: (BuildContext ctx, EditableTextState editableState) {
         final selection = editableState.textEditingValue.selection;
@@ -1418,11 +1425,12 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     PaginatedChapter chapter,
     EnginePage page,
     TextStyle style,
+    int chapterIndex,
   ) {
     final text = page.textOf(chapter.display);
     if (text.isEmpty) return TextSpan(text: text, style: style);
-    final chapterStart = _chapters[_chapterIndex].start;
-    final chapterLength = _chapters[_chapterIndex].length;
+    final chapterStart = _chapters[chapterIndex].start;
+    final chapterLength = _chapters[chapterIndex].length;
     final starts = <int>[0, text.length];
     final ends = <int>[0, text.length];
     final backgrounds = <Color?>[null, null];
@@ -1614,18 +1622,26 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildSinglePage(PaginatedChapter p, int index, Color foreground) {
+  Widget _buildSinglePage(
+    PaginatedChapter p,
+    int index,
+    Color foreground, {
+    int? chapterIndex,
+  }) {
+    final int renderedChapter = chapterIndex ?? _chapterIndex;
     if (index < 0 || index >= p.pages.length) return const SizedBox.shrink();
     final EnginePage page = p.pages[index];
     final List<Widget> children = <Widget>[];
-    if (index == 0 && p.showTitle) children.add(_buildChapterTitle());
+    if (index == 0 && p.showTitle) {
+      children.add(_buildChapterTitle(renderedChapter, p.titleHeight));
+    }
     final TextStyle style = ReaderEngine.bodyStyle(
       _settings,
       color: foreground,
       textScale: _textScale,
     );
     final Widget body = _scaledText(
-      _selectablePage(p, page, style),
+      _selectablePage(p, page, style, chapterIndex: renderedChapter),
     );
     children.add(
       Expanded(
@@ -1643,14 +1659,21 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   }
 
   Widget _buildTwoColumnPage(
-      PaginatedChapter p, int renderIndex, Color foreground) {
+    PaginatedChapter p,
+    int renderIndex,
+    Color foreground, {
+    int? chapterIndex,
+  }) {
+    final int renderedChapter = chapterIndex ?? _chapterIndex;
     final int leftIndex = renderIndex * 2;
     final int rightIndex = leftIndex + 1;
     Widget column(int index) {
       if (index >= p.pages.length) return const SizedBox.shrink();
       final EnginePage page = p.pages[index];
       final List<Widget> children = <Widget>[];
-      if (index == 0 && p.showTitle) children.add(_buildChapterTitle());
+      if (index == 0 && p.showTitle) {
+        children.add(_buildChapterTitle(renderedChapter, p.titleHeight));
+      }
       final TextStyle style = ReaderEngine.bodyStyle(
         _settings,
         color: foreground,
@@ -1662,7 +1685,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
             alignment: _settings.bottomAlign
                 ? Alignment.bottomLeft
                 : Alignment.topLeft,
-            child: _scaledText(_selectablePage(p, page, style)),
+            child: _scaledText(_selectablePage(p, page, style,
+                chapterIndex: renderedChapter)),
           ),
         ),
       );
@@ -1682,18 +1706,24 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildChapterTitle() {
-    final String title =
-        _chapterIndex < _chapters.length ? _chapters[_chapterIndex].title : '';
+  Widget _buildChapterTitle(int chapterIndex, double titleHeight) {
+    if (chapterIndex < 0 || chapterIndex >= _chapters.length ||
+        titleHeight <= 0) {
+      return const SizedBox.shrink();
+    }
+    final String title = _chapters[chapterIndex].title;
+    final ReaderTheme theme = _store.effectiveTheme(
+      _settings,
+      MediaQuery.platformBrightnessOf(context),
+    );
     final Color color = Color(
-      _settings.titleColor ?? _settings.textColor ?? 0xFF1A1A1A,
+      _settings.titleColor ?? _settings.textColor ?? theme.foreground,
     );
     final TextAlign align = switch (_settings.titleAlign) {
       'center' => TextAlign.center,
       'right' => TextAlign.right,
       _ => TextAlign.left,
     };
-    final double titleHeight = _pagination?.titleHeight ?? 0;
     final TextStyle style = TextStyle(
       fontFamily: _settings.titleFontFamily ?? _settings.fontFamily,
       fontSize: _settings.titleFontSize * _textScale,
@@ -1776,7 +1806,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            _buildChapterTitle(),
+            if (p.showTitle)
+              _buildChapterTitle(_chapterIndex, p.titleHeight),
             _scaledText(SelectionArea(
               child: Text.rich(
                 _pageSpan(
