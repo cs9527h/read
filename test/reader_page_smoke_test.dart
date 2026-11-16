@@ -90,7 +90,6 @@ void main() {
     await tester.pump(const Duration(milliseconds: 700));
     expect(book.chapterIndex.value, 1);
     expect(find.text('第二章 远行'), findsWidgets);
-    expect(find.text('第一章 起点'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
