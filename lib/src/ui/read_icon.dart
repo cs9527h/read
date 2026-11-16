@@ -71,6 +71,7 @@ enum ReadGlyph {
   quote,
   minus,
   cloudUpload,
+  person,
 }
 
 /// 一个矢量图标。颜色默认跟随 IconTheme，尺寸默认 22。
@@ -778,6 +779,11 @@ List<_Shape> _geometry(ReadGlyph glyph, bool eink) {
         ..._geometry(ReadGlyph.cloud, eink),
         const _Shape.line(12, 15.6, 12, 9.4),
         const _Shape.poly(<double>[9.6, 12, 12, 9.2, 14.4, 12]),
+      ];
+    case ReadGlyph.person:
+      return <_Shape>[
+        const _Shape.circle(12, 7.8, 3.6),
+        _Shape.arc(12, 18.4, 6.2, math.pi, math.pi),
       ];
   }
 }

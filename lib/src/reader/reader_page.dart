@@ -1961,15 +1961,19 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
             onPressed: () => Navigator.of(context).maybePop(),
           ),
           Expanded(
-            child: GestureDetector(
-              onTap: _showChapters,
-              child: Text(
-                _chapterIndex < _chapters.length
-                    ? _chapters[_chapterIndex].title
-                    : widget.book.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 13, color: foreground),
+            child: Semantics(
+              button: true,
+              label: '章节：${_chapterIndex < _chapters.length ? _chapters[_chapterIndex].title : widget.book.title}，点击打开目录',
+              child: GestureDetector(
+                onTap: _showChapters,
+                child: Text(
+                  _chapterIndex < _chapters.length
+                      ? _chapters[_chapterIndex].title
+                      : widget.book.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 13, color: foreground),
+                ),
               ),
             ),
           ),

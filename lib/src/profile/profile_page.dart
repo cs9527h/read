@@ -11,6 +11,7 @@ import 'package:read/src/sync/sync_config.dart';
 import 'package:read/src/theme.dart';
 import 'package:read/src/version.dart';
 import 'package:read/src/theme/ui_mode.dart';
+import 'package:read/src/ui/read_icon.dart';
 
 /// 我的：头像 + 同步状态 + 分区列表。
 class ProfilePage extends StatelessWidget {
@@ -41,8 +42,8 @@ class ProfilePage extends StatelessWidget {
                         color: palette.ink,
                         borderRadius: BorderRadius.circular(ReadUi.instance.isEink ? 0 : 12),
                       ),
-                      child: Icon(
-                        Icons.person_outline_rounded,
+                      child: ReadIcon(
+                        ReadGlyph.person,
                         color: palette.brightness == Brightness.dark ? Colors.black : Colors.white,
                         size: 28,
                       ),
@@ -68,14 +69,14 @@ class ProfilePage extends StatelessWidget {
                         ],
                       ),
                     ),
-                    Icon(Icons.chevron_right_rounded, color: palette.muted, size: 20),
+                    ReadIcon(ReadGlyph.chevronRight, color: palette.muted, size: 20),
                   ],
                 ),
                 const SizedBox(height: 20),
                 _Section(
                   children: <Widget>[
                     _Row(
-                      icon: Icons.sync_rounded,
+                      icon: ReadGlyph.sync,
                       title: '同步',
                       subtitle: SyncConfig.instance.lastSyncAt.isEmpty
                           ? '全量同步 / 备份 / 历史'
@@ -90,7 +91,7 @@ class ProfilePage extends StatelessWidget {
                 _Section(
                   children: <Widget>[
                     _Row(
-                      icon: Icons.menu_book_outlined,
+                      icon: ReadGlyph.book,
                       title: '我的阅读',
                       subtitle: '${LibraryStore.instance.books.length} 本 · 全部/在读/读完',
                       onTap: () => Navigator.of(context).push(
@@ -103,7 +104,7 @@ class ProfilePage extends StatelessWidget {
                 _Section(
                   children: <Widget>[
                     _Row(
-                      icon: Icons.palette_outlined,
+                      icon: ReadGlyph.palette,
                       title: '应用外观',
                       subtitle: '主题 / 字体 / 缩放',
                       onTap: () => Navigator.of(context).push(
@@ -116,7 +117,7 @@ class ProfilePage extends StatelessWidget {
                 _Section(
                   children: <Widget>[
                     _Row(
-                      icon: Icons.sd_storage_outlined,
+                      icon: ReadGlyph.device,
                       title: '存储管理',
                       subtitle: '书籍文件与缓存占用',
                       onTap: () => Navigator.of(context).push(
@@ -129,7 +130,7 @@ class ProfilePage extends StatelessWidget {
                 _Section(
                   children: <Widget>[
                     _Row(
-                      icon: Icons.info_outline_rounded,
+                      icon: ReadGlyph.info,
                       title: '关于',
                       subtitle: 'read $appVersionLabel',
                       onTap: () => Navigator.of(context).push(
@@ -192,7 +193,7 @@ class _Row extends StatelessWidget {
     required this.onTap,
   });
 
-  final IconData icon;
+  final ReadGlyph icon;
   final String title;
   final String subtitle;
   final VoidCallback onTap;
@@ -206,7 +207,7 @@ class _Row extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
         child: Row(
           children: <Widget>[
-            Icon(icon, size: 20, color: palette.icon),
+            ReadIcon(icon, size: 20, color: palette.icon),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -221,7 +222,7 @@ class _Row extends StatelessWidget {
                 ],
               ),
             ),
-            Icon(Icons.chevron_right_rounded, size: 18, color: palette.muted),
+            ReadIcon(ReadGlyph.chevronRight, size: 18, color: palette.muted),
           ],
         ),
       ),
