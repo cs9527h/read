@@ -76,6 +76,14 @@ class AutoSyncService extends ChangeNotifier with WidgetsBindingObserver {
         results.contains(ConnectivityResult.ethernet);
   }
 
+  /// Progress is a tiny channel and may run on mobile data when the user
+  /// allowed it; large book files still obey [wifiOnly].
+  Future<bool> _canRunProgressNetwork() async {
+    if (!config.configured) return false;
+    if (config.progressOnMobile) return true;
+    return _canRunNetwork();
+  }
+
   void _restartInterval() {
     _intervalTimer?.cancel();
     if (config.intervalMinutes <= 0) return;
@@ -134,6 +142,9 @@ class AutoSyncService extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   void onBookClosed() {
+    // Drop the debounce timer first: leaving the reader must not fire a
+    // progress upload later against a disposed page.
+    _progressTimer?.cancel();
     final book = _currentBook;
     if (book != null && config.progressAuto && config.syncOnBookClose) {
       unawaited(runProgress(book, silent: true));
@@ -162,7 +173,7 @@ class AutoSyncService extends ChangeNotifier with WidgetsBindingObserver {
     bool enqueueOnFailure = false,
   }) async {
     if (_progressRunning) return null;
-    if (!await _canRunNetwork()) {
+    if (!await _canRunProgressNetwork()) {
       if (!silent) throw const RemoteStoreException('当前不满足自动同步网络条件或未配置云端');
       return null;
     }

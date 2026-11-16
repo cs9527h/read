@@ -269,7 +269,14 @@ class _StorageTabState extends State<_StorageTab> {
             await _config.save();
           },
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 10),
+        Text(
+          webdav
+              ? 'WebDAV 兼容：坚果云、Nextcloud、AList、群晖、Infobox 等；填各自 WebDAV 地址即可。'
+              : 'S3 兼容：Cloudflare R2、MinIO、Backblaze B2、阿里云 OSS（S3 模式）等。',
+          style: TextStyle(color: palette.muted, fontSize: 11, height: 1.4),
+        ),
+        const SizedBox(height: 12),
         if (webdav) ...<Widget>[
           _field(_url, '服务器地址', hint: 'https://dav.jianguoyun.com/dav/'),
           _field(_user, '账号'),
@@ -625,8 +632,10 @@ class _OptionsTabState extends State<_OptionsTab> {
             (bool v) => _update(() async => _config.syncOnBookClose = v)),
         _switch('网络恢复时', _config.syncOnNetwork,
             (bool v) => _update(() async => _config.syncOnNetwork = v)),
-        _switch('仅 Wi-Fi', _config.wifiOnly,
+        _switch('仅 Wi-Fi（图书文件）', _config.wifiOnly,
             (bool v) => _update(() async => _config.wifiOnly = v)),
+        _switch('阅读进度允许使用移动网络', _config.progressOnMobile,
+            (bool v) => _update(() async => _config.progressOnMobile = v)),
         _section(palette, '同步内容'),
         _switch('书籍元数据（标题、作者、阅读时间）', _config.syncBooks,
             (bool v) => _update(() async => _config.syncBooks = v)),

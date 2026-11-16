@@ -266,7 +266,7 @@ class _BookshelfPageState extends State<BookshelfPage> {
                                   final Book book = visibleBooks[index];
                                   return _BookRow(
                                     book: book,
-                                    onOpen: () => _openBook(book),
+                                    onOpen: () => _openReader(book),
                                     onMenu: () => _showBookMenu(store, book),
                                   );
                                 },
@@ -286,7 +286,7 @@ class _BookshelfPageState extends State<BookshelfPage> {
                                 final Book book = visibleBooks[index];
                                 return _BookCell(
                                   book: book,
-                                  onOpen: () => _openBook(book),
+                                  onOpen: () => _openReader(book),
                                   onMenu: () => _showBookMenu(store, book),
                                 );
                               },
@@ -449,7 +449,11 @@ class _BookCell extends StatelessWidget {
     final ReadPalette palette = ReadPalette.of(context);
     final String progress = _progressLabel(book);
     final bool read = book.lastReadAt != null;
-    return Column(
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onOpen,
+      onLongPress: onMenu,
+      child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Expanded(
@@ -494,6 +498,7 @@ class _BookCell extends StatelessWidget {
           ],
         ),
       ],
+      ),
     );
   }
 

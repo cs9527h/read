@@ -39,6 +39,29 @@ void main() {
     expect(find.byIcon(Icons.search_rounded), findsOneWidget);
     expect(find.byIcon(Icons.tune_rounded), findsOneWidget);
   });
+  testWidgets('章末左滑哨兵页自动进入下一章', (tester) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    await ReaderSettingsStore.instance.init();
+    await UserFontStore.instance.init();
+    final Book book = Book(
+      id: 'chapter-swipe',
+      title: '跨章',
+      author: '本地',
+      content: '第一章 短\n只有一页。\n第二章 短\n下一章正文。',
+    );
+    await tester.pumpWidget(MaterialApp(home: ReaderPage(book: book)));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(book.chapterIndex.value, 0);
+    final pageView = tester.widget<PageView>(find.byType(PageView));
+    expect(pageView.childrenDelegate.estimatedChildCount, 2,
+        reason: '一页正文 + 一个下一章哨兵页');
+    await tester.drag(find.byType(PageView), const Offset(-600, 0));
+    await tester.pump(const Duration(milliseconds: 700));
+    expect(book.chapterIndex.value, 1,
+        reason: '滑到哨兵页后应自动落到下一章第 1 页');
+  });
+
   testWidgets('全书进度拖动使用真实字符位置而不是章节序号', (tester) async {
     SharedPreferences.setMockInitialValues(<String, Object>{});
     await ReaderSettingsStore.instance.init();
