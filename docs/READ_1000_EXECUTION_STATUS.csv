@@ -214,13 +214,13 @@ id,module,module_title,requirement,status,commit,tests,evidence,blocker,next_act
 0213,A06,翻页引擎、分页精度和阅读模式,快速连续点击下一页时按序处理，不能跳页、重页、丢页。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/reader/engine,,继续审计/实现
 0214,A06,翻页引擎、分页精度和阅读模式,快速连续反向翻页时取消过期动画，避免画面抖动。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/reader/engine,,继续审计/实现
 0215,A06,翻页引擎、分页精度和阅读模式,分页算法要根据实际文本高度，避免底部被遮挡一行。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/reader/engine,,继续审计/实现
-0216,A06,翻页引擎、分页精度和阅读模式,分页缓存以内容版本、字体、边距和屏幕尺寸为键自动失效。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/reader/engine,,继续审计/实现
+0216,A06,翻页引擎、分页精度和阅读模式,分页缓存以内容版本、字体、边距和屏幕尺寸为键自动失效。,PASS,f97c1d6,flutter test --no-test-assets 110/110,reader_page 分页缓存键含内容哈希/排版设置/尺寸/章节长度/文本缩放，最多 6 章；reader_page_smoke_test 3/3,,继续验收其余分页条目
 0217,A06,翻页引擎、分页精度和阅读模式,章节过长时按需分页，不一次性创建整本书所有页面 Widget。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/reader/engine,,继续审计/实现
 0218,A06,翻页引擎、分页精度和阅读模式,改变字号后重新计算分页，但恢复同一语义阅读锚点。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/reader/engine,,继续审计/实现
 0219,A06,翻页引擎、分页精度和阅读模式,改变设备宽度后以内容锚点重定位，不使用旧页数直接换算。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/reader/engine,,继续审计/实现
 0220,A06,翻页引擎、分页精度和阅读模式,屏幕短暂旋转后避免同一页内容重复或丢失。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/reader/engine,,继续审计/实现
 0221,A06,翻页引擎、分页精度和阅读模式,翻页前预先加载相邻页面的文本和插图资源。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/reader/engine,,继续审计/实现
-0222,A06,翻页引擎、分页精度和阅读模式,预加载距离可根据可用内存与书籍类型动态调整。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/reader/engine,,继续审计/实现
+0222,A06,翻页引擎、分页精度和阅读模式,预加载距离可根据可用内存与书籍类型动态调整。,PARTIAL,f97c1d6,flutter test --no-test-assets 110/110,相邻章节 ±1 预加载已实现；预加载距离仍固定，未按可用内存/书籍类型动态调整,,实现内存感知的预加载距离
 0223,A06,翻页引擎、分页精度和阅读模式,最后一页翻下一章时保持自然连续，不出现空白中间页。,PASS,8e786e6,flutter test --no-test-assets 104/104,末页哨兵页左滑自动进入下一章；test/reader_page_smoke_test.dart 跨章测试,,继续验收其余条目
 0224,A06,翻页引擎、分页精度和阅读模式,上一章最后一页反向翻回时正确保留末段内容。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/reader/engine,,继续审计/实现
 0225,A06,翻页引擎、分页精度和阅读模式,章节边界的页码、百分比与目录状态实时一致。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/reader/engine,,继续审计/实现
@@ -541,7 +541,7 @@ id,module,module_title,requirement,status,commit,tests,evidence,blocker,next_act
 0540,A14,书籍导入、本地书架和文件管理,图书可批量移动分类、添加标签和移出书架。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/bookshelf,,继续审计/实现
 0541,A14,书籍导入、本地书架和文件管理,删除操作明确区分移除书架、删除本地副本和同步删除。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/bookshelf,,继续审计/实现
 0542,A14,书籍导入、本地书架和文件管理,删除图书时默认保留阅读进度和笔记的可恢复记录。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/bookshelf,,继续审计/实现
-0543,A14,书籍导入、本地书架和文件管理,云端图书未下载时标记云朵图标，点击可确认下载。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/bookshelf,,继续审计/实现
+0543,A14,书籍导入、本地书架和文件管理,云端图书未下载时标记云朵图标，点击可确认下载。,PARTIAL,f97c1d6,flutter test --no-test-assets 110/110,CloudLibraryIndex 只读 metadata.enc/files 列表，仅真实云端书记录显示云朵；点击确认下载仍未实现,,增加云端书点击下载确认
 0544,A14,书籍导入、本地书架和文件管理,云端图书列表读取失败时不删除本地书架显示。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/bookshelf,,继续审计/实现
 0545,A14,书籍导入、本地书架和文件管理,支持对书籍记录合并重复项但展示将合并的数据清单。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/bookshelf,,继续审计/实现
 0546,A14,书籍导入、本地书架和文件管理,书架封面滚动使用缩略图缓存，不同步解码高清原图。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/bookshelf,,继续审计/实现
@@ -803,7 +803,7 @@ id,module,module_title,requirement,status,commit,tests,evidence,blocker,next_act
 0802,A21,书架、统计、我的三栏 UI 美化,全局界面延续黑白灰极简风格，严格控制点缀颜色数量。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/bookshelf,,继续审计/实现
 0803,A21,书架、统计、我的三栏 UI 美化,头像使用与整体匹配的黑白风格，不添加花哨渐变和立体装饰。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/bookshelf,,继续审计/实现
 0804,A21,书架、统计、我的三栏 UI 美化,设置统一字体体系，页面标题、卡片标题、正文与说明有稳定层级。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/bookshelf,,继续审计/实现
-0805,A21,书架、统计、我的三栏 UI 美化,统一圆角、边框粗细、间距和图标线宽，避免每个页面各画各的。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/bookshelf,,继续审计/实现
+0805,A21,书架、统计、我的三栏 UI 美化,统一圆角、边框粗细、间距和图标线宽，避免每个页面各画各的。,PARTIAL,f97c1d6,相关模块测试见 test/,ReadIcons 提供普通/墨水屏双套语义图标；编辑页、阅读器图标尚未全部迁移,,逐页统一图标线宽
 0806,A21,书架、统计、我的三栏 UI 美化,页面顶部标题缩短无意义说明，给图书内容和操作留空间。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/bookshelf,,继续审计/实现
 0807,A21,书架、统计、我的三栏 UI 美化,书架提供三列封面布局，并按手机宽度保持合理间距。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/bookshelf,,继续审计/实现
 0808,A21,书架、统计、我的三栏 UI 美化,两列和三列封面切换时保持书籍稳定排序和滚动位置。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/bookshelf,,继续审计/实现
@@ -812,8 +812,8 @@ id,module,module_title,requirement,status,commit,tests,evidence,blocker,next_act
 0811,A21,书架、统计、我的三栏 UI 美化,书籍封面阴影柔和克制，深色模式下不出现脏灰边缘。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/bookshelf,,继续审计/实现
 0812,A21,书架、统计、我的三栏 UI 美化,没有封面的书使用排版精美的文字占位，不用默认彩虹背景。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/bookshelf,,继续审计/实现
 0813,A21,书架、统计、我的三栏 UI 美化,书架顶部突出最近阅读入口，但不要覆盖普通书籍筛选操作。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/bookshelf,,继续审计/实现
-0814,A21,书架、统计、我的三栏 UI 美化,“继续阅读”卡片展示书名、已读百分比和上次阅读时间。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/bookshelf,,继续审计/实现
-0815,A21,书架、统计、我的三栏 UI 美化,添加书籍入口设计清晰、容易点按，隐藏无用的书源相关图标。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/bookshelf,,继续审计/实现
+0814,A21,书架、统计、我的三栏 UI 美化,“继续阅读”卡片展示书名、已读百分比和上次阅读时间。,PARTIAL,f97c1d6,相关模块测试见 test/,0.6.2 任务书明确要求删除继续阅读卡片与中转页，书架已删除；旧需求与现行方向冲突，保留记录不复原,,按最新任务书验收书架首屏
+0815,A21,书架、统计、我的三栏 UI 美化,添加书籍入口设计清晰、容易点按，隐藏无用的书源相关图标。,PARTIAL,f97c1d6,flutter test --no-test-assets 110/110,右上角完整书架菜单、空书架导入入口、单书菜单；书源相关图标不显示；真机触控未验收,,真机点按区域验收
 0816,A21,书架、统计、我的三栏 UI 美化,批量管理模式以多选和底部操作条呈现，不能挤进每张封面。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/bookshelf,,继续审计/实现
 0817,A21,书架、统计、我的三栏 UI 美化,书架搜索使用简洁展开式输入框，返回后恢复原书架布局。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/bookshelf,,继续审计/实现
 0818,A21,书架、统计、我的三栏 UI 美化,书架筛选和排序控制一行内简洁呈现，状态改变能一眼识别。,PARTIAL,cfa386b,相关模块测试见 test/,存在模块级代码，未逐项验收：lib/src/bookshelf,,继续审计/实现

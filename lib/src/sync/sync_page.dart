@@ -1461,15 +1461,16 @@ class _TransferTabState extends State<_TransferTab> {
         'sync': SyncConfig.instance.diagnostics(),
       };
       final raw = const JsonEncoder.withIndent('  ').convert(data);
+      final encoded = utf8.encode(raw);
       final path = await FilePicker.platform.saveFile(
         dialogTitle: '导出 Read 本机设置',
         fileName: 'read-settings-${DateTime.now().millisecondsSinceEpoch}.json',
-        bytes: utf8.encode(raw),
+        bytes: encoded,
       );
       if (path == null || !mounted) return;
       final file = File(path);
-      if (!await file.exists() || (await file.length()) != raw.length) {
-        await file.writeAsString(raw, flush: true);
+      if (!await file.exists() || (await file.length()) != encoded.length) {
+        await file.writeAsBytes(encoded, flush: true);
       }
       _toast(context, '设置已导出：$path');
     } catch (error) {

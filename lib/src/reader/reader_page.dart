@@ -532,6 +532,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
       '${width.toStringAsFixed(1)}|${height.toStringAsFixed(1)}|'
       '${_twoColumns}|${_textScale.toStringAsFixed(2)}|'
       '${_settings.toJsonString()}|$index|'
+      '${widget.book.contentHash ?? widget.book.content.length}|'
       '${index < _chapters.length ? _chapters[index].length : 0}';
 
   void _cachePagination(String signature, PaginatedChapter pagination) {
