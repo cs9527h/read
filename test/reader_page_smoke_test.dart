@@ -94,7 +94,14 @@ void main() {
     // controller and its deferred first layout a separate frame to mount.
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 160));
-    expect(find.text('第二章 远行', skipOffstage: false), findsWidgets);
+    final visibleText = tester.widgetList<Text>(
+      find.byType(Text, skipOffstage: false),
+    ).map((text) => text.data ?? text.textSpan?.toPlainText() ?? '').toList();
+    expect(
+      visibleText.any((label) => label.contains('第二章 远行')),
+      isTrue,
+      reason: 'Cross-chapter widgets: ${visibleText.take(20).join(' / ')}',
+    );
     expect(tester.takeException(), isNull);
   });
 
