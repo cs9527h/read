@@ -832,6 +832,18 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(18, 14, 18, 32),
       children: <Widget>[
+        _section('屏幕适配', secondary),
+        // 手机/平板/长屏三套真实排版预设（任务 080/014）：一次点击同时设置
+        // 分栏、页边距与字号，均由排版引擎真实消费，不是摆设开关。
+        Wrap(
+          spacing: 8,
+          children: <Widget>[
+            for (final MapEntry<String, Map<String, Object?>> entry
+                in kScreenPresets.entries)
+              _presetButton(entry.key, entry.value),
+          ],
+        ),
+        const SizedBox(height: 8),
         _section('边距预设', secondary),
         Wrap(
           spacing: 8,

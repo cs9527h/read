@@ -94,6 +94,36 @@ const Map<String, Object?> kReaderDefaults = <String, Object?>{
   'bottomActions': 'toc,bookmark,settings',
 };
 
+/// 屏幕适配预设（任务 014/080）：手机单栏、平板双栏、长屏单栏宽边距。
+/// 每个键都由排版引擎/阅读页真实消费，集中存放便于测试与复用。
+const Map<String, Map<String, Object?>> kScreenPresets =
+    <String, Map<String, Object?>>{
+  '手机': <String, Object?>{
+    'columns': 'one',
+    'marginLeft': 20,
+    'marginRight': 20,
+    'marginTop': 10,
+    'marginBottom': 6,
+    'fontSize': 18,
+  },
+  '平板': <String, Object?>{
+    'columns': 'two',
+    'marginLeft': 28,
+    'marginRight': 28,
+    'marginTop': 14,
+    'marginBottom': 10,
+    'fontSize': 19,
+  },
+  '长屏': <String, Object?>{
+    'columns': 'one',
+    'marginLeft': 26,
+    'marginRight': 26,
+    'marginTop': 16,
+    'marginBottom': 12,
+    'fontSize': 19,
+  },
+};
+
 /// Validate untrusted layout JSON before persisting it. The reader uses
 /// strongly typed getters; a string in a numeric field must not reach them.
 Map<String, Object?> validatedReaderSettingsMap(Map<String, dynamic> input) {
