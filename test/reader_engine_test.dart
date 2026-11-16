@@ -11,7 +11,11 @@ void main() {
       ReaderSettings(patch);
 
   test('显示串保留首行缩进与段落空行，并能映射回原文', () {
-    final ReaderSettings s = settings();
+    // 显式开启“保留原文空行”验证该能力仍然存在；默认值见下一条测试。
+    final ReaderSettings s = settings(<String, Object?>{
+      'preserveBlankLines': true,
+      'ignoreExtraBlankLines': false,
+    });
     final DisplayChapter display =
         ReaderEngine.buildDisplay('第一段\n\n第二段', s, 1.0);
     expect(display.text.startsWith('\u3000\u3000第一段'), isTrue);
@@ -26,6 +30,34 @@ void main() {
     final int mapped = display.displayOffset(5);
     expect(mapped, lessThanOrEqualTo(secondIndex));
     expect(display.sourceOffset(mapped), 5);
+  });
+
+  test('默认排版忽略原文空行，段间不产生额外留白', () {
+    // 中文阅读默认靠首行缩进区分段落；原文空行不再叠加成整页留白。
+    final ReaderSettings s = settings();
+    final DisplayChapter display =
+        ReaderEngine.buildDisplay('第一段\n\n\n第二段', s, 1.0);
+    expect(display.text.startsWith('\u3000\u3000第一段'), isTrue);
+    expect(display.text.contains('\n\n'), isFalse,
+        reason: '默认不应出现连续空行，否则段落间距会过大');
+    expect(display.text.contains('\u3000\u3000第二段'), isTrue);
+  });
+
+  test('段距按整行生效：0 行无空行，1 行插一行，2 行插两行', () {
+    int blankLines(int lines) {
+      final DisplayChapter d = ReaderEngine.buildDisplay(
+        '甲段\n乙段',
+        settings(<String, Object?>{'paragraphSpacingLines': lines.toDouble()}),
+        1.0,
+      );
+      final int yi = d.text.indexOf('乙段');
+      // 段尾换行 + 额外空行数
+      return '\n'.allMatches(d.text.substring(0, yi)).length - 1;
+    }
+
+    expect(blankLines(0), 0);
+    expect(blankLines(1), 1);
+    expect(blankLines(2), 2);
   });
 
   test('CRLF 原文不会被当成两个空行，偏移仍然正确', () {

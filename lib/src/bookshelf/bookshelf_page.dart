@@ -386,7 +386,9 @@ class _BookshelfPageState extends State<BookshelfPage> {
     final double cellWidth =
         (maxWidth - horizontal * 2 - gap * (columns - 1)) / columns;
     final double coverHeight = cellWidth * (ShelfSettings.instance.compact ? 1.42 : 1.5);
-    final double cellHeight = coverHeight + (ShelfSettings.instance.showProgress ? 44 : 26);
+    // 书名（最多两行）+ 作者（一行）+ 进度条，按实际行高预留，避免裁切。
+    final double cellHeight =
+        coverHeight + (ShelfSettings.instance.showProgress ? 74 : 56);
     return GridView.builder(
       padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
       physics: const BouncingScrollPhysics(),
@@ -1420,6 +1422,18 @@ class _BookCell extends StatelessWidget {
               height: 1.3,
               fontWeight: FontWeight.w600,
               color: palette.ink,
+            ),
+          ),
+          const SizedBox(height: 2),
+          // 作者与书名分开显示，绝不拼进标题（任务：书名作者必须分开）。
+          Text(
+            book.author.trim().isEmpty ? '未知作者' : book.author,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 10.5,
+              height: 1.2,
+              color: palette.muted,
             ),
           ),
           if (ShelfSettings.instance.showProgress) ...<Widget>[

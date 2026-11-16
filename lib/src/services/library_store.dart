@@ -12,6 +12,7 @@ import '../model/book.dart';
 import '../formats/format_engine.dart';
 import '../formats/pdf_format.dart';
 import 'bookmark_store.dart';
+import 'book_name_parser.dart';
 import 'collection_store.dart';
 import 'manual_chapter_store.dart';
 import 'chapter_rule_store.dart';
@@ -294,15 +295,13 @@ class LibraryStore extends ChangeNotifier {
     // richer layout support and content-addressed cloud sync.
     await target.writeAsBytes(bytes, flush: true);
 
-    final String name = picked.name.substring(
-      0, picked.name.lastIndexOf('.') > 0
-          ? picked.name.lastIndexOf('.')
-          : picked.name.length,
-    );
+    final ParsedBookName parsedName = parseBookName(picked.name);
     final Book book = Book(
       id: id,
-      title: parsed.title?.isNotEmpty == true ? parsed.title! : name,
-      author: parsed.author?.isNotEmpty == true ? parsed.author! : '本地导入',
+      title: parsed.title?.isNotEmpty == true ? parsed.title! : parsedName.title,
+      author: parsed.author?.isNotEmpty == true
+          ? parsed.author!
+          : (parsedName.author ?? '本地导入'),
       format: parsed.format,
       content: text,
       sourcePath: target.path,
@@ -382,12 +381,13 @@ class LibraryStore extends ChangeNotifier {
     if (!await booksDir.exists()) await booksDir.create(recursive: true);
     final File target = File('${booksDir.path}/$id.$ext');
     await target.writeAsBytes(bytes, flush: true);
+    final ParsedBookName parsedName = parseBookName(name);
     final Book book = Book(
       id: id,
-      title: parsed.title?.isNotEmpty == true
-          ? parsed.title!
-          : (dot > 0 ? name.substring(0, dot) : name),
-      author: parsed.author?.isNotEmpty == true ? parsed.author! : '本地导入',
+      title: parsed.title?.isNotEmpty == true ? parsed.title! : parsedName.title,
+      author: parsed.author?.isNotEmpty == true
+          ? parsed.author!
+          : (parsedName.author ?? '本地导入'),
       format: parsed.format,
       content: parsed.text,
       sourcePath: target.path,

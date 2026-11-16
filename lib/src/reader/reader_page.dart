@@ -85,6 +85,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
 
   /// 只用于刷新页眉页脚，避免每次翻页 setState 重建整页。
   final ValueNotifier<int> _pageTick = ValueNotifier<int>(0);
+  // Chapter transitions replace the PageView and must invalidate its subtree.
+  final ValueNotifier<int> _chapterTick = ValueNotifier<int>(0);
 
   /// 进度落盘防抖：翻页先走内存，400ms 内的连续翻页只写一次磁盘。
   Timer? _progressTimer;
@@ -300,6 +302,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     _relayoutTimer?.cancel();
     _prefetchTimer?.cancel();
     _pageTick.dispose();
+    _chapterTick.dispose();
     if (Platform.isAndroid) {
       unawaited(_volumeKeysSubscription?.cancel() ?? Future<void>.value());
       unawaited(ReaderDeviceBridge.setVolumePaging(false).catchError((Object _) {}));
@@ -478,7 +481,9 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   bool get _twoColumns {
     if (_settings.columns == 'one') return false;
     if (_settings.columns == 'two') return true;
-    return _pageWidth > 620 && _pageWidth > _pageHeight * 1.05;
+    // _pageWidth is the previous measured column width, not viewport width.
+    final Size viewport = MediaQuery.sizeOf(context);
+    return viewport.width >= 860 && viewport.width > viewport.height * 1.05;
   }
 
   double get _headerHeight => _settings.minimalMode || !_settings.headerShow
@@ -621,6 +626,10 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     final PageController? old = _pageController;
     _pageController = PageController(
       initialPage: _virtualPrevCount + _renderPageIndex(columnPage),
+      // Chapter changes reconstruct the controller with an explicitly saved
+      // source anchor. PageStorage must never restore an older virtual page
+      // (such as the previous chapter) over this initialPage.
+      keepPage: false,
     );
     _controllerEpoch++;
     // 旧控制器可能还在本帧的 PageView 上，延后一帧再释放，避免
@@ -847,13 +856,29 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
       _layoutKey = '$_signature|$index';
       _nextPagination = null;
       _prevPagination = null;
+      // Swap controller and chapter in the same state transaction: PageView
+      // must not rebuild with the new chapter and the old viewport index.
+      _recreateController(page);
     });
-    _recreateController(page);
     _syncProgressValues(page);
     widget.book.charOffset.value =
         pagination.pages[page.clamp(0, pagination.pages.length - 1)].sourceStart;
     _lastSavedOffset = widget.book.charOffset.value;
     _pageTick.value++;
+    _chapterTick.value++;
+    // A PageView can still be attached to the previous chapter's virtual
+    // neighbor while it is being rebuilt from a swipe. Reaffirm the target
+    // after the new PageView mounts, and guard against stale callbacks.
+    final int chapterEpoch = _controllerEpoch;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _chapterIndex != index ||
+          _controllerEpoch != chapterEpoch) return;
+      final controller = _pageController;
+      if (controller == null || !controller.hasClients) return;
+      controller.jumpToPage(
+        _virtualPrevCount + _renderPageIndex(_pageIndex),
+      );
+    });
     await LibraryStore.instance.saveProgress(widget.book);
     AutoSyncService.instance.scheduleProgress(widget.book);
     _prefetchNeighbors();
@@ -891,6 +916,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
       widget.book.charOffset.value = anchor;
     });
     _recreateController(page);
+    _chapterTick.value++;
     _lastSavedOffset = anchor;
     unawaited(LibraryStore.instance.saveProgress(widget.book));
     _prefetchNeighbors();
@@ -902,6 +928,9 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<int>(
+      valueListenable: _chapterTick,
+      builder: (BuildContext context, int _, Widget? __) {
     final Brightness brightness = MediaQuery.platformBrightnessOf(context);
     final ReaderTheme theme = _store.effectiveTheme(_settings, brightness);
     final Color background = Color(_settings.backgroundColor ?? theme.background);
@@ -958,6 +987,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
           _buildBrightnessOverlay(),
         ],
       ),
+    );
+      },
     );
   }
 
@@ -1212,6 +1243,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
       // 换 controller 时用新 key 重建，避免 PageView 内部页码与控制器不一致。
       key: ValueKey<int>(_controllerEpoch),
       controller: controller,
+      reverse: _settings.reverseDirection,
       itemCount: prevCount + pageCount + (hasNextChapter ? 1 : 0),
       physics: _settings.pageTurnMode == 'none'
           ? const NeverScrollableScrollPhysics()
@@ -1227,8 +1259,10 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
               _twoColumns ? ((prev.pages.length + 1) ~/ 2) - 1 : prev.pages.length - 1;
           return _withGuides(
             _twoColumns
-                ? _buildTwoColumnPage(prev, lastRender, foreground)
-                : _buildSinglePage(prev, lastRender, foreground),
+                ? _buildTwoColumnPage(prev, lastRender, foreground,
+                    chapterIndex: _chapterIndex - 1)
+                : _buildSinglePage(prev, lastRender, foreground,
+                    chapterIndex: _chapterIndex - 1),
             secondary,
           );
         }
@@ -1239,8 +1273,10 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
           }
           return _withGuides(
             _twoColumns
-                ? _buildTwoColumnPage(next, 0, foreground)
-                : _buildSinglePage(next, 0, foreground),
+                ? _buildTwoColumnPage(next, 0, foreground,
+                    chapterIndex: _chapterIndex + 1)
+                : _buildSinglePage(next, 0, foreground,
+                    chapterIndex: _chapterIndex + 1),
             secondary,
           );
         }
@@ -1350,11 +1386,12 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   Widget _selectablePage(
     PaginatedChapter chapter,
     EnginePage page,
-    TextStyle style,
-  ) {
+    TextStyle style, {
+    required int chapterIndex,
+  }) {
     final displayText = page.textOf(chapter.display);
     return SelectableText.rich(
-      _highlightedSpan(chapter, page, style),
+      _highlightedSpan(chapter, page, style, chapterIndex),
       textAlign: ReaderEngine.textAlignOf(_settings.align),
       contextMenuBuilder: (BuildContext ctx, EditableTextState editableState) {
         final selection = editableState.textEditingValue.selection;
@@ -1378,6 +1415,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                     chapter,
                     page,
                     selection,
+                    chapterIndex: chapterIndex,
                     note: '',
                   ));
                 },
@@ -1393,6 +1431,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                     chapter,
                     page,
                     selection,
+                    chapterIndex: chapterIndex,
                     note: note,
                   );
                 },
@@ -1418,41 +1457,48 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     PaginatedChapter chapter,
     EnginePage page,
     TextStyle style,
+    int chapterIndex,
   ) {
     final text = page.textOf(chapter.display);
     if (text.isEmpty) return TextSpan(text: text, style: style);
-    final chapterStart = _chapters[_chapterIndex].start;
-    final chapterLength = _chapters[_chapterIndex].length;
-    final starts = <int>[0, text.length];
-    final ends = <int>[0, text.length];
-    final backgrounds = <Color?>[null, null];
+    final chapterStart = _chapters[chapterIndex].start;
+    final chapterLength = _chapters[chapterIndex].length;
+    // Each highlight is a *range*. The previous code appended identical
+    // start/end points to two parallel lists, creating zero-length intervals
+    // and silently rendering every highlight as normal text.
+    final ranges = <({int start, int end, Color color})>[];
+    final boundaries = <int>{0, text.length};
     for (final highlight in _highlights) {
-      final sourceStart = (highlight.start - chapterStart).clamp(0, chapterLength);
-      final sourceEnd = (highlight.end - chapterStart).clamp(0, chapterLength);
+      final sourceStart =
+          (highlight.start - chapterStart).clamp(0, chapterLength);
+      final sourceEnd =
+          (highlight.end - chapterStart).clamp(0, chapterLength);
       if (sourceEnd <= sourceStart) continue;
       final displayStart = chapter.display.displayOffset(sourceStart);
       final displayEnd = chapter.display.displayOffset(sourceEnd);
-      final localStart = (displayStart - page.displayStart).clamp(0, text.length);
-      final localEnd = (displayEnd - page.displayStart).clamp(0, text.length);
+      final localStart =
+          (displayStart - page.displayStart).clamp(0, text.length);
+      final localEnd =
+          (displayEnd - page.displayStart).clamp(0, text.length);
       if (localEnd <= localStart) continue;
-      starts.add(localStart);
-      starts.add(localEnd);
-      ends.add(localStart);
-      ends.add(localEnd);
-      backgrounds.add(Color(highlight.color));
-      backgrounds.add(null);
+      ranges.add((
+        start: localStart,
+        end: localEnd,
+        color: Color(highlight.color),
+      ));
+      boundaries.add(localStart);
+      boundaries.add(localEnd);
     }
-    final sorted = starts.toSet().toList()..sort();
+    final sorted = boundaries.toList()..sort();
     final spans = <InlineSpan>[];
     for (var i = 0; i < sorted.length - 1; i++) {
       final start = sorted[i];
       final end = sorted[i + 1];
       if (end <= start) continue;
       Color? background;
-      for (var h = 0; h < starts.length; h++) {
-        if (h >= ends.length || backgrounds[h] == null) continue;
-        if (start >= starts[h] && end <= ends[h]) {
-          background = backgrounds[h];
+      for (final range in ranges) {
+        if (start >= range.start && end <= range.end) {
+          background = range.color;
           break;
         }
       }
@@ -1541,6 +1587,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     PaginatedChapter chapter,
     EnginePage page,
     TextSelection selection, {
+    required int chapterIndex,
     required String note,
   }) async {
     if (!selection.isValid || selection.isCollapsed) return;
@@ -1548,7 +1595,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     final localStart = selection.start.clamp(0, text.length);
     final localEnd = selection.end.clamp(0, text.length);
     if (localEnd <= localStart) return;
-    final chapterStart = _chapters[_chapterIndex].start;
+    final chapterStart = _chapters[chapterIndex].start;
     final sourceStart = chapter.display.sourceOffset(page.displayStart + localStart);
     final sourceEnd = chapter.display.sourceOffset(page.displayEnd - (text.length - localEnd));
     final record = HighlightRecord(
@@ -1614,18 +1661,26 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildSinglePage(PaginatedChapter p, int index, Color foreground) {
+  Widget _buildSinglePage(
+    PaginatedChapter p,
+    int index,
+    Color foreground, {
+    int? chapterIndex,
+  }) {
+    final int renderedChapter = chapterIndex ?? _chapterIndex;
     if (index < 0 || index >= p.pages.length) return const SizedBox.shrink();
     final EnginePage page = p.pages[index];
     final List<Widget> children = <Widget>[];
-    if (index == 0 && p.showTitle) children.add(_buildChapterTitle());
+    if (index == 0 && p.showTitle) {
+      children.add(_buildChapterTitle(renderedChapter, p.titleHeight));
+    }
     final TextStyle style = ReaderEngine.bodyStyle(
       _settings,
       color: foreground,
       textScale: _textScale,
     );
     final Widget body = _scaledText(
-      _selectablePage(p, page, style),
+      _selectablePage(p, page, style, chapterIndex: renderedChapter),
     );
     children.add(
       Expanded(
@@ -1643,14 +1698,21 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   }
 
   Widget _buildTwoColumnPage(
-      PaginatedChapter p, int renderIndex, Color foreground) {
+    PaginatedChapter p,
+    int renderIndex,
+    Color foreground, {
+    int? chapterIndex,
+  }) {
+    final int renderedChapter = chapterIndex ?? _chapterIndex;
     final int leftIndex = renderIndex * 2;
     final int rightIndex = leftIndex + 1;
     Widget column(int index) {
       if (index >= p.pages.length) return const SizedBox.shrink();
       final EnginePage page = p.pages[index];
       final List<Widget> children = <Widget>[];
-      if (index == 0 && p.showTitle) children.add(_buildChapterTitle());
+      if (index == 0 && p.showTitle) {
+        children.add(_buildChapterTitle(renderedChapter, p.titleHeight));
+      }
       final TextStyle style = ReaderEngine.bodyStyle(
         _settings,
         color: foreground,
@@ -1662,7 +1724,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
             alignment: _settings.bottomAlign
                 ? Alignment.bottomLeft
                 : Alignment.topLeft,
-            child: _scaledText(_selectablePage(p, page, style)),
+            child: _scaledText(_selectablePage(p, page, style,
+                chapterIndex: renderedChapter)),
           ),
         ),
       );
@@ -1682,18 +1745,24 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildChapterTitle() {
-    final String title =
-        _chapterIndex < _chapters.length ? _chapters[_chapterIndex].title : '';
+  Widget _buildChapterTitle(int chapterIndex, double titleHeight) {
+    if (chapterIndex < 0 || chapterIndex >= _chapters.length ||
+        titleHeight <= 0) {
+      return const SizedBox.shrink();
+    }
+    final String title = _chapters[chapterIndex].title;
+    final ReaderTheme theme = _store.effectiveTheme(
+      _settings,
+      MediaQuery.platformBrightnessOf(context),
+    );
     final Color color = Color(
-      _settings.titleColor ?? _settings.textColor ?? 0xFF1A1A1A,
+      _settings.titleColor ?? _settings.textColor ?? theme.foreground,
     );
     final TextAlign align = switch (_settings.titleAlign) {
       'center' => TextAlign.center,
       'right' => TextAlign.right,
       _ => TextAlign.left,
     };
-    final double titleHeight = _pagination?.titleHeight ?? 0;
     final TextStyle style = TextStyle(
       fontFamily: _settings.titleFontFamily ?? _settings.fontFamily,
       fontSize: _settings.titleFontSize * _textScale,
@@ -1776,7 +1845,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            _buildChapterTitle(),
+            if (p.showTitle)
+              _buildChapterTitle(_chapterIndex, p.titleHeight),
             _scaledText(SelectionArea(
               child: Text.rich(
                 _pageSpan(
@@ -1845,8 +1915,11 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
             const Duration(milliseconds: 500)) {
           return;
         }
-        final double width =
-            _pageWidth > 0 ? _pageWidth : MediaQuery.sizeOf(context).width;
+        // In dual-column mode _pageWidth measures a single column. Tap
+        // zones must span the entire visible page rather than half of it.
+        final double width = _pageWidth > 0
+            ? (_twoColumns ? _pageWidth * 2 + _settings.columnGap : _pageWidth)
+            : MediaQuery.sizeOf(context).width;
         final double x = down.dx;
         final String action = x < width * 0.3
             ? _settings.tapLeft

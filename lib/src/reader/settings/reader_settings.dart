@@ -12,12 +12,17 @@ const Map<String, Object?> kReaderDefaults = <String, Object?>{
   'lineHeight': 1.6,
   // 段落
   'paragraphSpacingBefore': 0.0,
-  'paragraphSpacingAfter': 8.0,
+  // 段距按“整行”计算：渲染层只能插入整行空行，px 精度无法兑现，
+  // 因此改用行数，避免 8px 设置被四舍五入成一整行（28.8px）的欺骗感。
+  'paragraphSpacingLines': 0.0,
+  'paragraphSpacingAfter': 0.0,
   'indentMode': 'em', // none | fixed | em（em 用全角空格，2 个 = 两个汉字宽）
   'indentChars': 2.0,
   'align': 'left', // left | center | right | justify
   'preserveBlankLines': true,
-  'ignoreExtraBlankLines': false,
+  // 中文排版默认忽略原文多余空行：段落本身已由换行切分，
+  // 再保留空行会与段距叠加，形成用户抱怨的“异常留白”。
+  'ignoreExtraBlankLines': true,
   'boldPattern': '',
   'bottomAlign': false,
   // 边距与布局
@@ -253,6 +258,9 @@ class ReaderSettings {
   // 段落
   double get paragraphSpacingBefore =>
       (_raw['paragraphSpacingBefore'] as num).toDouble();
+  /// 段间距（整行数）。0 = 只靠首行缩进区分段落。
+  double get paragraphSpacingLines =>
+      (_raw['paragraphSpacingLines'] as num?)?.toDouble() ?? 0;
   double get paragraphSpacingAfter =>
       (_raw['paragraphSpacingAfter'] as num).toDouble();
   String get indentMode => _raw['indentMode'] as String;

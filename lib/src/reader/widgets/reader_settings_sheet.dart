@@ -437,25 +437,17 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
           },
           onChanged: (String v) => _update(<String, Object?>{'align': v}),
         ),
-        _slider(
-          '段前留白',
-          _settings.paragraphSpacingBefore,
-          0,
-          30,
-          divisions: 30,
-          label: '${_settings.paragraphSpacingBefore.toStringAsFixed(0)} px',
-          onChanged: (double v) =>
-              _update(<String, Object?>{'paragraphSpacingBefore': v}),
-        ),
-        _slider(
-          '段后留白',
-          _settings.paragraphSpacingAfter,
-          0,
-          30,
-          divisions: 30,
-          label: '${_settings.paragraphSpacingAfter.toStringAsFixed(0)} px',
-          onChanged: (double v) =>
-              _update(<String, Object?>{'paragraphSpacingAfter': v}),
+        _segment<String>(
+          label: '段距',
+          value: '${_settings.paragraphSpacingLines.round()}',
+          options: const <String, String>{
+            '0': '无',
+            '1': '空一行',
+            '2': '空两行',
+          },
+          onChanged: (String v) => _update(<String, Object?>{
+            'paragraphSpacingLines': double.parse(v),
+          }),
         ),
         _switch(
           '保留原文空行',

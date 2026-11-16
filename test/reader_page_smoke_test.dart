@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:read/src/model/book.dart';
+import 'package:read/src/services/highlight_store.dart';
 import 'package:read/src/reader/reader_page.dart';
 import 'package:read/src/reader/settings/reader_settings_store.dart';
 import 'package:read/src/reader/settings/user_font_store.dart';
@@ -70,6 +71,81 @@ void main() {
     await tester.pump(const Duration(milliseconds: 700));
     expect(book.chapterIndex.value, 1,
         reason: '滑到哨兵页后应自动落到下一章第 1 页');
+  });
+
+  testWidgets('滑动跨章后显示下一章标题并且原章标题消失', (tester) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    await ReaderSettingsStore.instance.init();
+    await UserFontStore.instance.init();
+    final book = Book(
+      id: 'neighbor-preview-title',
+      title: '跨章预览',
+      author: '本地',
+      content: '第一章 起点\n第一章正文。\n第二章 远行\n第二章正文。',
+    );
+    await tester.pumpWidget(MaterialApp(home: ReaderPage(book: book)));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    await tester.drag(find.byType(PageView), const Offset(-600, 0));
+    await tester.pump(const Duration(milliseconds: 700));
+    expect(book.chapterIndex.value, 1);
+    // Cross-chapter transition includes controller replacement and async
+    // persistence. Pump several distinct frames instead of one large time
+    // jump, which may fire the page-change callback on the very last frame.
+    for (int i = 0; i < 12; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+      if (find.text('第二章 远行', skipOffstage: false).evaluate().isNotEmpty) {
+        break;
+      }
+    }
+    final visibleText = tester.widgetList<Text>(
+      find.byType(Text, skipOffstage: false),
+    ).map((text) => text.data ?? text.textSpan?.toPlainText() ?? '').toList();
+    expect(
+      visibleText.any((label) => label.contains('第二章 远行')),
+      isTrue,
+      reason: 'Cross-chapter widgets: ${visibleText.take(20).join(' / ')}',
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('保存的正文高亮在阅读页真正显示背景颜色', (tester) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    await ReaderSettingsStore.instance.init();
+    await UserFontStore.instance.init();
+    const bookId = 'highlight-render';
+    const content = '第一章 高亮测试\n蓝色的天空很漂亮。';
+    final start = content.indexOf('天空');
+    await HighlightStore.add(bookId, HighlightRecord(
+      start: start,
+      end: start + 2,
+      color: 0xFFFFFF00,
+      note: '',
+      createdAt: 1,
+    ));
+    final book = Book(
+      id: bookId,
+      title: '高亮测试',
+      author: '本地',
+      content: content,
+    );
+    await tester.pumpWidget(MaterialApp(home: ReaderPage(book: book)));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+
+    final selectable = tester.widget<SelectableText>(find.byType(SelectableText).first);
+    final span = selectable.textSpan!;
+    final children = span.children ?? <InlineSpan>[];
+    expect(
+      children.whereType<TextSpan>().any(
+        (segment) => segment.text?.contains('天空') == true &&
+            segment.style?.backgroundColor != null,
+      ),
+      isTrue,
+      reason: '保存后的高亮必须实际为对应文字设置背景，不能只保存记录',
+    );
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('全书进度拖动使用真实字符位置而不是章节序号', (tester) async {
