@@ -1,3 +1,7 @@
+// 本文件是从 test/ 移出的渲染审核脚本。放在 tool/ 是为了避免 CI 的
+// 像素断言受字体版本影响，但它仍然使用 flutter_test 的测试专用 API。
+// ignore_for_file: invalid_use_of_visible_for_testing_member
+
 import 'dart:io';
 import 'dart:typed_data';
 
