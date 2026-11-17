@@ -337,7 +337,7 @@ class _RestoreTabState extends State<_RestoreTab> {
       padding: const EdgeInsets.all(16),
       children: <Widget>[
         Text(
-          '在对端「共享本机备份」页复制地址，粘贴到下方连接。'
+          '在另一台设备复制完整共享链接，粘贴到这里。'
           '连接后选择备份，可只勾选需要的书恢复，不会删除本机现有数据。',
           style: TextStyle(color: palette.muted, fontSize: 13, height: 1.6),
         ),
@@ -348,7 +348,7 @@ class _RestoreTabState extends State<_RestoreTab> {
               child: TextField(
                 controller: _address,
                 decoration: InputDecoration(
-                  hintText: '192.168.1.5:8769',
+                  hintText: '粘贴共享链接',
                   border: const OutlineInputBorder(),
                   isDense: true,
                   contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
