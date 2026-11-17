@@ -503,9 +503,9 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   double get _headerHeight => _settings.minimalMode || !_settings.headerShow
       ? 0 : _settings.headerFontSize * 2 + 8;
   double get _footerHeight => _settings.minimalMode || !_settings.footerShow
-      ? 0
-      : _settings.footerFontSize * 2 +
-          (_settings.footerProgressBar ? 8 : 0) + 6;
+    ? 0
+    : _settings.footerFontSize * 2 +
+        (_settings.footerProgressBar ? 18 : 0) + 6;
 
   double get _textScale {
     final TextScaler scaler = MediaQuery.textScalerOf(context);

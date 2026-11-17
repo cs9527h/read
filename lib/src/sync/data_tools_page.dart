@@ -376,9 +376,6 @@ class _DataToolsPageState extends State<DataToolsPage> {
     });
     try {
       final SyncSecrets secrets = await SyncSecrets.load();
-      if (secrets.encryptionPassword.length < 12) {
-        throw const FormatException('同步加密密码不足 12 位，请先在同步设置里补齐');
-      }
       final RemoteObjectStore store =
           SyncBackendFactory.create(SyncConfig.instance, secrets);
       final String targetId = SyncBackendFactory.targetId(SyncConfig.instance);

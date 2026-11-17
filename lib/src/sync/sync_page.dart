@@ -283,24 +283,15 @@ class _StorageTabState extends State<_StorageTab> {
       _config.s3Prefix = _prefix.text.trim().isEmpty ? 'Read' : _prefix.text.trim();
       _config.s3AccessKey = _accessKey.text.trim();
     }
-    if (_encryption.text.isNotEmpty && _encryption.text.length < 12) {
-      _toast(context, '同步密码至少 12 个字符');
-      return false;
-    }
-
     widget.onBusyChanged(true);
     try {
+      // 端到端加密密钥由 SyncSecrets.load() 自动生成并安全存储，
+      // 用户不再需要设置或输入"同步密码"。
       await SyncSecrets().store(
         webdavPassword: _webdavPassword.text.isEmpty ? null : _webdavPassword.text,
-        encryptionPassword: _encryption.text.isEmpty ? null : _encryption.text,
         s3SecretKey: _secretKey.text.isEmpty ? null : _secretKey.text,
       );
       await _config.save();
-      final secrets = await SyncSecrets.load();
-      if (secrets.encryptionPassword.isEmpty) {
-        _toast(context, '云存储已保存；还请设置至少 12 位同步密码');
-        return false;
-      }
       if (showMessage) _toast(context, '云存储设置已保存到本机安全存储');
       return true;
     } catch (error) {
@@ -365,7 +356,8 @@ class _StorageTabState extends State<_StorageTab> {
           const SizedBox(height: 8),
           Text('安全说明', style: TextStyle(color: palette.muted, fontSize: 12)),
           const SizedBox(height: 4),
-          Text('密码保存在 Android Keystore/iOS Keychain；所有同步文件使用 AES-256-GCM 加密后再上传。',
+          Text('应用密码保存在 Android Keystore/iOS Keychain；端到端加密密钥由本机自动生成，'
+              '无需你设置或记忆；所有同步文件使用 AES-256-GCM 加密后再上传。',
               style: TextStyle(color: palette.muted, fontSize: 12, height: 1.5)),
         ] else ...<Widget>[
           _field(_endpoint, 'S3 Endpoint', hint: 'https://s3.example.com'),
@@ -380,8 +372,6 @@ class _StorageTabState extends State<_StorageTab> {
               style: TextStyle(color: palette.muted, fontSize: 12, height: 1.5)),
         ],
         const SizedBox(height: 12),
-        _field(_encryption, '同步密码（端到端加密）', obscure: true,
-            hint: _config.configured ? '已安全保存，留空不修改' : '至少 12 个字符'),
         const SizedBox(height: 16),
         Row(
           children: <Widget>[
@@ -733,8 +723,8 @@ class _OptionsTabState extends State<_OptionsTab> {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
           child: Text(
-            '默认使用同步密码对图书文件做 AES-256-GCM 加密，云端对象以 .enc 结尾。'
-            '旧版本上传的明文对象不会自动删除；开启“允许读取旧明文”后才会下载，'
+            '图书文件使用本机自动生成的密钥做 AES-256-GCM 加密，云端对象以 .enc 结尾，'
+            '你无需设置任何密码。旧版本上传的明文对象不会自动删除；开启“允许读取旧明文”后才会下载，'
             '开启前会拒绝并保留失败记录。',
             style: TextStyle(fontSize: 11, color: palette.muted, height: 1.5),
           ),

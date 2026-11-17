@@ -10,6 +10,7 @@ import 'package:read/src/profile/storage_page.dart';
 import 'package:read/src/services/library_store.dart';
 import 'package:read/src/services/reading_stats_store.dart';
 import 'package:read/src/stats/stats_page.dart';
+import 'package:read/src/sync/lan_backup_page.dart';
 import 'package:read/src/theme.dart';
 import 'package:read/src/theme/ui_mode.dart';
 import 'package:read/src/ui/read_icon.dart';
@@ -74,6 +75,13 @@ class MorePage extends StatelessWidget {
                     title: 'WiFi 传书',
                     subtitle: '同一局域网用浏览器上传，真正开了 HTTP 服务',
                     onTap: () => _push(context, const WifiTransferPage()),
+                  ),
+                  _row(
+                    palette,
+                    glyph: ReadGlyph.importFile,
+                    title: '局域网备份互传',
+                    subtitle: '同一 WiFi 下两台设备直传全量备份，可选书恢复',
+                    onTap: () => _push(context, const LanBackupPage()),
                   ),
                   _row(
                     palette,

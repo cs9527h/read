@@ -28,8 +28,8 @@ const Map<String, Object?> kReaderDefaults = <String, Object?>{
   // 边距与布局
   'marginTop': 10.0,
   'marginBottom': 6.0,
-  'marginLeft': 20.0,
-  'marginRight': 20.0,
+  'marginLeft': 14.0,
+  'marginRight': 14.0,
   'marginPreset': 'standard',
   'immersive': true,
   'showSystemBars': false,
@@ -64,14 +64,14 @@ const Map<String, Object?> kReaderDefaults = <String, Object?>{
   'footerFontFamily': null,
   'footerColor': null,
   'footerOpacity': 0.55,
-  'footerProgressBar': false,
+  'footerProgressBar': true,
   // 章节标题
   'titleFontSize': 20.0,
   'titleFontFamily': null,
   'titleWeight': 600,
   'titleColor': null,
   'titleAlign': 'left',
-  'titleTemplate': 'plain', // plain | centered | divider | none
+  'titleTemplate': 'divider', // plain | centered | divider | none
   'titleGapTop': 4.0,
   'titleGapBottom': 18.0,
   'titleNumberNewLine': false,
@@ -105,8 +105,8 @@ const Map<String, Map<String, Object?>> kScreenPresets =
     <String, Map<String, Object?>>{
   '手机': <String, Object?>{
     'columns': 'one',
-    'marginLeft': 20,
-    'marginRight': 20,
+    'marginLeft': 14,
+    'marginRight': 14,
     'marginTop': 10,
     'marginBottom': 6,
     'fontSize': 18,
