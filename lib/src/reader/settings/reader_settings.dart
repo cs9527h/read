@@ -28,8 +28,8 @@ const Map<String, Object?> kReaderDefaults = <String, Object?>{
   // 边距与布局
   'marginTop': 10.0,
   'marginBottom': 6.0,
-  'marginLeft': 14.0,
-  'marginRight': 14.0,
+  'marginLeft': 8.0,
+  'marginRight': 8.0,
   'marginPreset': 'standard',
   'immersive': true,
   'showSystemBars': false,
@@ -105,8 +105,8 @@ const Map<String, Map<String, Object?>> kScreenPresets =
     <String, Map<String, Object?>>{
   '手机': <String, Object?>{
     'columns': 'one',
-    'marginLeft': 14,
-    'marginRight': 14,
+    'marginLeft': 8,
+    'marginRight': 8,
     'marginTop': 10,
     'marginBottom': 6,
     'fontSize': 18,
