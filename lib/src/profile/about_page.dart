@@ -12,7 +12,7 @@ class AboutPage extends StatelessWidget {
 
   static const String repoUrl = 'https://github.com/cs9527h/read';
 
-  /// QQ 群反馈入口（用户提供的官方加群链接）。
+  /// 用户提供的 QQ 联系作者入口，不应描述为加群。
   static const String feedbackUrl = 'https://qm.qq.com/q/Yvc3ugiCoE';
 
   @override
@@ -62,8 +62,8 @@ class AboutPage extends StatelessWidget {
           ),
           const SizedBox(height: 32),
           _AboutRow(
-            label: '反馈与帮助',
-            value: 'QQ 群',
+            label: '联系作者',
+            value: 'QQ 联系作者',
             onTap: () => _openFeedback(context),
           ),
           _AboutRow(
@@ -150,7 +150,7 @@ class AboutPage extends StatelessWidget {
       context: context,
       builder: (BuildContext dialogContext) => AlertDialog(
         backgroundColor: const Color(0xFF171717),
-        title: const Text('反馈与帮助', style: TextStyle(color: Color(0xFFF2F2F2))),
+        title: const Text('联系作者', style: TextStyle(color: Color(0xFFF2F2F2))),
         content: const Text(
           '没有找到可打开该链接的应用。链接已复制到剪贴板，'
           '可以粘贴到 QQ 或浏览器中打开。',
