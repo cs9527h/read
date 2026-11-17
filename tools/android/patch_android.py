@@ -14,8 +14,10 @@ YAML 内联脚本里，容易漂移。这里集中管理，且保证幂等（可
 3. AndroidManifest 加 usesCleartextTraffic：targetSdk 36 下，Android 9+
    默认禁止明文 http。WebDAV/局域网 NAS 常用 http://，不加会同步失败。
 4. 补齐 INTERNET / POST_NOTIFICATIONS 权限，供网盘同步与听书通知使用。
-5. 规避 url_launcher_android 的 lintVitalAnalyzeRelease 解析崩溃（上游 bug），
-   仅禁用该插件的 lint 任务，flutter analyze / flutter test 全部保留。
+5. 规避 url_launcher_android / webview_flutter_android 的
+   lintVitalAnalyzeRelease 解析崩溃（上游 bug，新 JDK 下 List.removeLast
+   NoSuchMethodError），仅禁用这些插件的 lint 任务，flutter analyze /
+   flutter test 全部保留。
 
 用法：
     python3 tools/android/patch_android.py [项目根目录，默认仓库根]
@@ -68,16 +70,19 @@ if "abiFilters" not in body:
 app_gradle.write_text(body, encoding="utf-8")
 
 # ---------------------------------------------------------------------------
-# 2) root/build.gradle.kts：url_launcher_android lint 规避（幂等）
+# 2) root/build.gradle.kts：上游插件 lint 规避（幂等）
 # ---------------------------------------------------------------------------
+# url_launcher_android / webview_flutter_android 的 lint 解析器在较新 JDK 下
+# 触发 NoSuchMethodError (List.removeLast)，属上游 bug。仅禁用这些插件的
+# Release lint 任务；flutter analyze 与全部单元测试不受影响。
 rbody = root_gradle.read_text(encoding="utf-8")
 if "lintVitalAnalyzeRelease" not in rbody:
     rbody += """
 
-// 规避上游 url_launcher_android 的 lint 解析器崩溃。
-// 仅禁用该插件的 Release lint 任务；flutter analyze 与全部单元测试不受影响。
+// 规避上游插件（url_launcher_android / webview_flutter_android）的 lint 解析器崩溃。
+// 仅禁用这些插件的 Release lint 任务；flutter analyze 与全部单元测试不受影响。
 subprojects {
-    if (name == "url_launcher_android") {
+    if (name in ["url_launcher_android", "webview_flutter_android"]) {
         tasks.configureEach {
             if (name == "lintVitalAnalyzeRelease") {
                 enabled = false
