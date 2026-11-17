@@ -1,5 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
+
+import 'package:path_provider/path_provider.dart';
 
 import 'package:flutter/foundation.dart';
 
@@ -7,10 +10,10 @@ import 'package:flutter/foundation.dart';
 /// 另一台设备直接下载恢复。
 ///
 /// 设计约束（对应用户"只要同局域网、直传全量备份、可选择、不要密码"）：
-/// - 无需任何密码/配对码；仅监听私有网段，且只接受来自私有网段的请求；
+/// - 无需设置同步密码；临时共享链接携带随机令牌，且只监听私有网段；
 /// - 只暴露 backups 目录里的 .zip，basename 白名单，拒绝任何路径穿越；
 /// - 只提供读取，永远不修改/删除本机备份；
-/// - 下载前返回每个备份的清单（逐本 hash/书名/是否含文件），对端可据此选择。
+/// - 下载前列出备份 ZIP；下载后由恢复预览解析书目并支持逐本选择。
 /// - 默认关闭，只有用户主动开启才监听端口；应用退到后台即停止。
 class LanBackupService extends ChangeNotifier {
   LanBackupService({
@@ -18,6 +21,7 @@ class LanBackupService extends ChangeNotifier {
     List<int>? portCandidates,
     bool bindLoopback = false,
     Directory? backupDir,
+    this.syncKey = '',
   })  : _portCandidates = portCandidates ?? const <int>[8769, 8770, 8771],
         _bindLoopback = bindLoopback,
         _backupDirOverride = backupDir;
@@ -28,15 +32,23 @@ class LanBackupService extends ChangeNotifier {
   final bool _bindLoopback;
   final Directory? _backupDirOverride;
 
+  /// 本机的端到端同步密钥。仅在用户主动开启共享、且本次共享生命周期内，
+  /// 通过带随机令牌的共享链接暴露给已授权的对端设备，用于跨设备解密云端数据。
+  /// 由页面在 start() 前从安全存储读出后注入；绝不写入日志或诊断报告。
+  String syncKey;
+
   HttpServer? _server;
   Directory? _servedDir;
   int _port = 0;
   String _lastError = '';
+  String _accessToken = '';
   bool _disposed = false;
   List<String> _boundAddresses = const <String>[];
 
   bool get isRunning => _server != null;
   int get port => _port;
+  /// Ephemeral capability embedded in the copied share link, not a sync password.
+  String get accessToken => _accessToken;
   String get lastError => _lastError;
   Directory? get servedDirectory => _servedDir;
 
@@ -67,7 +79,7 @@ class LanBackupService extends ChangeNotifier {
           }
         }
       } catch (_) {}
-      targets = found.isEmpty ? <InternetAddress>[InternetAddress.anyIPv4] : found;
+      targets = found; // Never listen on all interfaces when no private LAN address exists.
     }
 
     HttpServer? opened;
@@ -83,25 +95,32 @@ class LanBackupService extends ChangeNotifier {
       if (opened != null) break;
     }
     if (opened == null) {
-      _lastError = '局域网端口被占用，无法开启备份共享';
+      _lastError = targets.isEmpty
+          ? '未找到可用的局域网地址，请连接同一 WiFi 后重试'
+          : '局域网端口被占用，无法开启备份共享';
       notifyListeners();
       return;
     }
     opened.autoCompress = false;
+    final random = Random.secure();
+    _accessToken = List<int>.generate(24, (_) => random.nextInt(256))
+        .map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
     opened.listen(_handle, onError: (Object e) {
       _lastError = e.toString();
     });
     _server = opened;
     _port = opened.port;
     _servedDir = dir;
-    _boundAddresses = targets.map((InternetAddress a) => a.address).toList(growable: false);
+    _boundAddresses = <String>[opened.address.address];
     if (!_disposed) notifyListeners();
   }
 
   Future<Directory> _resolveBackupDir() async {
     final Directory? override = _backupDirOverride;
     if (override != null) return override;
-    final Directory base = Directory.current;
+    // Use the same application documents directory as BackupService._backupDir.
+    // Directory.current differs from this location on Android.
+    final Directory base = await getApplicationDocumentsDirectory();
     return Directory('${base.path}${Platform.pathSeparator}backups');
   }
 
@@ -114,6 +133,7 @@ class LanBackupService extends ChangeNotifier {
       } catch (_) {}
     }
     _port = 0;
+    _accessToken = '';
     _servedDir = null;
     _boundAddresses = const <String>[];
     if (!_disposed) notifyListeners();
@@ -128,6 +148,7 @@ class LanBackupService extends ChangeNotifier {
     _disposed = true;
     _server?.close(force: true);
     _server = null;
+    _accessToken = '';
     super.dispose();
   }
 
@@ -143,13 +164,34 @@ class LanBackupService extends ChangeNotifier {
         await response.close();
         return;
       }
+      // A local IP alone is not authorization: other WiFi clients must not
+      // be able to fetch a user's books. The copied link contains a short-lived
+      // random capability; no password entry or account is required.
+      final supplied = request.uri.queryParameters['key'] ?? '';
+      if (_accessToken.isEmpty || !_sameToken(supplied, _accessToken)) {
+        response.statusCode = HttpStatus.unauthorized;
+        await response.close();
+        return;
+      }
       final String path = request.uri.path;
       if (path == '/' || path == '/api/info') {
         await _json(response, <String, Object?>{
           'format': 'read-lan-backup-v1',
           'device': deviceName,
           'port': _port,
+          // 只暴露"是否可迁移密钥"，不暴露密钥内容本身。
+          'hasSyncKey': syncKey.isNotEmpty,
         });
+        return;
+      }
+      if (path == '/api/sync-key') {
+        // 需同样的临时令牌鉴权（上面已校验），仅在共享期间可用。
+        if (syncKey.isEmpty) {
+          response.statusCode = HttpStatus.notFound;
+          await response.close();
+          return;
+        }
+        await _json(response, <String, Object?>{'key': syncKey});
         return;
       }
       if (path == '/api/backups') {
@@ -230,6 +272,15 @@ class LanBackupService extends ChangeNotifier {
     final RegExp allowed = RegExp(r'^[A-Za-z0-9._\-]+\.zip$');
     if (!allowed.hasMatch(raw)) return null;
     return raw;
+  }
+
+  static bool _sameToken(String a, String b) {
+    if (a.length != b.length) return false;
+    var mismatch = 0;
+    for (var i = 0; i < a.length; i++) {
+      mismatch |= a.codeUnitAt(i) ^ b.codeUnitAt(i);
+    }
+    return mismatch == 0;
   }
 
   static bool _isPrivate(InternetAddress address) {

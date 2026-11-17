@@ -7,7 +7,7 @@ import 'lan_backup_service.dart';
 /// 局域网备份客户端：连接另一台设备上运行的 [LanBackupService]，
 /// 拉取其备份列表、下载备份到本地临时文件，供 BackupService.restore 使用。
 ///
-/// 不含任何密码；连接地址由对端界面显示，用户在同一局域网内手动输入或粘贴。
+/// 用户复制共享链接连接，无需记忆或输入同步密码。链接包含临时访问凭据。
 class LanBackupClient {
   LanBackupClient({this.timeout = const Duration(seconds: 15)});
 
@@ -22,12 +22,18 @@ class LanBackupClient {
     final Uri parsed = Uri.tryParse(value) ?? Uri();
     if (parsed.host.isEmpty) return null;
     if (parsed.scheme != 'http' && parsed.scheme != 'https') return null;
-    // 剥掉路径，只保留 scheme://host:port
-    return Uri(scheme: parsed.scheme, host: parsed.host, port: parsed.port);
+    // Retain only the temporary access key, never arbitrary query parameters.
+    final key = parsed.queryParameters['key'];
+    return Uri(
+      scheme: parsed.scheme,
+      host: parsed.host,
+      port: parsed.port,
+      queryParameters: key == null ? null : <String, String>{'key': key},
+    );
   }
 
   Future<Map<String, Object?>> info(Uri base) async {
-    final Uint8List body = await _get(base.resolve('/api/info'));
+    final Uint8List body = await _get(_endpoint(base, '/api/info'));
     final Object? decoded = jsonDecode(utf8.decode(body));
     if (decoded is! Map<String, dynamic>) throw const FormatException('设备信息格式错误');
     if (decoded['format'] != 'read-lan-backup-v1') {
@@ -36,8 +42,22 @@ class LanBackupClient {
     return decoded;
   }
 
+  /// 从已授权的对端获取其端到端同步密钥，用于让新设备解密同一个云端账号。
+  /// 仅在本次临时共享的令牌有效时可用；密钥仅在本机安全存储中落地。
+  Future<String?> fetchSyncKey(Uri base) async {
+    final Uint8List body = await _get(_endpoint(base, '/api/sync-key'));
+    final Object? decoded = jsonDecode(utf8.decode(body));
+    if (decoded is! Map<String, dynamic>) throw const FormatException('同步密钥响应格式错误');
+    final Object? key = decoded['key'];
+    if (key == null) return null;
+    if (key is! String || key.isEmpty || key.length > 256) {
+      throw const FormatException('同步密钥内容非法');
+    }
+    return key;
+  }
+
   Future<List<Map<String, Object?>>> listBackups(Uri base) async {
-    final Uint8List body = await _get(base.resolve('/api/backups'));
+    final Uint8List body = await _get(_endpoint(base, '/api/backups'));
     final Object? decoded = jsonDecode(utf8.decode(body));
     if (decoded is! Map<String, dynamic> ||
         decoded['backups'] is! List<dynamic>) {
@@ -59,9 +79,7 @@ class LanBackupClient {
     final HttpClient client = HttpClient()..connectionTimeout = timeout;
     try {
       final HttpClientRequest request =
-          await client.getUrl(base.resolve('/api/download').replace(
-                queryParameters: <String, String>{'name': safe},
-              ));
+          await client.getUrl(_endpoint(base, '/api/download', <String, String>{'name': safe}));
       final HttpClientResponse response = await request.close().timeout(timeout);
       if (response.statusCode != 200) {
         throw FormatException('下载失败：HTTP ${response.statusCode}');
@@ -88,6 +106,17 @@ class LanBackupClient {
     } finally {
       client.close(force: true);
     }
+  }
+
+  static Uri _endpoint(Uri base, String path, [Map<String, String> extra = const {}]) {
+    return base.replace(
+      path: path,
+      queryParameters: <String, String>{
+        if (base.queryParameters.containsKey('key'))
+          'key': base.queryParameters['key']!,
+        ...extra,
+      },
+    );
   }
 
   Future<Uint8List> _get(Uri uri) async {

@@ -1445,6 +1445,9 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     final displayText = page.textOf(chapter.display);
     return SelectableText.rich(
       _highlightedSpan(chapter, page, style, chapterIndex),
+      // ReaderEngine already applies system text scaling when paginating.
+      // Applying it again here makes the last line overflow and disappear.
+      textScaler: TextScaler.noScaling,
       textAlign: ReaderEngine.textAlignOf(_settings.align),
       contextMenuBuilder: (BuildContext ctx, EditableTextState editableState) {
         final selection = editableState.textEditingValue.selection;
@@ -1966,7 +1969,10 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
             TextAlign.right => Alignment.topRight,
             _ => Alignment.topLeft,
           },
-          child: inner,
+          child: MediaQuery(
+            data: MediaQuery.of(context).copyWith(textScaler: TextScaler.noScaling),
+            child: inner,
+          ),
         ),
       ),
     );
@@ -2005,8 +2011,9 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                   ),
                 ),
                 textAlign: ReaderEngine.textAlignOf(_settings.align),
+                textScaler: TextScaler.noScaling,
               ),
-            )),
+            )), 
             const SizedBox(height: 40),
           ],
         ),
