@@ -296,11 +296,26 @@ class SyncSecrets {
   final String encryptionPassword;
   final String s3SecretKey;
 
+  /// 端到端加密密钥不再要求用户手工设置：首次同步时自动生成一把 32 字节随机
+  /// 密钥存入系统安全存储，之后固定复用。用户不再需要记忆/输入"同步密码"，
+  /// 但云端数据依旧是 AES-256-GCM 加密的。若设备上仍存有旧版用户密码，则
+  /// 继续沿用，保证历史备份可读。
   static Future<SyncSecrets> load() async {
     final vault = SecretVault.instance;
+    String? encryption = await vault.read(SecretVault.encryptionKey);
+    if (encryption == null || encryption.length < 12) {
+      final random = Random.secure();
+      const alphabet =
+          'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+      encryption = List<int>.generate(32, (_) => random.nextInt(alphabet.length))
+          .map((int i) => alphabet.codeUnitAt(i))
+          .map((int code) => String.fromCharCode(code))
+          .join();
+      await vault.write(SecretVault.encryptionKey, encryption);
+    }
     return SyncSecrets(
       webdavPassword: await vault.read(SecretVault.webdavPasswordKey) ?? '',
-      encryptionPassword: await vault.read(SecretVault.encryptionKey) ?? '',
+      encryptionPassword: encryption,
       s3SecretKey: await vault.read(SecretVault.s3SecretKey) ?? '',
     );
   }

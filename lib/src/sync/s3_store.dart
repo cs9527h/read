@@ -20,13 +20,14 @@ class _S3Response {
 class S3Store implements RemoteObjectStore {
   S3Store({
     required String endpoint,
-    required this.region,
+    required String region,
     required this.bucket,
     required this.prefix,
     required this.accessKey,
     required this.secretKey,
     DateTime Function()? clock,
   })  : _endpoint = _parseEndpoint(endpoint),
+        region = effectiveRegion(region),
         _clock = clock ?? DateTime.now;
 
   final Uri _endpoint;
@@ -41,15 +42,25 @@ class S3Store implements RemoteObjectStore {
 
   static Uri _parseEndpoint(String raw) {
     final uri = Uri.tryParse(raw.trim());
+    // 允许 http：本地/内网 MinIO 常以明文部署；公网仍由用户自行选择 https。
     if (uri == null ||
-        uri.scheme != 'https' ||
+        (uri.scheme != 'https' && uri.scheme != 'http') ||
         uri.host.isEmpty ||
         uri.userInfo.isNotEmpty ||
         uri.hasQuery ||
         uri.hasFragment) {
-      throw const FormatException('S3 Endpoint 必须是干净的 HTTPS 地址');
+      throw const FormatException('S3 Endpoint 必须是干净的 http/https 地址');
     }
     return uri;
+  }
+
+  /// 签名所用的 region。'auto'/空在 SigV4 里不是合法 region，绝大多数 S3
+  /// 兼容服务（MinIO/R2/B2/OSS）接受 us-east-1 作为签名 scope，回退到它
+  /// 可修复 region 填 auto 时的 SignatureDoesNotMatch。
+  static String effectiveRegion(String region) {
+    final trimmed = region.trim();
+    if (trimmed.isEmpty || trimmed.toLowerCase() == 'auto') return 'us-east-1';
+    return trimmed;
   }
 
   @override
@@ -66,7 +77,7 @@ class S3Store implements RemoteObjectStore {
     final base = _endpoint.pathSegments.where((String e) => e.isNotEmpty).toList();
     final object = _objectKey(key).split('/').where((String e) => e.isNotEmpty);
     return Uri(
-      scheme: 'https',
+      scheme: _endpoint.scheme,
       host: _endpoint.host,
       port: _endpoint.hasPort ? _endpoint.port : null,
       pathSegments: <String>[...base, bucket, ...object],
