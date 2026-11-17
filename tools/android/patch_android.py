@@ -82,7 +82,7 @@ if "lintVitalAnalyzeRelease" not in rbody:
 // 规避上游插件（url_launcher_android / webview_flutter_android）的 lint 解析器崩溃。
 // 仅禁用这些插件的 Release lint 任务；flutter analyze 与全部单元测试不受影响。
 subprojects {
-    if (name in ["url_launcher_android", "webview_flutter_android"]) {
+    if (setOf("url_launcher_android", "webview_flutter_android").contains(name)) {
         tasks.configureEach {
             if (name == "lintVitalAnalyzeRelease") {
                 enabled = false
