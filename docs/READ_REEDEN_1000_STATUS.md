@@ -2,49 +2,49 @@
 
 > 对应《READ 阅读器：全面对标 Reeden 的 1000 条详细开发与验收要求》R0001–R1000。
 > **本台账基于真实源码审计 + 本地基线测试，状态如实标注，不以界面存在或口头保证代替验收。**
-> 基线 main@d23c86b；本轮单APK+低版本适配+搜索历史+笔记导出；analyze 0 error/warning；flutter test 160/160。
+> 基线 main@a2a6874；v2.1 批次：WiFi 传书安全、备份完整性、SQLite 核心存储、启动按需解析、阅读统计纠错、QQ 反馈与本地诊断；analyze 0 error/warning；flutter test 206/206。
 
 ## 判定标准（严格，不虚报）
 
 | 状态 | 含义 | 计数 |
 |---|---|---:|
-| ✅ 已验证完成 | 有真实源码 + 本环境可运行的自动化测试通过证据 | 43 |
-| 🟡 已实现待验证 | 有真实源码，但缺自动化证据或需真机/真账号人工验收 | 261 |
-| ◐ 部分实现 | 有相邻能力或框架，但本条未完整落地 | 302 |
+| ✅ 已验证完成 | 有真实源码 + 本环境可运行的自动化测试通过证据 | 64 |
+| 🟡 已实现待验证 | 有真实源码，但缺自动化证据或需真机/真账号人工验收 | 251 |
+| ◐ 部分实现 | 有相邻能力或框架，但本条未完整落地 | 291 |
 | ⛔ 客观阻塞 | 需第三方授权/真实网盘账号/多设备/真机等本环境无法满足的条件 | 52 |
 | ⬜ 未开始 | 代码层面尚未实现 | 342 |
 | **合计** | | **1000** |
 
-**已验证完成占比：43/1000**。此数字只反映有源码 + 自动化测试证据的条目，绝不代表整体完成度。
+**已验证完成占比：64/1000**。此数字只反映有源码 + 自动化测试证据的条目，绝不代表整体完成度。
 
 ## 模块汇总
 
 | 模块 | V | I | P | B | N | 合计 |
 |---|---:|---:|---:|---:|---:|---:|
-| 01 项目审计与工程约束 | 11 | 17 | 11 | 1 | 0 | 40 |
-| 02 首次启动、导航与基础体验 | 4 | 18 | 13 | 0 | 5 | 40 |
-| 03 本地导入、传书与文件管理 | 1 | 7 | 17 | 1 | 14 | 40 |
+| 01 项目审计与工程约束 | 13 | 16 | 10 | 1 | 0 | 40 |
+| 02 首次启动、导航与基础体验 | 5 | 17 | 13 | 0 | 5 | 40 |
+| 03 本地导入、传书与文件管理 | 4 | 7 | 14 | 1 | 14 | 40 |
 | 04 电子书格式、编码与解析兼容 | 1 | 13 | 9 | 2 | 15 | 40 |
 | 05 阅读器基础行为和内容定位 | 6 | 17 | 12 | 1 | 4 | 40 |
 | 06 字体、排版、主题与内容样式 | 0 | 22 | 8 | 0 | 10 | 40 |
 | 07 翻页模式、手势与动画 | 0 | 12 | 20 | 2 | 6 | 40 |
 | 08 目录、导航、全文搜索与定位 | 6 | 4 | 17 | 1 | 12 | 40 |
 | 09 脚注、复杂排版与阅读辅助 | 0 | 1 | 7 | 2 | 30 | 40 |
-| 10 PDF 阅读、标注与性能 | 0 | 9 | 17 | 3 | 11 | 40 |
+| 10 PDF 阅读、标注与性能 | 1 | 9 | 16 | 3 | 11 | 40 |
 | 11 漫画、图像与图文混排 | 0 | 1 | 0 | 2 | 37 | 40 |
 | 12 书架、分类与书库浏览 | 0 | 18 | 15 | 1 | 6 | 40 |
 | 13 书籍信息整理、TXT与EPUB编辑 | 2 | 5 | 8 | 1 | 24 | 40 |
 | 14 书签、划线、选区与批注 | 4 | 4 | 24 | 1 | 7 | 40 |
 | 15 笔记导出、书摘分享与外部知识库 | 2 | 3 | 3 | 0 | 32 | 40 |
-| 16 阅读统计、目标、习惯与年度报告 | 0 | 13 | 13 | 0 | 14 | 40 |
+| 16 阅读统计、目标、习惯与年度报告 | 3 | 11 | 12 | 0 | 14 | 40 |
 | 17 听书、TTS、后台播放与多角色朗读 | 0 | 4 | 14 | 2 | 20 | 40 |
 | 18 词典、生词本、翻译与学习辅助 | 0 | 0 | 2 | 0 | 38 | 40 |
 | 19 AI 阅读助手、人物关系与高级理解 | 0 | 0 | 0 | 0 | 40 | 40 |
 | 20 多端同步底层协议与生命周期 | 0 | 21 | 16 | 1 | 2 | 40 |
 | 21 网盘、云书库与多服务商接入 | 0 | 12 | 7 | 14 | 7 | 40 |
-| 22 同步冲突、备份、恢复与迁移 | 0 | 13 | 24 | 1 | 2 | 40 |
+| 22 同步冲突、备份、恢复与迁移 | 9 | 9 | 19 | 1 | 2 | 40 |
 | 23 原创 UI 设计、细节动画和设置体验 | 0 | 17 | 20 | 2 | 1 | 40 |
-| 24 性能、无障碍、隐私和稳定性 | 0 | 16 | 13 | 6 | 5 | 40 |
+| 24 性能、无障碍、隐私和稳定性 | 2 | 14 | 13 | 6 | 5 | 40 |
 | 25 自动化测试、CI、交付与逐项验收 | 6 | 14 | 12 | 8 | 0 | 40 |
 
 ## 逐条明细
@@ -63,7 +63,7 @@
 | R0008 | 🟡 已实现待验证 | 禁止以静态截图、假按钮、空方法冒充实际功能。 | docs/; .github/workflows/; lib/main.dart; pubspec.yaml | 工程准则：源码审计未见假书/假按钮冒充入口；未能逐项自动化扫描 |
 | R0009 | 🟡 已实现待验证 | 禁止在界面中展示尚未连接成功的网盘为“已连接”。 | docs/; .github/workflows/; lib/main.dart; pubspec.yaml | 工程准则：源码审计未见假书/假按钮冒充入口；未能逐项自动化扫描 |
 | R0010 | 🟡 已实现待验证 | 禁止用硬编码演示书籍替代真实导入、解析及阅读过程。 | docs/; .github/workflows/; lib/main.dart; pubspec.yaml | 工程准则：源码审计未见假书/假按钮冒充入口；未能逐项自动化扫描 |
-| R0011 | 🟡 已实现待验证 | 检查已有数据库表结构及迁移历史，避免破坏老用户数据。 | docs/; .github/workflows/; lib/main.dart; pubspec.yaml | 已有 drift schema 与 read_database.g.dart；需核对迁移历史 |
+| R0011 | ✅ 已验证完成 | 检查已有数据库表结构及迁移历史，避免破坏老用户数据。 | docs/; .github/workflows/; lib/main.dart; pubspec.yaml | schema v2 + onUpgrade + 索引；测试验证旧库升级后数据完整 |
 | R0012 | ◐ 部分实现 | 梳理现有文件路径、缓存路径、导出目录与 SAF 授权生命周期。 | docs/; .github/workflows/; lib/main.dart; pubspec.yaml | 文件路径/缓存路径部分在 storage_page；SAF 生命周期未系统梳理成文 |
 | R0013 | 🟡 已实现待验证 | 梳理现有同步流程，区分书籍文件、元数据、进度与设置。 | docs/; .github/workflows/; lib/main.dart; pubspec.yaml | 同步已区分书籍文件/元数据/进度/设置（见 sync 模块） |
 | R0014 | 🟡 已实现待验证 | 列出存在的崩溃、ANR、卡顿和同步冲突，按影响优先级修复。 | docs/; .github/workflows/; lib/main.dart; pubspec.yaml | 历史崩溃/ANR 多来自 CI 环境问题；无本地崩溃聚合数据 |
@@ -84,7 +84,7 @@
 | R0029 | ◐ 部分实现 | 架构设计应支持未来增加新网盘协议，而不是写死服务商列表。 | docs/; .github/workflows/; lib/main.dart; pubspec.yaml | 有 SyncBackendFactory 抽象，扩展新网盘有基础 |
 | R0030 | ✅ 已验证完成 | 设置数据统一持久化，退出、进程重启及系统回收后保持一致。 | docs/; .github/workflows/; lib/main.dart; pubspec.yaml | 设置统一 SharedPreferences 持久化，多 store init |
 | R0031 | ◐ 部分实现 | 列表展示状态与真实持久状态一致，禁止依赖临时内存冒充持久化。 | docs/; .github/workflows/; lib/main.dart; pubspec.yaml | 列表状态部分来自 store，需核对无临时内存冒充 |
-| R0032 | ◐ 部分实现 | 实现可读错误码、可复现故障信息和开发期诊断日志。 | docs/; .github/workflows/; lib/main.dart; pubspec.yaml | 有错误码/失败模型（sync_failure.dart），诊断日志未系统化 |
+| R0032 | ✅ 已验证完成 | 实现可读错误码、可复现故障信息和开发期诊断日志。 | docs/; .github/workflows/; lib/main.dart; pubspec.yaml | DiagnosticsService：错误码/异常/堆栈/版本，本地环形日志，可导出复制 |
 | R0033 | ◐ 部分实现 | 每个联网功能需要超时、重试、取消、错误处理及离线说明。 | docs/; .github/workflows/; lib/main.dart; pubspec.yaml | 联网功能部分含超时/重试/取消（WebDAV/S3），未全覆盖 |
 | R0034 | ◐ 部分实现 | 每个批量操作需具备进度提示、取消入口及安全恢复能力。 | docs/; .github/workflows/; lib/main.dart; pubspec.yaml | 批量导入有进度通知基础，取消/恢复需验收 |
 | R0035 | 🟡 已实现待验证 | 为耗时任务使用后台工作队列，禁止阻塞 Android 主线程。 | docs/; .github/workflows/; lib/main.dart; pubspec.yaml | 耗时同步放后台服务/队列，未阻塞主线程 |
@@ -98,7 +98,7 @@
 
 | 编号 | 状态 | 需求 | 代码路径 | 证据/阻塞说明 |
 |---|---|---|---|---|
-| R0041 | 🟡 已实现待验证 | 首次打开应用在合理时间内进入可操作首页，不出现无意义白屏。 | lib/main.dart; lib/src/shell/home_shell.dart; lib/src/theme.dart | main 初始化后立即进 HomeShell；无白屏；启动耗时未真机量化 |
+| R0041 | ✅ 已验证完成 | 首次打开应用在合理时间内进入可操作首页，不出现无意义白屏。 | lib/main.dart; lib/src/shell/home_shell.dart; lib/src/theme.dart | 启动只读元数据；500 本加载性能测试；单项初始化失败隔离 |
 | R0042 | ⬜ 未开始 | 首次使用提供简短引导，最多三步解释导入、阅读和同步入口。 | lib/main.dart; lib/src/shell/home_shell.dart; lib/src/theme.dart | 无首次引导流程代码 |
 | R0043 | ⬜ 未开始 | 允许用户跳过引导，跳过后立即进入可用的空书架。 | lib/main.dart; lib/src/shell/home_shell.dart; lib/src/theme.dart | 无首次引导流程代码 |
 | R0044 | 🟡 已实现待验证 | 空书架显示导入本地书籍和连接云书库两个清晰动作。 | lib/main.dart; lib/src/shell/home_shell.dart; lib/src/theme.dart | 空书架有导入/同步入口（bookshelf_page 空态） |
@@ -166,11 +166,11 @@
 | R0101 | ⬜ 未开始 | 支持读取压缩包内电子书并列出可导入的候选文件。 | lib/src/services/library_store.dart; lib/src/more/import_tools.dart; lib/src/more/wifi_transfer_page.dart | 压缩包内列举候选书未实现 |
 | R0102 | 🟡 已实现待验证 | 对于加密或受 DRM 保护文件，说明合法支持边界而非假装能打开。 | lib/src/services/library_store.dart; lib/src/more/import_tools.dart; lib/src/more/wifi_transfer_page.dart | DRM 明确声明不支持（format_engine 抛错） |
 | R0103 | ⬜ 未开始 | 支持拖放导入，适用于支持拖拽的平板与多窗口设备。 | lib/src/services/library_store.dart; lib/src/more/import_tools.dart; lib/src/more/wifi_transfer_page.dart | 拖放导入未实现 |
-| R0104 | 🟡 已实现待验证 | 支持通过局域网 Wi-Fi 传书网页向手机发送文件。 | lib/src/services/library_store.dart; lib/src/more/import_tools.dart; lib/src/more/wifi_transfer_page.dart | Wi-Fi 传书页存在（wifi_transfer_page） |
-| R0105 | 🟡 已实现待验证 | Wi-Fi 传书必须用户主动启动，并显示同网段访问地址。 | lib/src/services/library_store.dart; lib/src/more/import_tools.dart; lib/src/more/wifi_transfer_page.dart | Wi-Fi 传书需主动启动并显示地址（需真机核对） |
-| R0106 | ◐ 部分实现 | Wi-Fi 上传入口提供短时会话码或明确授权以防他人上传。 | lib/src/services/library_store.dart; lib/src/more/import_tools.dart; lib/src/more/wifi_transfer_page.dart | Wi-Fi 会话码/授权未确认实现 |
-| R0107 | ◐ 部分实现 | 传书支持多文件上传、进度显示、失败重试与完成提示。 | lib/src/services/library_store.dart; lib/src/more/import_tools.dart; lib/src/more/wifi_transfer_page.dart | Wi-Fi 多文件/进度/重试需真机核对 |
-| R0108 | ◐ 部分实现 | 传书服务器关闭页面或超时后自动停用，不应常驻暴露。 | lib/src/services/library_store.dart; lib/src/more/import_tools.dart; lib/src/more/wifi_transfer_page.dart | Wi-Fi 服务超时自动停用需核对 |
+| R0104 | ✅ 已验证完成 | 支持通过局域网 Wi-Fi 传书网页向手机发送文件。 | lib/src/services/library_store.dart; lib/src/more/import_tools.dart; lib/src/more/wifi_transfer_page.dart | WifiTransferService 真实 HTTP 服务 + 17 条 loopback 集成测试 |
+| R0105 | ✅ 已验证完成 | Wi-Fi 传书必须用户主动启动，并显示同网段访问地址。 | lib/src/services/library_store.dart; lib/src/more/import_tools.dart; lib/src/more/wifi_transfer_page.dart | 默认关闭，用户手动启动；页面展示真实局域网地址（wifi_transfer_service_test） |
+| R0106 | ✅ 已验证完成 | Wi-Fi 上传入口提供短时会话码或明确授权以防他人上传。 | lib/src/services/library_store.dart; lib/src/more/import_tools.dart; lib/src/more/wifi_transfer_page.dart | 6 位一次性配对码 + 256 位令牌，10 分钟过期，错 5 次锁定，需令牌才能上传 |
+| R0107 | 🟡 已实现待验证 | 传书支持多文件上传、进度显示、失败重试与完成提示。 | lib/src/services/library_store.dart; lib/src/more/import_tools.dart; lib/src/more/wifi_transfer_page.dart | 多文件/进度条/成功失败反馈已实现；失败需手动重传，无自动重试队列 |
+| R0108 | 🟡 已实现待验证 | 传书服务器关闭页面或超时后自动停用，不应常驻暴露。 | lib/src/services/library_store.dart; lib/src/more/import_tools.dart; lib/src/more/wifi_transfer_page.dart | 关闭页面/退后台立即停止、会话 10 分钟过期；长时间空闲自动停止未实现 |
 | R0109 | ⬜ 未开始 | 支持从系统下载目录快速发现最近新增的书籍。 | lib/src/services/library_store.dart; lib/src/more/import_tools.dart; lib/src/more/wifi_transfer_page.dart | 下载目录发现新书未实现 |
 | R0110 | ⬜ 未开始 | 支持监听用户授权目录的变化并手动刷新书架。 | lib/src/services/library_store.dart; lib/src/more/import_tools.dart; lib/src/more/wifi_transfer_page.dart | 目录变化监听未实现 |
 | R0111 | ◐ 部分实现 | 支持将外部书籍的来源记录为本地文件、分享或云端导入。 | lib/src/services/library_store.dart; lib/src/more/import_tools.dart; lib/src/more/wifi_transfer_page.dart | 来源记录（本地/分享/云端）部分实现 |
@@ -190,7 +190,9 @@
 |---|---|---|---|---|
 | R0121 | 🟡 已实现待验证 | TXT 文件应支持 UTF-8、UTF-16、GB18030 等常见编码。 | lib/src/formats/format_engine.dart; lib/src/formats/pdf_format.dart | decodeText 支持 UTF-8/UTF-16/GB18030（charset_converter） |
 | R0122 | ⬜ 未开始 | TXT 编码识别错误时允许用户手动选择编码并立即预览。 | lib/src/formats/format_engine.dart; lib/src/formats/pdf_format.dart | 手动选择编码 UI 未实现 |
-| R0123 | 🟡 已实现待验证 | TXT 中的 CRLF、LF 与 CR 换行符应得到一致的段落处理。 | lib/src/formats/format_engine.dart; lib/src/formats/pdf_format.dart | 换行  / / 归一（reader_engine buildDisplay） |
+| R0123 | 🟡 已实现待验证 | TXT 中的 CRLF、LF 与 CR 换行符应得到一致的段落处理。 | lib/src/formats/format_engine.dart; lib/src/formats/pdf_format.dart | 换行 
+ / /
+ 归一（reader_engine buildDisplay） |
 | R0124 | ⬜ 未开始 | TXT 在超大文件情况下采用分段索引，不一次性加载全部文本。 | lib/src/formats/format_engine.dart; lib/src/formats/pdf_format.dart | 超大 TXT 分段索引未实现（有 40MB 上限抛错） |
 | R0125 | ✅ 已验证完成 | EPUB 2 应正确解析 OPF、NCX、章节顺序与图片资源。 | lib/src/formats/format_engine.dart; lib/src/formats/pdf_format.dart | EPUB2 OPF/spine 解析：本轮合入 #46 修复，format_engine_test.dart 新增真实 ZIP spine 回归用例通过 |
 | R0126 | 🟡 已实现待验证 | EPUB 3 应正确解析 navigation document 和语义结构。 | lib/src/formats/format_engine.dart; lib/src/formats/pdf_format.dart | EPUB3 nav 语义部分解析 |
@@ -486,7 +488,7 @@
 | R0386 | ◐ 部分实现 | PDF 渲染缓存遵循可配置的内存预算。 | lib/src/formats/pdf_format.dart; lib/src/reader/pdf_reader_page.dart | PDF 分块渲染/缓存预算部分（pdfrx 内部） |
 | R0387 | ◐ 部分实现 | PDF 的缩略图后台生成，前台先加载可见页。 | lib/src/formats/pdf_format.dart; lib/src/reader/pdf_reader_page.dart | 缩略图后台生成未实现 |
 | R0388 | ◐ 部分实现 | PDF 密码保护文件仅通过合法用户提供密码打开。 | lib/src/formats/pdf_format.dart; lib/src/reader/pdf_reader_page.dart | PDF 密码打开/日志脱敏需核对 |
-| R0389 | ◐ 部分实现 | 密码不应写入明文日志或自动上传的诊断文件。 | lib/src/formats/pdf_format.dart; lib/src/reader/pdf_reader_page.dart | PDF 密码打开/日志脱敏需核对 |
+| R0389 | ✅ 已验证完成 | 密码不应写入明文日志或自动上传的诊断文件。 | lib/src/formats/pdf_format.dart; lib/src/reader/pdf_reader_page.dart | 日志写前统一脱敏（密码/令牌/Cookie/Bearer/URL 凭据/邮箱），不提供远程上传 |
 | R0390 | 🟡 已实现待验证 | 每个 PDF 文件的最后阅读页面及缩放值独立保存。 | lib/src/formats/pdf_format.dart; lib/src/reader/pdf_reader_page.dart | PDF 每本最后页+缩放保存（pdf_format 测试） |
 | R0391 | ◐ 部分实现 | PDF 旋转页面时保持可见内容中心不大幅跳动。 | lib/src/formats/pdf_format.dart; lib/src/reader/pdf_reader_page.dart | 旋转中心/夜间对比度需核对 |
 | R0392 | ◐ 部分实现 | 支持夜间阅读时调整文档背景对比度。 | lib/src/formats/pdf_format.dart; lib/src/reader/pdf_reader_page.dart | 旋转中心/夜间对比度需核对 |
@@ -728,7 +730,7 @@
 
 | 编号 | 状态 | 需求 | 代码路径 | 证据/阻塞说明 |
 |---|---|---|---|---|
-| R0601 | 🟡 已实现待验证 | 阅读计时只统计用户实际停留并可合理判断活动状态的时间。 | lib/src/services/reading_stats_store.dart; lib/src/stats/stats_page.dart | 阅读计时+前后台暂停（_sessionSeconds + 生命周期） |
+| R0601 | ✅ 已验证完成 | 阅读计时只统计用户实际停留并可合理判断活动状态的时间。 | lib/src/services/reading_stats_store.dart; lib/src/stats/stats_page.dart | ReadingSessionTracker：2 分钟无操作、后台、异常时钟间隔均不计时（6 条测试） |
 | R0602 | 🟡 已实现待验证 | 屏幕关闭、应用后台及长时间无交互时暂停阅读计时。 | lib/src/services/reading_stats_store.dart; lib/src/stats/stats_page.dart | 阅读计时+前后台暂停（_sessionSeconds + 生命周期） |
 | R0603 | ⬜ 未开始 | 听书时间与视觉阅读时间分别记录且可合并查看。 | lib/src/services/reading_stats_store.dart; lib/src/stats/stats_page.dart | 听书时间与视觉阅读分别记录未实现 |
 | R0604 | 🟡 已实现待验证 | 支持按天、周、月和年查看阅读时长。 | lib/src/services/reading_stats_store.dart; lib/src/stats/stats_page.dart | 日/周/月/年时长、每本统计、排行（stats_page + 测试） |
@@ -738,7 +740,7 @@
 | R0608 | 🟡 已实现待验证 | 支持按书籍、格式、作者分类查看阅读排行。 | lib/src/services/reading_stats_store.dart; lib/src/stats/stats_page.dart | 日/周/月/年时长、每本统计、排行（stats_page + 测试） |
 | R0609 | ◐ 部分实现 | 支持展示已读字数及估计值的计算说明。 | lib/src/services/reading_stats_store.dart; lib/src/stats/stats_page.dart | 已读字数/估算说明部分实现 |
 | R0610 | ◐ 部分实现 | 对 PDF 和漫画等无法精确字数统计格式明确标注估算。 | lib/src/services/reading_stats_store.dart; lib/src/stats/stats_page.dart | 已读字数/估算说明部分实现 |
-| R0611 | ◐ 部分实现 | 阅读统计应排除重复计算和设备时间跳变异常。 | lib/src/services/reading_stats_store.dart; lib/src/stats/stats_page.dart | 排除重复/时钟跳变需核对 |
+| R0611 | ✅ 已验证完成 | 阅读统计应排除重复计算和设备时间跳变异常。 | lib/src/services/reading_stats_store.dart; lib/src/stats/stats_page.dart | 只有越过历史最远位置才计新字数；回看计重复阅读，跳转重置基线 |
 | R0612 | ⬜ 未开始 | 支持设置每日阅读分钟数目标。 | lib/src/services/reading_stats_store.dart; lib/src/stats/stats_page.dart | 每日分钟/字数/年度本数目标未实现 |
 | R0613 | ⬜ 未开始 | 支持设置每日阅读字数目标。 | lib/src/services/reading_stats_store.dart; lib/src/stats/stats_page.dart | 每日分钟/字数/年度本数目标未实现 |
 | R0614 | ⬜ 未开始 | 支持设置年度读完书籍本数目标。 | lib/src/services/reading_stats_store.dart; lib/src/stats/stats_page.dart | 每日分钟/字数/年度本数目标未实现 |
@@ -767,7 +769,7 @@
 | R0637 | 🟡 已实现待验证 | 零数据统计页提供真实的空状态与开始阅读入口。 | lib/src/services/reading_stats_store.dart; lib/src/stats/stats_page.dart | 零数据空状态+开始入口 |
 | R0638 | 🟡 已实现待验证 | 统计数据离线本地查询，不强制连接云端服务。 | lib/src/services/reading_stats_store.dart; lib/src/stats/stats_page.dart | 统计本地查询不强制联网 |
 | R0639 | ◐ 部分实现 | 多设备事件同步后要去重，避免两个设备重复计时。 | lib/src/services/reading_stats_store.dart; lib/src/stats/stats_page.dart | 多设备事件去重需核对 |
-| R0640 | 🟡 已实现待验证 | 统计计算应有单元测试覆盖跨日、断网、时钟更改及重复合并。 | lib/src/services/reading_stats_store.dart; lib/src/stats/stats_page.dart | 统计单测覆盖跨日/断网/重复（reading_stats 相关测试） |
+| R0640 | ✅ 已验证完成 | 统计计算应有单元测试覆盖跨日、断网、时钟更改及重复合并。 | lib/src/services/reading_stats_store.dart; lib/src/stats/stats_page.dart | 统计单元测试覆盖重复合并、跨日、时钟跳变与空闲暂停 |
 
 ### 17 听书、TTS、后台播放与多角色朗读
 
@@ -998,23 +1000,23 @@
 
 | 编号 | 状态 | 需求 | 代码路径 | 证据/阻塞说明 |
 |---|---|---|---|---|
-| R0841 | 🟡 已实现待验证 | 支持立即创建本地完整备份，不依赖云端。 | lib/src/sync/backup_service.dart; lib/src/sync/progress_conflict_store.dart | 本地完整备份（backup_service.createBackup 含元数据/进度/笔记/设置/统计） |
-| R0842 | 🟡 已实现待验证 | 备份应包括书架元数据、进度、笔记、设置及统计。 | lib/src/sync/backup_service.dart; lib/src/sync/progress_conflict_store.dart | 本地完整备份（backup_service.createBackup 含元数据/进度/笔记/设置/统计） |
-| R0843 | ◐ 部分实现 | 书籍原文件是否包含在备份中需独立选项，并显示估计大小。 | lib/src/sync/backup_service.dart; lib/src/sync/progress_conflict_store.dart | 书籍原文件是否含入备份独立选项需核对 |
-| R0844 | 🟡 已实现待验证 | 备份采用带版本号的清单，便于未来兼容迁移。 | lib/src/sync/backup_service.dart; lib/src/sync/progress_conflict_store.dart | 备份带版本号（BackupInfo + 清单） |
-| R0845 | 🟡 已实现待验证 | 备份文件支持完整性校验，损坏时拒绝覆盖现有数据。 | lib/src/sync/backup_service.dart; lib/src/sync/progress_conflict_store.dart | 备份完整性校验（encrypted envelope） |
+| R0841 | ✅ 已验证完成 | 支持立即创建本地完整备份，不依赖云端。 | lib/src/sync/backup_service.dart; lib/src/sync/progress_conflict_store.dart | 本地完整备份 + 写盘后回读校验（backup_service_test 9 条） |
+| R0842 | ✅ 已验证完成 | 备份应包括书架元数据、进度、笔记、设置及统计。 | lib/src/sync/backup_service.dart; lib/src/sync/progress_conflict_store.dart | 清单含书籍元数据/书签/笔记/设置/统计；逐书状态 |
+| R0843 | ◐ 部分实现 | 书籍原文件是否包含在备份中需独立选项，并显示估计大小。 | lib/src/sync/backup_service.dart; lib/src/sync/progress_conflict_store.dart | 仍未提供“是否包含原文件”的用户开关与大小预估，当前按 40/256/512MB 自动裁剪 |
+| R0844 | ✅ 已验证完成 | 备份采用带版本号的清单，便于未来兼容迁移。 | lib/src/sync/backup_service.dart; lib/src/sync/progress_conflict_store.dart | metadata.schema=2 + manifest，旧版无清单备份兼容读取 |
+| R0845 | ✅ 已验证完成 | 备份文件支持完整性校验，损坏时拒绝覆盖现有数据。 | lib/src/sync/backup_service.dart; lib/src/sync/progress_conflict_store.dart | verifyBackup 逐文件 SHA-256；损坏时 restore 抛错且不改动任何数据 |
 | R0846 | 🟡 已实现待验证 | 备份可选择经过验证的加密方案和用户控制的密钥。 | lib/src/sync/backup_service.dart; lib/src/sync/progress_conflict_store.dart | 备份加密用户密钥（encrypted_file_envelope + 测试） |
-| R0847 | ◐ 部分实现 | 恢复前允许预览书籍、笔记、进度和设置条目数量。 | lib/src/sync/backup_service.dart; lib/src/sync/progress_conflict_store.dart | 恢复前预览条目数量需核对 |
-| R0848 | ◐ 部分实现 | 恢复提供合并模式，不应只有覆盖整个书库一条路。 | lib/src/sync/backup_service.dart; lib/src/sync/progress_conflict_store.dart | 合并恢复模式部分（data_tools 合并） |
-| R0849 | ◐ 部分实现 | 覆盖恢复时先建立安全快照，失败能恢复原状。 | lib/src/sync/backup_service.dart; lib/src/sync/progress_conflict_store.dart | 覆盖前安全快照需核对 |
-| R0850 | ◐ 部分实现 | 恢复后检查数据库引用与实际书籍文件是否一致。 | lib/src/sync/backup_service.dart; lib/src/sync/progress_conflict_store.dart | 恢复后引用一致性检查需核对 |
-| R0851 | 🟡 已实现待验证 | 支持从应用旧版本数据库自动迁移到新版结构。 | lib/src/sync/backup_service.dart; lib/src/sync/progress_conflict_store.dart | 旧版 DB 迁移（read_database.g.dart drift）+ 迁移测试 |
-| R0852 | 🟡 已实现待验证 | 数据库升级迁移必须具备自动化测试样本。 | lib/src/sync/backup_service.dart; lib/src/sync/progress_conflict_store.dart | 旧版 DB 迁移（read_database.g.dart drift）+ 迁移测试 |
+| R0847 | ✅ 已验证完成 | 恢复前允许预览书籍、笔记、进度和设置条目数量。 | lib/src/sync/backup_service.dart; lib/src/sync/progress_conflict_store.dart | previewRestore 返回新增/已有书籍数、书签数、是否含设置与统计 |
+| R0848 | ✅ 已验证完成 | 恢复提供合并模式，不应只有覆盖整个书库一条路。 | lib/src/sync/backup_service.dart; lib/src/sync/progress_conflict_store.dart | RestoreSelection：指定书籍集合、仅元数据、书签/设置/统计独立开关 |
+| R0849 | ✅ 已验证完成 | 覆盖恢复时先建立安全快照，失败能恢复原状。 | lib/src/sync/backup_service.dart; lib/src/sync/progress_conflict_store.dart | 恢复前强制创建保护性快照；单个导入失败不影响其他书与原数据 |
+| R0850 | 🟡 已实现待验证 | 恢复后检查数据库引用与实际书籍文件是否一致。 | lib/src/sync/backup_service.dart; lib/src/sync/progress_conflict_store.dart | 恢复按 contentHash 校验落库并有失败用例；未做全库引用巡检 |
+| R0851 | ✅ 已验证完成 | 支持从应用旧版本数据库自动迁移到新版结构。 | lib/src/sync/backup_service.dart; lib/src/sync/progress_conflict_store.dart | v1→v2 SQLite 升级测试：旧数据保留、新表可用（core_store_test） |
+| R0852 | ✅ 已验证完成 | 数据库升级迁移必须具备自动化测试样本。 | lib/src/sync/backup_service.dart; lib/src/sync/progress_conflict_store.dart | 迁移测试覆盖书目/进度/书签/高亮与幂等重跑 |
 | R0853 | 🟡 已实现待验证 | 支持用户指定备份文件路径并通过系统文件选择器读取。 | lib/src/sync/backup_service.dart; lib/src/sync/progress_conflict_store.dart | 用户指定备份路径 SAF 读取 |
 | R0854 | 🟡 已实现待验证 | 支持从 WebDAV 或 S3 选择历史备份快照恢复。 | lib/src/sync/backup_service.dart; lib/src/sync/progress_conflict_store.dart | 从 WebDAV/S3 选历史备份恢复（backup_service.restoreCloud） |
 | R0855 | ◐ 部分实现 | 支持自动保留多个时间点的滚动元数据备份。 | lib/src/sync/backup_service.dart; lib/src/sync/progress_conflict_store.dart | 滚动备份/频率设置需核对 |
 | R0856 | ◐ 部分实现 | 自动备份频率可设置为每日、每周或手动。 | lib/src/sync/backup_service.dart; lib/src/sync/progress_conflict_store.dart | 滚动备份/频率设置需核对 |
-| R0857 | ◐ 部分实现 | 应用启动时检查上次异常中断的未完成备份。 | lib/src/sync/backup_service.dart; lib/src/sync/progress_conflict_store.dart | 启动检查中断备份需核对 |
+| R0857 | ◐ 部分实现 | 应用启动时检查上次异常中断的未完成备份。 | lib/src/sync/backup_service.dart; lib/src/sync/progress_conflict_store.dart | 恢复幂等可安全重跑；启动时主动检测“上次中断的备份”未实现 |
 | R0858 | ◐ 部分实现 | 应用退出时如需上传备份，首先检查是否已取得后台执行权限条件。 | lib/src/sync/backup_service.dart; lib/src/sync/progress_conflict_store.dart | 退出上传/进程被杀保留任务需核对 |
 | R0859 | ◐ 部分实现 | 备份正在上传时进程被杀也应安全保留待上传任务。 | lib/src/sync/backup_service.dart; lib/src/sync/progress_conflict_store.dart | 退出上传/进程被杀保留任务需核对 |
 | R0860 | 🟡 已实现待验证 | 用户恢复备份后不能自动同步覆盖现有完整云端数据。 | lib/src/sync/backup_service.dart; lib/src/sync/progress_conflict_store.dart | 恢复后不自动覆盖云端（安全设计） |
@@ -1037,7 +1039,7 @@
 | R0877 | 🟡 已实现待验证 | 外部应用的专有加密数据无法解析时明确告知，不伪造兼容。 | lib/src/sync/backup_service.dart; lib/src/sync/progress_conflict_store.dart | 专加密数据明确告知不伪造兼容 |
 | R0878 | ⛔ 客观阻塞 | 恢复流程测试至少覆盖空机、已有书库、部分缺失和损坏备份。 | lib/src/sync/backup_service.dart; lib/src/sync/progress_conflict_store.dart | 恢复流程空机/已有/缺失/损坏测试需多环境 |
 | R0879 | 🟡 已实现待验证 | 同步重试不得删除此前成功的完整备份快照。 | lib/src/sync/backup_service.dart; lib/src/sync/progress_conflict_store.dart | 重试不删成功备份快照 |
-| R0880 | ◐ 部分实现 | 提供一键导出诊断包，供用户在同步故障后主动反馈。 | lib/src/sync/backup_service.dart; lib/src/sync/progress_conflict_store.dart | 一键导出诊断包需核对 |
+| R0880 | 🟡 已实现待验证 | 提供一键导出诊断包，供用户在同步故障后主动反馈。 | lib/src/sync/backup_service.dart; lib/src/sync/progress_conflict_store.dart | 诊断报告可一键复制用于反馈；导出为文件/诊断包尚未实现 |
 
 ### 23 原创 UI 设计、细节动画和设置体验
 
@@ -1124,8 +1126,8 @@
 | R0954 | ⛔ 客观阻塞 | 支持经授权将脱敏诊断文件上传至用户配置的 GitHub 私有仓库。 | lib/main.dart; lib/src/reader/reader_page.dart; lib/src/profile/about_page.dart | GitHub 私有仓库/服务端诊断上传需授权 |
 | R0955 | ⛔ 客观阻塞 | 如存在可验证的专用服务端接口，可将脱敏诊断上传到该服务端。 | lib/main.dart; lib/src/reader/reader_page.dart; lib/src/profile/about_page.dart | GitHub 私有仓库/服务端诊断上传需授权 |
 | R0956 | 🟡 已实现待验证 | 不存在有效聊天服务端上传接口时不能声称“已自动上传到当前聊天”。 | lib/main.dart; lib/src/reader/reader_page.dart; lib/src/profile/about_page.dart | 不声称已上传到当前聊天（无此接口） |
-| R0957 | 🟡 已实现待验证 | 关于页面显示真实版本号、构建号、开源许可和反馈入口。 | lib/main.dart; lib/src/reader/reader_page.dart; lib/src/profile/about_page.dart | 关于页版本号/开源许可/反馈（about_page） |
-| R0958 | 🟡 已实现待验证 | 反馈按钮通过系统安全跳转打开指定 QQ 链接 https://qm.qq.com/q/Yvc3ugiCoE。 | lib/main.dart; lib/src/reader/reader_page.dart; lib/src/profile/about_page.dart | 反馈按钮 QQ 链接（about_page 常量） |
+| R0957 | ✅ 已验证完成 | 关于页面显示真实版本号、构建号、开源许可和反馈入口。 | lib/main.dart; lib/src/reader/reader_page.dart; lib/src/profile/about_page.dart | 关于页展示版本号、MIT 许可、反馈与诊断入口 |
+| R0958 | ✅ 已验证完成 | 反馈按钮通过系统安全跳转打开指定 QQ 链接 https://qm.qq.com/q/Yvc3ugiCoE。 | lib/main.dart; lib/src/reader/reader_page.dart; lib/src/profile/about_page.dart | url_launcher 系统打开 QQ 链接；失败时复制链接并说明，不假装成功 |
 | R0959 | ◐ 部分实现 | 崩溃恢复时优先保存笔记与进度，并提供故障报告导出。 | lib/main.dart; lib/src/reader/reader_page.dart; lib/src/profile/about_page.dart | 崩溃恢复保存笔记进度/报告导出需核对 |
 | R0960 | ⛔ 客观阻塞 | 对后台恢复、拒绝权限、低内存及弱网进行稳定性测试。 | lib/main.dart; lib/src/reader/reader_page.dart; lib/src/profile/about_page.dart | 后台恢复/拒权/低内存/弱网稳定性需真机 |
 
