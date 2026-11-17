@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:read/src/services/bookmark_meta_store.dart';
 import 'package:read/src/services/chapter_splitter.dart';
 import 'package:read/src/services/highlight_store.dart';
@@ -73,6 +75,143 @@ class NoteExporter {
       buf.writeln();
     }
     return buf.toString();
+  }
+
+  /// 纯文本导出（TXT）：适合直接分享到聊天/备忘录。
+  static String exportPlainText({
+    required String title,
+    required String author,
+    required String content,
+    required List<Chapter> chapters,
+    required List<HighlightRecord> highlights,
+    required Map<int, BookmarkMeta> bookmarks,
+  }) {
+    final StringBuffer buf = StringBuffer();
+    buf.writeln('《$title》读书笔记');
+    if (author.trim().isNotEmpty) buf.writeln('作者：$author');
+    buf.writeln('划线 ${highlights.length} 条 · 书签 ${bookmarks.length} 个');
+    buf.writeln();
+
+    final List<HighlightRecord> sorted = List<HighlightRecord>.from(highlights)
+      ..sort((HighlightRecord a, HighlightRecord b) => a.start.compareTo(b.start));
+    int lastChapter = -2;
+    for (final HighlightRecord h in sorted) {
+      final int ci = _chapterIndexFor(chapters, h.start);
+      if (ci != lastChapter) {
+        buf.writeln('【${ci >= 0 ? chapters[ci].title : '未知章节'}】');
+        lastChapter = ci;
+      }
+      buf.writeln('· ${_safeSlice(content, h.start, h.end)}');
+      if (h.note.trim().isNotEmpty) buf.writeln('  笔记：${h.note.trim()}');
+      final String date = _stamp(h.createdAt);
+      if (date.isNotEmpty) buf.writeln('  $date');
+    }
+    if (bookmarks.isNotEmpty) {
+      buf.writeln();
+      buf.writeln('【书签】');
+      final List<int> offsets = bookmarks.keys.toList()..sort();
+      for (final int off in offsets) {
+        final int ci = _chapterIndexFor(chapters, off);
+        final String snippet = _safeSlice(content, off, off + 40);
+        buf.writeln('- ${ci >= 0 ? chapters[ci].title : ''} $snippet'.trim());
+        final String note = bookmarks[off]?.note.trim() ?? '';
+        if (note.isNotEmpty) buf.writeln('  笔记：$note');
+      }
+    }
+    return buf.toString();
+  }
+
+  /// JSON 导出：字段稳定，便于二次处理或导入其他工具。
+  static String exportJson({
+    required String title,
+    required String author,
+    required String content,
+    required List<Chapter> chapters,
+    required List<HighlightRecord> highlights,
+    required Map<int, BookmarkMeta> bookmarks,
+  }) {
+    final List<HighlightRecord> sorted = List<HighlightRecord>.from(highlights)
+      ..sort((HighlightRecord a, HighlightRecord b) => a.start.compareTo(b.start));
+    final Map<String, Object?> data = <String, Object?>{
+      'schema': 'read-notes-v1',
+      'book': <String, Object?>{'title': title, 'author': author},
+      'highlights': <Object?>[
+        for (final HighlightRecord h in sorted)
+          <String, Object?>{
+            'chapter': _chapterTitle(chapters, h.start),
+            'start': h.start,
+            'end': h.end,
+            'quote': _safeSlice(content, h.start, h.end),
+            'note': h.note.trim(),
+            'color': h.color,
+            'created_at': _stamp(h.createdAt),
+          },
+      ],
+      'bookmarks': <Object?>[
+        for (final int off in (bookmarks.keys.toList()..sort()))
+          <String, Object?>{
+            'chapter': _chapterTitle(chapters, off),
+            'offset': off,
+            'snippet': _safeSlice(content, off, off + 40),
+            'note': bookmarks[off]?.note.trim() ?? '',
+          },
+      ],
+    };
+    return const JsonEncoder.withIndent('  ').convert(data);
+  }
+
+  /// CSV 导出：首行表头，字段按 RFC 4180 转义（引号、逗号、换行）。
+  static String exportCsv({
+    required String title,
+    required String author,
+    required String content,
+    required List<Chapter> chapters,
+    required List<HighlightRecord> highlights,
+    required Map<int, BookmarkMeta> bookmarks,
+  }) {
+    final StringBuffer buf = StringBuffer();
+    buf.writeln('type,chapter,start,end,quote,note,color,created_at');
+    final List<HighlightRecord> sorted = List<HighlightRecord>.from(highlights)
+      ..sort((HighlightRecord a, HighlightRecord b) => a.start.compareTo(b.start));
+    for (final HighlightRecord h in sorted) {
+      buf.writeln(<String>[
+        'highlight',
+        _csv(_chapterTitle(chapters, h.start)),
+        '${h.start}',
+        '${h.end}',
+        _csv(_safeSlice(content, h.start, h.end)),
+        _csv(h.note.trim()),
+        '${h.color}',
+        _stamp(h.createdAt),
+      ].join(','));
+    }
+    for (final int off in (bookmarks.keys.toList()..sort())) {
+      final BookmarkMeta? meta = bookmarks[off];
+      buf.writeln(<String>[
+        'bookmark',
+        _csv(_chapterTitle(chapters, off)),
+        '$off',
+        '$off',
+        _csv(_safeSlice(content, off, off + 40)),
+        _csv(meta?.note.trim() ?? ''),
+        '',
+        '',
+      ].join(','));
+    }
+    return buf.toString();
+  }
+
+  static String _chapterTitle(List<Chapter> chapters, int offset) {
+    final int ci = _chapterIndexFor(chapters, offset);
+    return ci >= 0 ? chapters[ci].title : '';
+  }
+
+  static String _csv(String value) {
+    final String text = value.replaceAll('\r', ' ').replaceAll('\n', ' ');
+    if (text.contains(',') || text.contains('"')) {
+      return '"${text.replaceAll('"', '""')}"';
+    }
+    return text;
   }
 
   /// 导出书签笔记（带 note 的书签）。

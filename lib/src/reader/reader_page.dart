@@ -1670,26 +1670,88 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   Future<void> _exportNotes(BuildContext ctx) async {
     final Map<int, BookmarkMeta> marks =
         await BookmarkMetaStore.load(widget.book.id);
-    final String highlightMd = NoteExporter.exportHighlights(
-      title: widget.book.title,
-      author: widget.book.author,
-      content: widget.book.content,
-      chapters: _chapters,
-      highlights: _highlights,
+    if (!mounted) return;
+    Navigator.of(ctx).pop();
+    final String? format = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (BuildContext sheet) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            ListTile(
+              title: Text('导出 ${_highlights.length} 条划线、${marks.length} 个书签'),
+              subtitle: const Text('选择格式后复制到剪贴板'),
+            ),
+            for (final MapEntry<String, String> entry in const <String, String>{
+              'md': 'Markdown（适合笔记软件）',
+              'txt': '纯文本（适合聊天、备忘录）',
+              'json': 'JSON（适合二次处理）',
+              'csv': 'CSV（适合表格）',
+            }.entries)
+              ListTile(
+                leading: const ReadIcon(ReadGlyph.save, size: 20),
+                title: Text(entry.value),
+                onTap: () => Navigator.pop(sheet, entry.key),
+              ),
+          ],
+        ),
+      ),
     );
-    final String bookmarkMd = NoteExporter.exportBookmarks(
-      title: widget.book.title,
-      author: widget.book.author,
-      content: widget.book.content,
-      chapters: _chapters,
-      bookmarks: marks,
-    );
-    final String md = '$highlightMd\n---\n\n$bookmarkMd';
-    await Clipboard.setData(ClipboardData(text: md));
-    if (ctx.mounted) {
-      Navigator.of(ctx).pop();
-      _showToast('已复制 ${_highlights.length} 条划线、${marks.length} 个书签为 Markdown');
+    if (format == null || !mounted) return;
+    String text;
+    String label;
+    switch (format) {
+      case 'txt':
+        text = NoteExporter.exportPlainText(
+          title: widget.book.title,
+          author: widget.book.author,
+          content: widget.book.content,
+          chapters: _chapters,
+          highlights: _highlights,
+          bookmarks: marks,
+        );
+        label = 'TXT';
+      case 'json':
+        text = NoteExporter.exportJson(
+          title: widget.book.title,
+          author: widget.book.author,
+          content: widget.book.content,
+          chapters: _chapters,
+          highlights: _highlights,
+          bookmarks: marks,
+        );
+        label = 'JSON';
+      case 'csv':
+        text = NoteExporter.exportCsv(
+          title: widget.book.title,
+          author: widget.book.author,
+          content: widget.book.content,
+          chapters: _chapters,
+          highlights: _highlights,
+          bookmarks: marks,
+        );
+        label = 'CSV';
+      default:
+        final String highlightMd = NoteExporter.exportHighlights(
+          title: widget.book.title,
+          author: widget.book.author,
+          content: widget.book.content,
+          chapters: _chapters,
+          highlights: _highlights,
+        );
+        final String bookmarkMd = NoteExporter.exportBookmarks(
+          title: widget.book.title,
+          author: widget.book.author,
+          content: widget.book.content,
+          chapters: _chapters,
+          bookmarks: marks,
+        );
+        text = '$highlightMd\n---\n\n$bookmarkMd';
+        label = 'Markdown';
     }
+    await Clipboard.setData(ClipboardData(text: text));
+    if (mounted) _showToast('已复制笔记（$label）');
   }
 
   Future<void> _manageHighlights() async {
