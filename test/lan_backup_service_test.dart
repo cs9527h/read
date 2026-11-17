@@ -33,10 +33,16 @@ void main() {
 
   Uri base() => Uri.parse('http://127.0.0.1:${service.port}');
 
-  Future<(int, Uint8List)> fetch(Uri uri) async {
+  Future<(int, Uint8List)> fetch(Uri uri, {bool authorized = true}) async {
+    final Uri resolved = authorized
+        ? uri.replace(queryParameters: <String, String>{
+            ...uri.queryParameters,
+            'key': service.accessToken,
+          })
+        : uri;
     final HttpClient client = HttpClient();
     try {
-      final request = await client.getUrl(uri);
+      final request = await client.getUrl(resolved);
       final response = await request.close();
       final builder = BytesBuilder(copy: false);
       await for (final chunk in response) {
@@ -56,6 +62,26 @@ void main() {
     final Map<String, dynamic> info = jsonDecode(utf8.decode(body)) as Map<String, dynamic>;
     expect(info['format'], 'read-lan-backup-v1');
     expect(info['device'], '测试手机');
+  });
+
+  test('共享链接临时令牌授权：无令牌或错令牌被拒绝，同 WiFi 陌生人不能下载', () async {
+    // 无令牌：设备信息、备份列表、下载都必须 401。
+    expect((await fetch(base().resolve('/api/info'), authorized: false)).$1, 401);
+    expect((await fetch(base().resolve('/api/backups'), authorized: false)).$1, 401);
+    expect(
+      (await fetch(base().resolve('/api/download?name=read-2026-11-17.zip'),
+              authorized: false))
+          .$1,
+      401,
+    );
+    // 错误令牌同样拒绝。
+    final Uri wrong = base().resolve('/api/info').replace(
+          queryParameters: <String, String>{'key': 'not-the-token'},
+        );
+    expect((await fetch(wrong, authorized: false)).$1, 401);
+    // 停止共享后令牌清空，旧链接失效。
+    await service.stop();
+    expect(service.accessToken, isEmpty);
   });
 
   test('备份列表只列 zip，按修改时间给出文件名与大小', () async {

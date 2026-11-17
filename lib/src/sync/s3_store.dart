@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -26,9 +27,11 @@ class S3Store implements RemoteObjectStore {
     required this.accessKey,
     required this.secretKey,
     DateTime Function()? clock,
+    HttpClient Function()? httpClientFactory,
   })  : _endpoint = _parseEndpoint(endpoint),
         region = effectiveRegion(region),
-        _clock = clock ?? DateTime.now;
+        _clock = clock ?? DateTime.now,
+        _httpClientFactory = httpClientFactory ?? HttpClient.new;
 
   final Uri _endpoint;
   final String region;
@@ -37,6 +40,7 @@ class S3Store implements RemoteObjectStore {
   final String accessKey;
   final String secretKey;
   final DateTime Function() _clock;
+  final HttpClient Function() _httpClientFactory;
 
   static const int maxObjectBytes = 64 * 1024 * 1024;
 
@@ -163,7 +167,7 @@ class S3Store implements RemoteObjectStore {
     Map<String, String>? headers,
   }) async {
     final signed = _sign(method, uri, body);
-    final client = HttpClient();
+    final client = _httpClientFactory();
     client.connectionTimeout = const Duration(seconds: 12);
     try {
       final request = await client.openUrl(method, uri);
@@ -184,6 +188,15 @@ class S3Store implements RemoteObjectStore {
         }
       }
       return _S3Response(response.statusCode, response.headers, builder.takeBytes());
+    } on RemoteStoreException {
+      rethrow;
+    } on SocketException {
+      // 网络中断/不可达统一归类，供 UI 显示明确「同步失败」而非泄漏底层异常。
+      throw const RemoteStoreException('S3 网络连接失败，请检查网络后重试');
+    } on HttpException {
+      throw const RemoteStoreException('S3 响应异常，请稍后重试');
+    } on TimeoutException {
+      throw const RemoteStoreException('S3 请求超时，请稍后重试');
     } finally {
       client.close(force: true);
     }
@@ -209,6 +222,43 @@ class S3Store implements RemoteObjectStore {
     final detail = _errorDetail(response.bytes);
     return 'S3 $action失败：HTTP ${response.statusCode}'
         '${detail.isEmpty ? '' : ' · $detail'}';
+  }
+
+  /// 提取 S3 错误 XML 里的 <Code> 与 <Message>（仅用于内部兼容判断，
+  /// 绝不拼进 UI 文案或日志；UI 用的是 [_statusMessage] 的脱敏结果）。
+  static ({String code, String message}) _errorParts(Uint8List body) {
+    try {
+      final doc = XmlDocument.parse(utf8.decode(body));
+      final code = doc.findAllElements('Code').firstOrNull?.innerText.trim() ?? '';
+      final message =
+          doc.findAllElements('Message').firstOrNull?.innerText.trim() ?? '';
+      return (code: code, message: message);
+    } catch (_) {
+      return (code: '', message: '');
+    }
+  }
+
+  /// 判断响应是否明确表示「服务端不支持条件请求头」。
+  ///
+  /// 不同 S3 兼容实现对 If-Match / If-None-Match 的态度不同：
+  /// - AWS S3 / R2 / 现代 MinIO：原生支持；
+  /// - 部分旧 MinIO、Backblaze B2 S3、网关型实现：返回 501，或
+  ///   400 InvalidArgument 且 message 明确提到条件头。
+  /// 只认这些明确信号，绝不把普通 400（如签名错误）误判为兼容问题，
+  /// 否则会掩盖真实故障并可能放宽乐观锁。
+  static bool isConditionalUnsupported(int statusCode, Uint8List body) {
+    if (statusCode == 501) return true;
+    if (statusCode != 400) return false;
+    final parts = _errorParts(body);
+    final code = parts.code.toLowerCase();
+    final message = parts.message.toLowerCase();
+    if (code == 'notimplemented' || code == 'methodnotallowed') return true;
+    if (code == 'invalidargument' || code == 'invalidrequest') {
+      return message.contains('if-match') ||
+          message.contains('if-none-match') ||
+          message.contains('conditional');
+    }
+    return false;
   }
 
   @override
@@ -257,6 +307,43 @@ class S3Store implements RemoteObjectStore {
     if (response.statusCode == 412) {
       throw const RemoteConflictException('S3 对象已被其他设备更新');
     }
+    if (response.statusCode == 401 || response.statusCode == 403) {
+      throw const RemoteAuthException('S3 上传认证失败');
+    }
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      // 某些 S3 兼容服务不支持条件请求头。改用客户端侧乐观锁降级，
+      // 而不是让整个同步失败。降级仍严格校验 ETag，绝不静默覆盖。
+      if (isConditionalUnsupported(response.statusCode, response.bytes)) {
+        return _writeWithoutConditionalSupport(bytes, key, expectedEtag);
+      }
+      throw RemoteStoreException(_statusMessage('上传', response));
+    }
+    return response.headers.value(HttpHeaders.etagHeader);
+  }
+
+  /// 服务端不支持条件请求头时的降级路径。
+  ///
+  /// 用一次 GET 读取当前 ETag，模拟服务端条件写语义：
+  /// - expectedEtag == null（首次创建）：远端若已存在对象则视为冲突，不覆盖；
+  /// - expectedEtag != null（覆盖更新）：远端 ETag 与期望不一致则冲突；
+  /// - 校验通过才执行无条件 PUT。
+  /// 这样即使服务不支持 If-Match/If-None-Match，也不会因为一次失败而中断同步，
+  /// 更不会因为忽略冲突而把较新的云端数据覆盖掉。
+  Future<String?> _writeWithoutConditionalSupport(
+    Uint8List bytes,
+    String key,
+    String? expectedEtag,
+  ) async {
+    final current = await read(key);
+    final currentEtag = current?.etag;
+    if (expectedEtag == null) {
+      if (current != null) {
+        throw const RemoteConflictException('云端对象已存在，且服务不支持条件请求，未覆盖');
+      }
+    } else if (currentEtag != expectedEtag) {
+      throw const RemoteConflictException('云端对象已被其他设备更新，未覆盖');
+    }
+    final response = await _send('PUT', _objectUri(key), bytes);
     if (response.statusCode == 401 || response.statusCode == 403) {
       throw const RemoteAuthException('S3 上传认证失败');
     }

@@ -42,6 +42,20 @@ class LanBackupClient {
     return decoded;
   }
 
+  /// 从已授权的对端获取其端到端同步密钥，用于让新设备解密同一个云端账号。
+  /// 仅在本次临时共享的令牌有效时可用；密钥仅在本机安全存储中落地。
+  Future<String?> fetchSyncKey(Uri base) async {
+    final Uint8List body = await _get(_endpoint(base, '/api/sync-key'));
+    final Object? decoded = jsonDecode(utf8.decode(body));
+    if (decoded is! Map<String, dynamic>) throw const FormatException('同步密钥响应格式错误');
+    final Object? key = decoded['key'];
+    if (key == null) return null;
+    if (key is! String || key.isEmpty || key.length > 256) {
+      throw const FormatException('同步密钥内容非法');
+    }
+    return key;
+  }
+
   Future<List<Map<String, Object?>>> listBackups(Uri base) async {
     final Uint8List body = await _get(_endpoint(base, '/api/backups'));
     final Object? decoded = jsonDecode(utf8.decode(body));

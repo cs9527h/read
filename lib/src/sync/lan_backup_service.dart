@@ -21,6 +21,7 @@ class LanBackupService extends ChangeNotifier {
     List<int>? portCandidates,
     bool bindLoopback = false,
     Directory? backupDir,
+    this.syncKey = '',
   })  : _portCandidates = portCandidates ?? const <int>[8769, 8770, 8771],
         _bindLoopback = bindLoopback,
         _backupDirOverride = backupDir;
@@ -30,6 +31,11 @@ class LanBackupService extends ChangeNotifier {
   final List<int> _portCandidates;
   final bool _bindLoopback;
   final Directory? _backupDirOverride;
+
+  /// 本机的端到端同步密钥。仅在用户主动开启共享、且本次共享生命周期内，
+  /// 通过带随机令牌的共享链接暴露给已授权的对端设备，用于跨设备解密云端数据。
+  /// 由页面在 start() 前从安全存储读出后注入；绝不写入日志或诊断报告。
+  String syncKey;
 
   HttpServer? _server;
   Directory? _servedDir;
@@ -173,7 +179,19 @@ class LanBackupService extends ChangeNotifier {
           'format': 'read-lan-backup-v1',
           'device': deviceName,
           'port': _port,
+          // 只暴露"是否可迁移密钥"，不暴露密钥内容本身。
+          'hasSyncKey': syncKey.isNotEmpty,
         });
+        return;
+      }
+      if (path == '/api/sync-key') {
+        // 需同样的临时令牌鉴权（上面已校验），仅在共享期间可用。
+        if (syncKey.isEmpty) {
+          response.statusCode = HttpStatus.notFound;
+          await response.close();
+          return;
+        }
+        await _json(response, <String, Object?>{'key': syncKey});
         return;
       }
       if (path == '/api/backups') {

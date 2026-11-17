@@ -78,4 +78,57 @@ void main() {
     );
   });
 
+  group('跨设备同步密钥迁移（免手动密码）', () {
+    test('info 只暴露是否可迁移密钥，不泄露密钥内容', () async {
+      final Map<String, Object?> info = await LanBackupClient().info(base);
+      expect(info['hasSyncKey'], isFalse);
+      expect(info.containsKey('key'), isFalse);
+    });
+
+    test('带密钥的共享：对端可获取密钥，且需令牌鉴权', () async {
+      const String secret = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ012345';
+      final LanBackupService sharer = LanBackupService(
+        deviceName: '旧设备',
+        portCandidates: const <int>[0],
+        bindLoopback: true,
+        backupDir: dir,
+        syncKey: secret,
+      );
+      await sharer.start();
+      addTearDown(() async {
+        await sharer.stop();
+        sharer.dispose();
+      });
+      final Uri shareBase =
+          Uri.parse('http://127.0.0.1:${sharer.port}/?key=${sharer.accessToken}');
+      final LanBackupClient client = LanBackupClient();
+
+      final Map<String, Object?> info = await client.info(shareBase);
+      expect(info['hasSyncKey'], isTrue);
+      expect(info.containsKey('key'), isFalse);
+
+      expect(await client.fetchSyncKey(shareBase), secret);
+
+      // 无令牌的陌生人拿不到密钥。
+      final Uri noKey = Uri.parse('http://127.0.0.1:${sharer.port}');
+      expect(() => client.fetchSyncKey(noKey), throwsFormatException);
+    });
+
+    test('停止共享后密钥端点失效', () async {
+      const String secret = 'KEY123456789012345678901234567890';
+      final LanBackupService sharer = LanBackupService(
+        deviceName: '旧设备',
+        portCandidates: const <int>[0],
+        bindLoopback: true,
+        backupDir: dir,
+        syncKey: secret,
+      );
+      await sharer.start();
+      final Uri shareBase =
+          Uri.parse('http://127.0.0.1:${sharer.port}/?key=${sharer.accessToken}');
+      await sharer.stop();
+      expect(() => LanBackupClient().fetchSyncKey(shareBase), throwsA(anything));
+      sharer.dispose();
+    });
+  });
 }
