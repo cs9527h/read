@@ -1,7 +1,7 @@
 name: read
 description: 极简全平台电子书阅读器（阅读功能完整 + 多端同步）
 publish_to: 'none'
-version: 2.2.0+16
+version: 2.3.0+17
 
 environment:
   sdk: ">=3.3.0 <4.0.0"
