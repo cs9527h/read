@@ -461,7 +461,7 @@ class WifiTransferService extends ChangeNotifier {
     notifyListeners();
     final Directory? dir = _tempDir;
     if (dir == null) {
-      _activeUploads--;
+      _releaseUpload(remote);
       await _json(response, HttpStatus.serviceUnavailable,
           <String, Object?>{'ok': false, 'message': '服务已停止'});
       return;
@@ -469,6 +469,10 @@ class WifiTransferService extends ChangeNotifier {
     final File target = File('${dir.path}${Platform.pathSeparator}'
         '${_clock().microsecondsSinceEpoch}-$name');
     IOSink? sink;
+    int status = HttpStatus.internalServerError;
+    Map<String, Object?> payload =
+        <String, Object?>{'ok': false, 'message': '上传失败'};
+
     try {
       sink = target.openWrite();
       int received = 0;
@@ -495,13 +499,13 @@ class WifiTransferService extends ChangeNotifier {
       sink = null;
 
       if (received == 0) {
-        throw const FormatException('文件内容为空');
+        throw const _Rejected(HttpStatus.badRequest, '文件内容为空');
       }
       if (!await _signatureMatches(target, ext)) {
-        await _json(response, HttpStatus.unsupportedMediaType,
-            <String, Object?>{'ok': false, 'message': '文件内容与扩展名不符，已拒绝'});
-        _emit(WifiTransferEvent(fileName: name, state: 'rejected', message: '内容校验失败'));
-        return;
+        _emit(WifiTransferEvent(
+            fileName: name, state: 'rejected', message: '内容校验失败'));
+        throw const _Rejected(
+            HttpStatus.unsupportedMediaType, '文件内容与扩展名不符，已拒绝');
       }
 
       WifiImportResult result;
@@ -521,39 +525,48 @@ class WifiTransferService extends ChangeNotifier {
         message: result.message,
         at: _clock(),
       ));
-      await _json(response, result.ok ? HttpStatus.ok : HttpStatus.badRequest,
-          <String, Object?>{
-            'ok': result.ok,
-            'duplicate': result.duplicate,
-            'message': result.message,
-          });
+      status = result.ok ? HttpStatus.ok : HttpStatus.badRequest;
+      payload = <String, Object?>{
+        'ok': result.ok,
+        'duplicate': result.duplicate,
+        'message': result.message,
+      };
     } on _TooLarge {
       _emit(WifiTransferEvent(
           fileName: name, state: 'failed', message: '超过 40MB 上限'));
-      await _json(response, HttpStatus.requestEntityTooLarge,
-          <String, Object?>{'ok': false, 'message': '文件超过 40MB 上限'});
+      status = HttpStatus.requestEntityTooLarge;
+      payload = <String, Object?>{'ok': false, 'message': '文件超过 40MB 上限'};
+    } on _Rejected catch (error) {
+      status = error.status;
+      payload = <String, Object?>{'ok': false, 'message': error.message};
     } catch (error) {
       _emit(WifiTransferEvent(
           fileName: name, state: 'failed', message: '上传中断：$error'));
-      await _json(response, HttpStatus.badRequest,
-          <String, Object?>{'ok': false, 'message': '上传失败：$error'});
+      status = HttpStatus.badRequest;
+      payload = <String, Object?>{'ok': false, 'message': '上传失败：$error'};
     } finally {
       try {
         await sink?.close();
       } catch (_) {}
-      // 无论成功、超限还是连接中断，临时文件都不留残余。
+      // 先清理临时文件、释放并发名额，再回响应：
+      // 客户端收到成功时文件一定已删除，紧接着的下一次上传也不会被误判并发超限。
       try {
         if (await target.exists()) await target.delete();
       } catch (_) {}
-      _activeUploads--;
-      final int left = (_activeByIp[remote] ?? 1) - 1;
-      if (left <= 0) {
-        _activeByIp.remove(remote);
-      } else {
-        _activeByIp[remote] = left;
-      }
-      if (!_disposed) notifyListeners();
+      _releaseUpload(remote);
     }
+    await _json(response, status, payload);
+  }
+
+  void _releaseUpload(String remote) {
+    if (_activeUploads > 0) _activeUploads--;
+    final int left = (_activeByIp[remote] ?? 1) - 1;
+    if (left <= 0) {
+      _activeByIp.remove(remote);
+    } else {
+      _activeByIp[remote] = left;
+    }
+    if (!_disposed) notifyListeners();
   }
 
   bool _authorized(HttpRequest request) {
@@ -785,4 +798,12 @@ function one(f){
 
 class _TooLarge implements Exception {
   const _TooLarge();
+}
+
+/// 已在读取流中途判定拒绝，统一在清理完成后回响应。
+class _Rejected implements Exception {
+  const _Rejected(this.status, this.message);
+
+  final int status;
+  final String message;
 }

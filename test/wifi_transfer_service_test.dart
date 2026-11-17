@@ -440,11 +440,21 @@ void main() {
     expect(harness.service.pairingCode, isEmpty);
     expect(Directory(dir).existsSync(), isFalse);
 
-    await expectLater(
-      harness.send('GET', '/'),
-      throwsA(isA<SocketException>()),
-      reason: '端口 $port 应已关闭',
-    );
+    // Windows 上监听套接字关闭可能滞后几十毫秒，给一个有限的重试窗口；
+    // 超过 3 秒仍能连上就说明端口没真正关闭，必须失败。
+    bool connected = false;
+    for (int attempt = 0; attempt < 30; attempt++) {
+      try {
+        final HttpClientResponse late = await harness.send('GET', '/');
+        connected = true;
+        await late.drain<void>();
+      } on SocketException {
+        connected = false;
+        break; // 已拒绝连接，端口确实关闭。
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    expect(connected, isFalse, reason: '端口 $port 应已关闭');
   });
 
   test('应用进入后台默认停止服务，显式允许时保持运行', () async {
