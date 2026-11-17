@@ -189,6 +189,28 @@ class S3Store implements RemoteObjectStore {
     }
   }
 
+  /// Extract only the S3 error code and region hint, never echo credentials
+  /// or the full remote response into UI/logs.
+  static String _errorDetail(Uint8List body) {
+    try {
+      final doc = XmlDocument.parse(utf8.decode(body));
+      final code = doc.findAllElements('Code').firstOrNull?.innerText.trim();
+      final region = doc.findAllElements('Region').firstOrNull?.innerText.trim();
+      return <String>[
+        if (code != null && code.isNotEmpty) code,
+        if (region != null && region.isNotEmpty) '服务端区域：$region',
+      ].join(' · ');
+    } catch (_) {
+      return '';
+    }
+  }
+
+  static String _statusMessage(String action, _S3Response response) {
+    final detail = _errorDetail(response.bytes);
+    return 'S3 $action失败：HTTP ${response.statusCode}'
+        '${detail.isEmpty ? '' : ' · $detail'}';
+  }
+
   @override
   Future<void> testConnection() async {
     final uri = _objectUri('', <String, String>{'list-type': '2', 'max-keys': '1'});
@@ -197,7 +219,7 @@ class S3Store implements RemoteObjectStore {
       throw const RemoteAuthException('S3 认证失败，请检查 Access Key 与 Secret Key');
     }
     if (response.statusCode != 200) {
-      throw RemoteStoreException('S3 连接测试失败：HTTP ${response.statusCode}');
+      throw RemoteStoreException(_statusMessage('连接测试', response));
     }
   }
 
@@ -209,7 +231,7 @@ class S3Store implements RemoteObjectStore {
       throw const RemoteAuthException('S3 认证失败');
     }
     if (response.statusCode != 200) {
-      throw RemoteStoreException('S3 下载失败：HTTP ${response.statusCode}');
+      throw RemoteStoreException(_statusMessage('下载', response));
     }
     if (response.bytes.length > maxObjectBytes) {
       throw const RemoteStoreException('S3 文件超过 64MB 安全上限');
@@ -239,7 +261,7 @@ class S3Store implements RemoteObjectStore {
       throw const RemoteAuthException('S3 上传认证失败');
     }
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw RemoteStoreException('S3 上传失败：HTTP ${response.statusCode}');
+      throw RemoteStoreException(_statusMessage('上传', response));
     }
     return response.headers.value(HttpHeaders.etagHeader);
   }
@@ -249,7 +271,7 @@ class S3Store implements RemoteObjectStore {
     final response = await _send('DELETE', _objectUri(key), Uint8List(0));
     if (response.statusCode == 404) return;
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw RemoteStoreException('S3 删除失败：HTTP ${response.statusCode}');
+      throw RemoteStoreException(_statusMessage('删除', response));
     }
   }
 
