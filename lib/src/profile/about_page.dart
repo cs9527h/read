@@ -12,8 +12,10 @@ class AboutPage extends StatelessWidget {
 
   static const String repoUrl = 'https://github.com/cs9527h/read';
 
-  /// QQ 群反馈入口（用户提供的官方加群链接）。
-  static const String feedbackUrl = 'https://qm.qq.com/q/Yvc3ugiCoE';
+  /// 联系作者入口（不是加群；用户提供的官方 QQ 联系链接）。
+  static const String contactUrl = 'https://qm.qq.com/q/Yvc3ugiCoE';
+  /// 兼容旧引用；新代码请用 [contactUrl]。
+  static const String feedbackUrl = contactUrl;
 
   @override
   Widget build(BuildContext context) {
@@ -62,8 +64,8 @@ class AboutPage extends StatelessWidget {
           ),
           const SizedBox(height: 32),
           _AboutRow(
-            label: '反馈与帮助',
-            value: 'QQ 群',
+            label: '联系作者',
+            value: 'QQ',
             onTap: () => _openFeedback(context),
           ),
           _AboutRow(
@@ -137,23 +139,23 @@ class AboutPage extends StatelessWidget {
     bool opened = false;
     try {
       opened = await launchUrl(
-        Uri.parse(feedbackUrl),
+        Uri.parse(contactUrl),
         mode: LaunchMode.externalApplication,
       );
     } catch (_) {
       opened = false;
     }
     if (opened || !context.mounted) return;
-    await Clipboard.setData(const ClipboardData(text: feedbackUrl));
+    await Clipboard.setData(const ClipboardData(text: contactUrl));
     if (!context.mounted) return;
     await showDialog<void>(
       context: context,
       builder: (BuildContext dialogContext) => AlertDialog(
         backgroundColor: const Color(0xFF171717),
-        title: const Text('反馈与帮助', style: TextStyle(color: Color(0xFFF2F2F2))),
+        title: const Text('联系作者', style: TextStyle(color: Color(0xFFF2F2F2))),
         content: const Text(
           '没有找到可打开该链接的应用。链接已复制到剪贴板，'
-          '可以粘贴到 QQ 或浏览器中打开。',
+          '可以粘贴到 QQ 或浏览器中联系作者。',
           style: TextStyle(color: Color(0xFF8C8C8C), fontSize: 13, height: 1.6),
         ),
         actions: <Widget>[
