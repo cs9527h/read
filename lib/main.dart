@@ -11,6 +11,7 @@ import 'package:read/src/reader/settings/reader_settings_store.dart';
 import 'package:read/src/reader/settings/user_font_store.dart';
 import 'package:read/src/services/appearance_store.dart';
 import 'package:read/src/services/collection_store.dart';
+import 'package:read/src/services/diagnostics_service.dart';
 import 'package:read/src/services/library_store.dart';
 import 'package:read/src/services/reading_stats_store.dart';
 import 'package:read/src/services/search_history_store.dart';
@@ -32,6 +33,9 @@ Future<void> main() async {
   PaintingBinding.instance.imageCache
     ..maximumSize = 120
     ..maximumSizeBytes = 64 << 20;
+  // 诊断最先初始化，才能捕获后续任何一项启动失败。
+  await _safe('diagnostics', DiagnosticsService.instance.init);
+  DiagnosticsService.instance.install();
   await _safe('ui', ReadUi.instance.init);
   await _safe('appearance', AppearanceStore.instance.init);
   await _safe('readerSettings', ReaderSettingsStore.instance.init);

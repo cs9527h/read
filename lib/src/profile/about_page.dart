@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import 'package:read/src/services/diagnostics_service.dart';
 import 'package:read/src/version.dart';
 import 'package:read/src/ui/read_icon.dart';
 
@@ -9,6 +11,9 @@ class AboutPage extends StatelessWidget {
   const AboutPage({super.key});
 
   static const String repoUrl = 'https://github.com/cs9527h/read';
+
+  /// QQ 群反馈入口（用户提供的官方加群链接）。
+  static const String feedbackUrl = 'https://qm.qq.com/q/Yvc3ugiCoE';
 
   @override
   Widget build(BuildContext context) {
@@ -56,6 +61,16 @@ class AboutPage extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 32),
+          _AboutRow(
+            label: '反馈与帮助',
+            value: 'QQ 群',
+            onTap: () => _openFeedback(context),
+          ),
+          _AboutRow(
+            label: '诊断日志',
+            value: '仅保存在本机',
+            onTap: () => _showDiagnostics(context),
+          ),
           _AboutRow(
             label: '开源协议',
             value: 'MIT',
@@ -114,6 +129,47 @@ class AboutPage extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+
+  /// 优先交给系统打开 QQ；失败时给出可复制的链接，绝不假装已打开。
+  Future<void> _openFeedback(BuildContext context) async {
+    bool opened = false;
+    try {
+      opened = await launchUrl(
+        Uri.parse(feedbackUrl),
+        mode: LaunchMode.externalApplication,
+      );
+    } catch (_) {
+      opened = false;
+    }
+    if (opened || !context.mounted) return;
+    await Clipboard.setData(const ClipboardData(text: feedbackUrl));
+    if (!context.mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (BuildContext dialogContext) => AlertDialog(
+        backgroundColor: const Color(0xFF171717),
+        title: const Text('反馈与帮助', style: TextStyle(color: Color(0xFFF2F2F2))),
+        content: const Text(
+          '没有找到可打开该链接的应用。链接已复制到剪贴板，'
+          '可以粘贴到 QQ 或浏览器中打开。',
+          style: TextStyle(color: Color(0xFF8C8C8C), fontSize: 13, height: 1.6),
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('知道了'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showDiagnostics(BuildContext context) async {
+    await showDialog<void>(
+      context: context,
+      builder: (BuildContext dialogContext) => const _DiagnosticsDialog(),
     );
   }
 
@@ -216,4 +272,87 @@ class _FeatherPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+
+class _DiagnosticsDialog extends StatefulWidget {
+  const _DiagnosticsDialog();
+
+  @override
+  State<_DiagnosticsDialog> createState() => _DiagnosticsDialogState();
+}
+
+class _DiagnosticsDialogState extends State<_DiagnosticsDialog> {
+  @override
+  Widget build(BuildContext context) {
+    final DiagnosticsService diagnostics = DiagnosticsService.instance;
+    return AlertDialog(
+      backgroundColor: const Color(0xFF171717),
+      title: const Text('诊断日志', style: TextStyle(color: Color(0xFFF2F2F2))),
+      content: SizedBox(
+        width: 420,
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: diagnostics.enabled,
+                onChanged: (bool value) async {
+                  await diagnostics.setEnabled(value);
+                  if (mounted) setState(() {});
+                },
+                title: const Text('记录本地诊断',
+                    style: TextStyle(color: Color(0xFFF2F2F2), fontSize: 13)),
+              ),
+              Text(
+                '共 ${diagnostics.count} 条。只记录错误类型与时间，已脱敏，'
+                '不包含书籍正文、笔记内容、密码或令牌，也不会自动上传。',
+                style: const TextStyle(
+                    color: Color(0xFF8C8C8C), fontSize: 12, height: 1.6),
+              ),
+              const SizedBox(height: 10),
+              for (final DiagnosticEntry entry in diagnostics.entries.reversed.take(5))
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Text(
+                    '[${entry.kind}] ${entry.message}',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        color: Color(0xFFB8B8B8), fontSize: 11.5),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () async {
+            await diagnostics.clear();
+            if (mounted) setState(() {});
+          },
+          child: const Text('清空'),
+        ),
+        TextButton(
+          onPressed: () async {
+            final String report =
+                diagnostics.exportReport(appVersion: appVersionLabel);
+            await Clipboard.setData(ClipboardData(text: report));
+            if (!context.mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('诊断报告已复制')),
+            );
+          },
+          child: const Text('复制报告'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('关闭'),
+        ),
+      ],
+    );
+  }
 }

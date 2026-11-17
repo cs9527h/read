@@ -17,6 +17,7 @@ import 'book_name_parser.dart';
 import 'collection_store.dart';
 import 'manual_chapter_store.dart';
 import 'chapter_rule_store.dart';
+import 'diagnostics_service.dart';
 
 /// 书架与阅读设置的持久化。
 class LibraryStore extends ChangeNotifier {
@@ -181,8 +182,16 @@ class LibraryStore extends ChangeNotifier {
       book.content = parsed.text;
       book.contentError = null;
       return true;
-    } catch (error) {
+    } catch (error, stack) {
       book.contentError = '正文解析失败：$error';
+      // 记录失败类型，不写书籍正文；用户可在关于页导出报告。
+      await DiagnosticsService.instance.record(
+        kind: 'reader',
+        message: '打开书籍失败',
+        detail: '${book.format} · ${book.fileName ?? book.id}',
+        error: error,
+        stack: stack,
+      );
       return false;
     } finally {
       _contentLoads.remove(book.id);

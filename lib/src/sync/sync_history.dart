@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../database/core_store.dart';
+import '../services/diagnostics_service.dart';
 import 'sync_document.dart';
 
 class SyncHistoryEntry {
@@ -97,6 +98,13 @@ class SyncHistoryStore extends ChangeNotifier {
       _key,
       jsonEncode(_entries.map((SyncHistoryEntry e) => e.toJson()).toList()),
     );
+    if (entry.status != 'success') {
+      await DiagnosticsService.instance.record(
+        kind: 'sync',
+        message: '${entry.kind} ${entry.status}',
+        detail: entry.message,
+      );
+    }
     notifyListeners();
   }
 
