@@ -52,8 +52,15 @@ class Book {
   final String id;
   final String title;
   final String author;
-  final String content;
+
+  /// 正文。启动时不再解析整座书库，改为打开书籍时由
+  /// `LibraryStore.ensureContent` 按需填充，降低启动内存峰值。
+  String content;
   final String format;
+
+  /// 正文读取失败的具体原因（文件丢失/编码损坏等）。非空时阅读页展示
+  /// 修复提示，而不是让整个应用崩溃。
+  String? contentError;
 
   /// 导入文件的绝对路径（内置样章为 null）。
   final String? sourcePath;

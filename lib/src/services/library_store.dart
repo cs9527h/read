@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../database/core_store.dart';
 import '../model/book.dart';
 import '../formats/format_engine.dart';
 import '../formats/pdf_format.dart';
@@ -73,10 +74,15 @@ class LibraryStore extends ChangeNotifier {
       try {
         final List<dynamic> list = jsonDecode(raw) as List<dynamic>;
         for (final dynamic item in list) {
-          final Book? book = await _loadBook(item as Map<String, dynamic>);
-          if (book != null) {
-            _restoreProgress(book);
-            loadedBooks.add(book);
+          try {
+            final Book? book = await _loadBook(item as Map<String, dynamic>);
+            if (book != null) {
+              _restoreProgress(book);
+              loadedBooks.add(book);
+            }
+          } catch (_) {
+            // 单条书目损坏只跳过这一本，不能让整座书库打不开。
+            continue;
           }
         }
       } catch (error) {
@@ -132,25 +138,55 @@ class LibraryStore extends ChangeNotifier {
       // 旧版本内置样章不再载入：直接跳过并让下一次持久化把它从索引里清掉。
       return null;
     }
-    final String? path = meta['sourcePath'] as String?;
-    if ((meta['format'] as String?)?.toUpperCase() == 'PDF') {
-      if (path != null && await File(path).exists()) return Book.fromMeta(meta, '');
-      return null;
-    }
-    String content = '';
-    if (path != null) {
-      final File file = File(path);
-      if (await file.exists()) {
-        final Uint8List bytes = await file.readAsBytes();
-        final ImportedDocument parsed =
-            await FormatEngine.importBytes(bytes, path);
-        content = parsed.text;
+    // 只读元数据，不在这里解析正文。整库解析会让启动时间和内存随书库
+    // 线性增长，也会因为单本书损坏导致整个书架打不开。
+    return Book.fromMeta(meta, '');
+  }
+
+  /// 按需加载正文。重复调用共享同一个 Future，避免并发解析同一本书。
+  Future<bool> ensureContent(Book book) {
+    if (book.content.isNotEmpty) return Future<bool>.value(true);
+    if (book.format.toUpperCase() == 'PDF') return Future<bool>.value(true);
+    return _contentLoads.putIfAbsent(book.id, () => _loadContent(book));
+  }
+
+  final Map<String, Future<bool>> _contentLoads = <String, Future<bool>>{};
+
+  Future<bool> _loadContent(Book book) async {
+    try {
+      final String? path = book.sourcePath;
+      if (path == null || path.isEmpty) {
+        book.contentError = '缺少原始文件路径，请在书架重新导入';
+        return false;
       }
+      final File file = File(path);
+      if (!await file.exists()) {
+        book.contentError = '原始文件已丢失，请重新导入或从云端恢复';
+        return false;
+      }
+      final int size = await file.length();
+      if (size > FormatEngine.maxSourceBytes) {
+        book.contentError = '文件超过 40MB 读取上限';
+        return false;
+      }
+      final Uint8List bytes = await file.readAsBytes();
+      final ImportedDocument parsed = await FormatEngine.importBytes(
+        bytes,
+        book.fileName ?? path,
+      );
+      if (parsed.text.trim().isEmpty) {
+        book.contentError = '文件中没有可阅读的文字';
+        return false;
+      }
+      book.content = parsed.text;
+      book.contentError = null;
+      return true;
+    } catch (error) {
+      book.contentError = '正文解析失败：$error';
+      return false;
+    } finally {
+      _contentLoads.remove(book.id);
     }
-    if (content.isEmpty) {
-      return null;
-    }
-    return Book.fromMeta(meta, content);
   }
 
   void _restoreProgress(Book book) {
@@ -176,6 +212,10 @@ class LibraryStore extends ChangeNotifier {
     });
     _progressWrites = write;
     await write;
+    // 双写 SQLite：数据库是权威副本，旧键保留可回滚。
+    try {
+      await CoreStore.active?.saveProgress(book);
+    } catch (_) {}
   }
 
   /// Apply validated remote progress without altering the imported file.

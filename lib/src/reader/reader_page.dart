@@ -61,6 +61,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
 
   bool _menuVisible = false;
   bool _loading = true;
+  String? _contentError;
   String _layoutKey = '';
   double _pageWidth = 520;
   double _pageHeight = 800;
@@ -394,6 +395,16 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   }
 
   Future<void> _initChapters() async {
+    final bool ready = await LibraryStore.instance.ensureContent(widget.book);
+    if (!mounted) return;
+    if (!ready) {
+      setState(() {
+        _loading = false;
+        _contentError =
+            widget.book.contentError ?? '正文无法读取，请重新导入这本书';
+      });
+      return;
+    }
     final ChapterRule rule = await ChapterRuleStore.load(widget.book.id);
     final marks = await ManualChapterStore.load(widget.book.id);
     if (!mounted) return;
@@ -1215,6 +1226,33 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   }
 
   Widget _buildPageArea(Color foreground, Color secondary) {
+    if (_contentError != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Text(_contentError!,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: secondary, height: 1.6)),
+              const SizedBox(height: 16),
+              TextButton(
+                onPressed: () {
+                  setState(() {
+                    _contentError = null;
+                    _loading = true;
+                  });
+                  widget.book.contentError = null;
+                  _initChapters();
+                },
+                child: Text('重试', style: TextStyle(color: foreground)),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }

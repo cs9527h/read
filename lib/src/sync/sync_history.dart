@@ -4,6 +4,7 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../database/core_store.dart';
 import 'sync_document.dart';
 
 class SyncHistoryEntry {
@@ -298,5 +299,21 @@ class SyncTaskQueue extends ChangeNotifier {
       _key,
       jsonEncode(_tasks.map((PendingSyncTask t) => t.toJson()).toList()),
     );
+    // 镜像到 SQLite，进程被杀后仍可继续处理；JSON 键保留作为回滚路径。
+    final CoreStore? core = CoreStore.active;
+    if (core == null) return;
+    try {
+      await core.replaceQueueTasks(_tasks
+          .map((PendingSyncTask task) => QueueSnapshot(
+                id: task.key,
+                kind: task.kind,
+                bookId: task.bookHash,
+                attempts: task.attempts,
+                nextAttemptMs: task.nextAt.millisecondsSinceEpoch,
+                state: task.permanentlyFailed ? 'failed' : 'pending',
+                lastError: task.lastError,
+              ))
+          .toList());
+    } catch (_) {}
   }
 }
