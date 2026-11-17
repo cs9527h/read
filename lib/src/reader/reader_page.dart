@@ -25,6 +25,7 @@ import 'package:read/src/services/highlight_store.dart';
 import 'package:read/src/services/manual_chapter_store.dart';
 import 'package:read/src/services/note_exporter.dart';
 import 'package:read/src/services/library_store.dart';
+import 'package:read/src/services/reading_session_tracker.dart';
 import 'package:read/src/services/reading_stats_store.dart';
 import 'package:read/src/services/search_history_store.dart';
 import 'package:read/src/sync/auto_sync_service.dart';
@@ -61,6 +62,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
 
   bool _menuVisible = false;
   bool _loading = true;
+  String? _contentError;
   String _layoutKey = '';
   double _pageWidth = 520;
   double _pageHeight = 800;
@@ -70,8 +72,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   Timer? _autoTurnTimer;
   Timer? _clockTimer;
   Timer? _statsTimer;
-  int _sessionSeconds = 0;
-  int _sessionChars = 0;
+  /// 真实阅读统计：区分新读内容与回看内容，空闲/后台不计时。
+  final ReadingSessionTracker _tracker = ReadingSessionTracker();
   int _lastSavedOffset = 0;
   bool _isReadingActive = true;
   StreamSubscription<String>? _volumeKeysSubscription;
@@ -124,8 +126,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
       unawaited(_refreshDeviceControls());
     });
     _statsTimer = Timer.periodic(const Duration(seconds: 10), (_) {
-      if (!mounted || _loading || !_isReadingActive) return;
-      _sessionSeconds += 10;
+      if (!mounted || _loading) return;
+      _tracker.tick(active: _isReadingActive && !_menuVisible);
       _flushStats();
     });
     _startAutoTurn();
@@ -394,6 +396,16 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   }
 
   Future<void> _initChapters() async {
+    final bool ready = await LibraryStore.instance.ensureContent(widget.book);
+    if (!mounted) return;
+    if (!ready) {
+      setState(() {
+        _loading = false;
+        _contentError =
+            widget.book.contentError ?? '正文无法读取，请重新导入这本书';
+      });
+      return;
+    }
     final ChapterRule rule = await ChapterRuleStore.load(widget.book.id);
     final marks = await ManualChapterStore.load(widget.book.id);
     if (!mounted) return;
@@ -657,9 +669,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     if (p == null || p.pages.isEmpty) return;
     final int column = _pageIndex.clamp(0, p.pages.length - 1);
     final int offset = p.pages[column].sourceStart;
-    final int delta = (offset - _lastSavedOffset).abs();
-    if (delta > 0) {
-      _sessionChars += delta;
+    if (offset != _lastSavedOffset) {
+      _trackReading(_chapterBase + offset);
       _lastSavedOffset = offset;
     }
     widget.book.chapterIndex.value = _chapterIndex;
@@ -724,16 +735,25 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   }
 
   void _flushStats() {
-    final int seconds = _sessionSeconds;
-    final int chars = _sessionChars;
-    if (seconds <= 0 && chars <= 0) return;
-    _sessionSeconds = 0;
-    _sessionChars = 0;
+    final ReadingSessionDelta delta = _tracker.drain();
+    if (delta.isEmpty) return;
     ReadingStatsStore.instance.record(
       bookId: widget.book.id,
-      seconds: seconds,
-      chars: chars,
+      seconds: delta.seconds,
+      chars: delta.newChars,
+      reread: delta.rereadChars,
     );
+  }
+
+  /// 当前章在全书中的起始偏移，用于把章内偏移换算成全书绝对位置。
+  int get _chapterBase {
+    if (_chapters.isEmpty) return 0;
+    final int index = _chapterIndex.clamp(0, _chapters.length - 1);
+    return _chapters[index].start;
+  }
+
+  void _trackReading(int absoluteOffset) {
+    _tracker.recordPosition(absoluteOffset);
   }
 
   void _startAutoTurn() {
@@ -755,6 +775,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   bool get _showScroll => _settings.pageTurnMode == 'scroll';
 
   void _turnPage(int direction) {
+    _tracker.markActivity();
     final int d = _settings.reverseDirection ? -direction : direction;
     final PaginatedChapter? p = _pagination;
     if (p == null) return;
@@ -866,6 +887,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     widget.book.charOffset.value =
         pagination.pages[page.clamp(0, pagination.pages.length - 1)].sourceStart;
     _lastSavedOffset = widget.book.charOffset.value;
+    _tracker.recordPosition(_chapterBase + _lastSavedOffset);
     _pageTick.value++;
     _chapterTick.value++;
     // A PageView can still be attached to the previous chapter's virtual
@@ -894,6 +916,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
 
   void _jumpToAbsolute(int absoluteOffset, {bool remember = true}) {
     if (remember) _rememberPosition();
+    // 目录/进度条/搜索跳转不是“读过去的”，只重置统计基线。
+    _tracker.jumpTo(absoluteOffset);
     int chapterIndex = _chapters.length - 1;
     for (int i = 0; i < _chapters.length; i++) {
       if (absoluteOffset < _chapters[i].end) {
@@ -1215,6 +1239,33 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   }
 
   Widget _buildPageArea(Color foreground, Color secondary) {
+    if (_contentError != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Text(_contentError!,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: secondary, height: 1.6)),
+              const SizedBox(height: 16),
+              TextButton(
+                onPressed: () {
+                  setState(() {
+                    _contentError = null;
+                    _loading = true;
+                  });
+                  widget.book.contentError = null;
+                  _initChapters();
+                },
+                child: Text('重试', style: TextStyle(color: foreground)),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -1619,26 +1670,88 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   Future<void> _exportNotes(BuildContext ctx) async {
     final Map<int, BookmarkMeta> marks =
         await BookmarkMetaStore.load(widget.book.id);
-    final String highlightMd = NoteExporter.exportHighlights(
-      title: widget.book.title,
-      author: widget.book.author,
-      content: widget.book.content,
-      chapters: _chapters,
-      highlights: _highlights,
+    if (!mounted) return;
+    Navigator.of(ctx).pop();
+    final String? format = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (BuildContext sheet) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            ListTile(
+              title: Text('导出 ${_highlights.length} 条划线、${marks.length} 个书签'),
+              subtitle: const Text('选择格式后复制到剪贴板'),
+            ),
+            for (final MapEntry<String, String> entry in const <String, String>{
+              'md': 'Markdown（适合笔记软件）',
+              'txt': '纯文本（适合聊天、备忘录）',
+              'json': 'JSON（适合二次处理）',
+              'csv': 'CSV（适合表格）',
+            }.entries)
+              ListTile(
+                leading: const ReadIcon(ReadGlyph.save, size: 20),
+                title: Text(entry.value),
+                onTap: () => Navigator.pop(sheet, entry.key),
+              ),
+          ],
+        ),
+      ),
     );
-    final String bookmarkMd = NoteExporter.exportBookmarks(
-      title: widget.book.title,
-      author: widget.book.author,
-      content: widget.book.content,
-      chapters: _chapters,
-      bookmarks: marks,
-    );
-    final String md = '$highlightMd\n---\n\n$bookmarkMd';
-    await Clipboard.setData(ClipboardData(text: md));
-    if (ctx.mounted) {
-      Navigator.of(ctx).pop();
-      _showToast('已复制 ${_highlights.length} 条划线、${marks.length} 个书签为 Markdown');
+    if (format == null || !mounted) return;
+    String text;
+    String label;
+    switch (format) {
+      case 'txt':
+        text = NoteExporter.exportPlainText(
+          title: widget.book.title,
+          author: widget.book.author,
+          content: widget.book.content,
+          chapters: _chapters,
+          highlights: _highlights,
+          bookmarks: marks,
+        );
+        label = 'TXT';
+      case 'json':
+        text = NoteExporter.exportJson(
+          title: widget.book.title,
+          author: widget.book.author,
+          content: widget.book.content,
+          chapters: _chapters,
+          highlights: _highlights,
+          bookmarks: marks,
+        );
+        label = 'JSON';
+      case 'csv':
+        text = NoteExporter.exportCsv(
+          title: widget.book.title,
+          author: widget.book.author,
+          content: widget.book.content,
+          chapters: _chapters,
+          highlights: _highlights,
+          bookmarks: marks,
+        );
+        label = 'CSV';
+      default:
+        final String highlightMd = NoteExporter.exportHighlights(
+          title: widget.book.title,
+          author: widget.book.author,
+          content: widget.book.content,
+          chapters: _chapters,
+          highlights: _highlights,
+        );
+        final String bookmarkMd = NoteExporter.exportBookmarks(
+          title: widget.book.title,
+          author: widget.book.author,
+          content: widget.book.content,
+          chapters: _chapters,
+          bookmarks: marks,
+        );
+        text = '$highlightMd\n---\n\n$bookmarkMd';
+        label = 'Markdown';
     }
+    await Clipboard.setData(ClipboardData(text: text));
+    if (mounted) _showToast('已复制笔记（$label）');
   }
 
   Future<void> _manageHighlights() async {
@@ -1908,9 +2021,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     final int displayIndex =
         (fraction * p.display.text.length).clamp(0, p.display.text.length).toInt();
     final int source = p.display.sourceOffset(displayIndex);
-    final int delta = (source - _lastSavedOffset).abs();
-    if (delta > 0) {
-      _sessionChars += delta;
+    if (source != _lastSavedOffset) {
+      _trackReading(_chapterBase + source);
       _lastSavedOffset = source;
     }
     widget.book.chapterIndex.value = _chapterIndex;

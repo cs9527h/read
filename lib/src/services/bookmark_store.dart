@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../database/core_store.dart';
 import 'bookmark_meta_store.dart';
 
 /// Stable, absolute UTF-16 character anchors, independent of font/page size.
@@ -10,6 +11,16 @@ class BookmarkStore {
   static const String _prefix = 'read.bookmarks.v1.';
 
   static Future<List<int>> load(String bookId) async {
+    // SQLite 就绪时以数据库为准；为空则回退到旧键，保证升级不丢书签。
+    final CoreStore? core = CoreStore.active;
+    if (core != null) {
+      try {
+        final rows = await core.bookmarksOf(bookId);
+        if (rows.isNotEmpty) return rows;
+      } catch (_) {
+        // 数据库异常不能阻断阅读，继续走旧存储。
+      }
+    }
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString('$_prefix$bookId');
     if (raw == null) return <int>[];
@@ -34,6 +45,7 @@ class BookmarkStore {
     final sorted = positions.toList()..sort();
     final success = await prefs.setString('$_prefix$bookId', jsonEncode(sorted));
     if (!success) throw StateError('书签保存失败');
+    await _mirror(bookId, sorted);
     if (adding) {
       await BookmarkMetaStore.ensure(bookId, absoluteOffset);
     } else {
@@ -48,6 +60,16 @@ class BookmarkStore {
     final safe = offsets.where((int x) => x >= 0).toSet().toList()..sort();
     final success = await prefs.setString('$_prefix$bookId', jsonEncode(safe));
     if (!success) throw StateError('书签同步写入失败');
+    await _mirror(bookId, safe);
+  }
+
+  /// 双写 SQLite；数据库不可用时旧存储仍然有效，不影响阅读。
+  static Future<void> _mirror(String bookId, List<int> offsets) async {
+    final CoreStore? core = CoreStore.active;
+    if (core == null) return;
+    try {
+      await core.replaceBookmarks(bookId, offsets);
+    } catch (_) {}
   }
 
   static Future<void> clearForDeletedBook(String bookId) async {

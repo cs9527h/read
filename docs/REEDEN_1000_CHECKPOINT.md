@@ -47,10 +47,23 @@
 - PR #48：v2-1 CI 绿（build-android 9623fa1 success）；v2-2 提交 7f55f3e 的 CI 进行中
 - 尚未合并 main、尚未打 2.0 tag。合并/发布前确认 7f55f3e 的 apk+windows 均 success
 
+## v2.1 批次（2026-11-17，分支 work/reeden-v3）
+
+**完成（有代码 + 自动化证据）**
+1. WiFi 传书安全（R0104–R0108）：`lib/src/services/wifi_transfer_service.dart` 新增；页面改为默认关闭、显示配对码；17 条真实 loopback HTTP 测试覆盖未认证、过期、错码锁定、超大、伪装扩展名、路径穿越、并发、限速、公网拒绝、停止清理。
+2. 备份完整性（R0841–R0852）：`backup_service.dart` 重写清单/校验/预览/选择性恢复；9 条测试覆盖丢失文件、篡改哈希、损坏包、旧版兼容、部分失败与幂等重跑。
+3. SQLite 核心存储（R0011/R0851/R0852）：`read_database.dart` v2（高亮/队列/冲突 + 索引 + 迁移），`core_store.dart` 事务读写与旧数据迁移；5 条测试含 v1→v2 升级。
+4. 启动与内存（R0041）：启动只读元数据，`ensureContent` 按需解析；单书失败隔离 + 重试；500 本性能测试。
+5. 阅读统计（R0601/R0611/R0640）：`reading_session_tracker.dart`，区分新读/回看、空闲与后台暂停；6 条测试。
+6. 反馈与诊断（R0957/R0958/R0032/R0389/R0880）：QQ 链接 + 失败复制；`diagnostics_service.dart` 脱敏/轮转/导出；5 条测试。
+
+**测试基线**：`flutter analyze` 0 error/warning；`flutter test` **209/209**。
+**台账**：V 64 / I 251 / P 291 / B 52 / N 342。
+
 ## 下一轮恢复命令
 ```bash
 cd /workspace/read-app
-git checkout work/reeden-v2 && git pull --rebase
+git checkout work/reeden-v3 && git pull --rebase
 /opt/flutter350/bin/flutter analyze --no-fatal-infos
 /opt/flutter350/bin/flutter test
 head -20 docs/READ_REEDEN_1000_STATUS.md

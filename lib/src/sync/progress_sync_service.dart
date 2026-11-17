@@ -170,6 +170,9 @@ class ProgressSyncService {
       final file = File(path);
       if (!await file.exists()) continue;
       final digest = await library.ensureContentHash(book);
+      // 正文按需加载：没有正文就无法计算文本哈希与绝对位置。
+      await library.ensureContent(book);
+      if (book.content.isEmpty) continue;
       // Include unread books as matching targets: they may have no usable
       // local character anchor yet, but can safely receive cloud progress.
       booksByHash.putIfAbsent(digest, () => <Book>[]).add(book);
@@ -415,6 +418,10 @@ class ProgressSyncService {
   }
 
   Future<void> _apply(Book book, ProgressRecord remote) async {
+    await library.ensureContent(book);
+    if (book.content.isEmpty) {
+      throw const FormatException('本地正文未能读取，已跳过该书的云端位置');
+    }
     _validateRemote(book, remote);
     if (book.format.toUpperCase() == 'PDF') {
       await library.applySyncedProgress(

@@ -105,6 +105,21 @@ if perms:
         sys.exit("未能定位 <application>，拒绝注入权限")
     m = m[:app_idx] + "\n".join(perms) + "\n    " + m[app_idx:]
 
+# Android 11+ 包可见性：url_launcher 打开 QQ/浏览器链接需要声明 VIEW intent。
+if "<queries>" not in m:
+    app_idx = m.find("<application")
+    if app_idx == -1:
+        sys.exit("未能定位 <application>，拒绝注入 queries")
+    queries = (
+        "    <queries>\n"
+        "        <intent>\n"
+        "            <action android:name=\"android.intent.action.VIEW\" />\n"
+        "            <data android:scheme=\"https\" />\n"
+        "        </intent>\n"
+        "    </queries>\n\n    "
+    )
+    m = m[:app_idx] + queries + m[app_idx:]
+
 # usesCleartextTraffic：targetSdk 36 下 Android 9+ 默认禁止明文 http，
 # WebDAV / 局域网 NAS 自签或 http 同步会失败。
 if 'android:usesCleartextTraffic' not in m:

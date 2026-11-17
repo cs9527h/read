@@ -87,6 +87,7 @@ class _StatsPageState extends State<StatsPage> {
                     _StatCard(title: '累计读过', value: '${stats.booksCount} 本'),
                     _StatCard(title: '读完书籍', value: '${stats.finishedBooks.length} 本'),
                     _StatCard(title: '阅读字数', value: _chars(chars)),
+                    _StatCard(title: '重复阅读', value: _chars(window.reread)),
                     _StatCard(title: '阅读速度', value: '$speed 字/分钟'),
                     _StatCard(
                       title: '总时长',
@@ -162,11 +163,19 @@ class _StatsPageState extends State<StatsPage> {
     }
     int seconds = 0;
     int chars = 0;
+    int reread = 0;
     for (final String day in days) {
       seconds += stats.daySeconds[day] ?? 0;
       chars += stats.dayChars[day] ?? 0;
+      reread += stats.dayReread[day] ?? 0;
     }
-    return _Window(days: days, seconds: seconds, chars: chars, label: label);
+    return _Window(
+      days: days,
+      seconds: seconds,
+      chars: chars,
+      reread: reread,
+      label: label,
+    );
   }
 
   List<String> _range(DateTime now, int n) {
@@ -204,12 +213,14 @@ class _Window {
     required this.days,
     required this.seconds,
     required this.chars,
+    required this.reread,
     required this.label,
   });
 
   final List<String> days;
   final int seconds;
   final int chars;
+  final int reread;
   final String label;
 }
 

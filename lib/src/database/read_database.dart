@@ -66,6 +66,59 @@ class LocalNotes extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+/// 高亮与笔记：绝对字符区间锚点，重新排版后仍然准确。
+class LocalHighlights extends Table {
+  TextColumn get id => text()();
+  TextColumn get bookId => text()();
+  IntColumn get startOffset => integer()();
+  IntColumn get endOffset => integer()();
+  IntColumn get color => integer().withDefault(const Constant(0xFFFFF176))();
+  TextColumn get noteText => text().withDefault(const Constant(''))();
+  TextColumn get excerpt => text().withDefault(const Constant(''))();
+  IntColumn get createdAtMs => integer().withDefault(const Constant(0))();
+  IntColumn get updatedAtMs => integer().withDefault(const Constant(0))();
+  BoolColumn get deleted => boolean().withDefault(const Constant(false))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+
+  @override
+  List<Set<Column>> get uniqueKeys => <Set<Column>>[
+        <Column>{bookId, startOffset, endOffset},
+      ];
+}
+
+/// 待同步队列：应用被杀掉后下次启动继续处理。
+class SyncQueueItems extends Table {
+  TextColumn get id => text()();
+  TextColumn get kind => text()();
+  TextColumn get bookId => text().withDefault(const Constant(''))();
+  TextColumn get payload => text().withDefault(const Constant(''))();
+  IntColumn get attempts => integer().withDefault(const Constant(0))();
+  IntColumn get nextAttemptMs => integer().withDefault(const Constant(0))();
+  IntColumn get createdAtMs => integer().withDefault(const Constant(0))();
+  TextColumn get state => text().withDefault(const Constant('pending'))();
+  TextColumn get lastError => text().withDefault(const Constant(''))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// 同步冲突留痕：任何被覆盖的本地值都必须可追溯，不能静默丢失。
+class SyncConflicts extends Table {
+  TextColumn get id => text()();
+  TextColumn get bookId => text()();
+  TextColumn get field => text()();
+  TextColumn get localValue => text().withDefault(const Constant(''))();
+  TextColumn get remoteValue => text().withDefault(const Constant(''))();
+  TextColumn get deviceId => text().withDefault(const Constant(''))();
+  BoolColumn get resolved => boolean().withDefault(const Constant(false))();
+  IntColumn get createdAtMs => integer().withDefault(const Constant(0))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 class SyncJournal extends Table {
   TextColumn get id => text()();
   TextColumn get kind => text()();
@@ -86,6 +139,9 @@ class SyncJournal extends Table {
   ReadingPositions,
   LocalBookmarks,
   LocalNotes,
+  LocalHighlights,
+  SyncQueueItems,
+  SyncConflicts,
   SyncJournal,
 ])
 class ReadDatabase extends _$ReadDatabase {
@@ -93,7 +149,47 @@ class ReadDatabase extends _$ReadDatabase {
   ReadDatabase.forTesting(QueryExecutor executor) : super(executor);
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+        onCreate: (Migrator m) async {
+          await m.createAll();
+          await _createIndexes();
+        },
+        onUpgrade: (Migrator m, int from, int to) async {
+          if (from < 2) {
+            // v2 只做增量：新增高亮、同步队列、冲突表，不改动任何旧列。
+            await m.createTable(localHighlights);
+            await m.createTable(syncQueueItems);
+            await m.createTable(syncConflicts);
+            await _createIndexes();
+          }
+        },
+        beforeOpen: (OpeningDetails details) async {
+          await customStatement('PRAGMA foreign_keys = ON');
+        },
+      );
+
+  /// 索引用于按书查询与队列扫描；IF NOT EXISTS 保证重复执行安全。
+  Future<void> _createIndexes() async {
+    const List<String> statements = <String>[
+      'CREATE INDEX IF NOT EXISTS idx_bookmarks_book '
+          'ON local_bookmarks (book_id, char_offset)',
+      'CREATE INDEX IF NOT EXISTS idx_notes_book ON local_notes (book_id)',
+      'CREATE INDEX IF NOT EXISTS idx_highlights_book '
+          'ON local_highlights (book_id, start_offset)',
+      'CREATE INDEX IF NOT EXISTS idx_queue_state '
+          'ON sync_queue_items (state, next_attempt_ms)',
+      'CREATE INDEX IF NOT EXISTS idx_conflicts_book '
+          'ON sync_conflicts (book_id, resolved)',
+      'CREATE INDEX IF NOT EXISTS idx_positions_modified '
+          'ON reading_positions (modified_at_ms)',
+    ];
+    for (final String statement in statements) {
+      await customStatement(statement);
+    }
+  }
 
   /// One-way snapshot into empty/missing SQLite rows without rewriting legacy
   /// app data or overwriting more recent rows.

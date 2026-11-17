@@ -34,6 +34,13 @@ class _BookDetailPageState extends State<BookDetailPage> {
   void initState() {
     super.initState();
     _loadBookmarks();
+    _ensureContent();
+  }
+
+  /// 正文改为打开时按需解析，这里补一次，保证书签预览与章节跳转可用。
+  Future<void> _ensureContent() async {
+    final bool ready = await LibraryStore.instance.ensureContent(book);
+    if (mounted && ready) setState(() {});
   }
 
   Future<void> _loadBookmarks() async {

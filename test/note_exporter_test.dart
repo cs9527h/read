@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:read/src/services/bookmark_meta_store.dart';
 import 'package:read/src/services/chapter_splitter.dart';
@@ -94,5 +96,71 @@ void main() {
     expect(md, contains('共 1 条划线'));
     // 不应抛异常，且能取到末尾片段
     expect(md.isNotEmpty, isTrue);
+  });
+
+  final List<HighlightRecord> sample = <HighlightRecord>[
+    const HighlightRecord(
+        start: 3, end: 7, color: 0xFF112233, note: '带,逗号', createdAt: 0),
+    const HighlightRecord(
+        start: 13, end: 17, color: 0xFF445566, note: '引号"测试"', createdAt: 0),
+  ];
+  final Map<int, BookmarkMeta> sampleMarks = <int, BookmarkMeta>{
+    12: const BookmarkMeta(offset: 12, createdAt: 0, note: '回头再看'),
+  };
+
+  test('纯文本导出包含章节、原文与笔记', () {
+    final String txt = NoteExporter.exportPlainText(
+      title: '测试书',
+      author: '作者甲',
+      content: content,
+      chapters: chapters,
+      highlights: sample,
+      bookmarks: sampleMarks,
+    );
+    expect(txt, contains('《测试书》读书笔记'));
+    expect(txt, contains('划线 2 条 · 书签 1 个'));
+    expect(txt, contains('【第一章】'));
+    expect(txt, contains('正文甲乙'));
+    expect(txt, contains('笔记：带,逗号'));
+    expect(txt, contains('【书签】'));
+  });
+
+  test('JSON 导出结构稳定且可被解析', () {
+    final String raw = NoteExporter.exportJson(
+      title: '测试书',
+      author: '作者甲',
+      content: content,
+      chapters: chapters,
+      highlights: sample,
+      bookmarks: sampleMarks,
+    );
+    final Map<String, dynamic> data =
+        jsonDecode(raw) as Map<String, dynamic>;
+    expect(data['schema'], 'read-notes-v1');
+    expect((data['book'] as Map<String, dynamic>)['title'], '测试书');
+    final List<dynamic> highlights = data['highlights'] as List<dynamic>;
+    expect(highlights.length, 2);
+    expect((highlights.first as Map<String, dynamic>)['chapter'], '第一章');
+    expect((highlights.first as Map<String, dynamic>)['quote'], '正文甲乙');
+    expect((highlights.first as Map<String, dynamic>)['note'], '带,逗号');
+    final List<dynamic> bookmarks = data['bookmarks'] as List<dynamic>;
+    expect((bookmarks.single as Map<String, dynamic>)['offset'], 12);
+  });
+
+  test('CSV 导出转义逗号与引号，行数与记录一致', () {
+    final String csv = NoteExporter.exportCsv(
+      title: '测试书',
+      author: '作者甲',
+      content: content,
+      chapters: chapters,
+      highlights: sample,
+      bookmarks: sampleMarks,
+    );
+    final List<String> lines = const LineSplitter().convert(csv);
+    expect(lines.first, 'type,chapter,start,end,quote,note,color,created_at');
+    expect(lines.length, 4); // 表头 + 2 划线 + 1 书签
+    expect(csv, contains('"带,逗号"'));
+    expect(csv, contains('"引号""测试"""'));
+    expect(lines.last.startsWith('bookmark,'), isTrue);
   });
 }

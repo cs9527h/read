@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../database/core_store.dart';
+
 /// Layout-independent highlight/note anchors stored as absolute UTF-16 ranges
 /// in the original book text. Unlike page numbers they survive font changes.
 class HighlightRecord {
@@ -46,6 +48,13 @@ class HighlightStore {
   static const String _prefix = 'read.highlights.v1.';
 
   static Future<List<HighlightRecord>> load(String bookId) async {
+    final CoreStore? core = CoreStore.active;
+    if (core != null) {
+      try {
+        final rows = await core.highlightsOf(bookId);
+        if (rows.isNotEmpty) return rows;
+      } catch (_) {}
+    }
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString('$_prefix$bookId');
     if (raw == null) return <HighlightRecord>[];
@@ -92,5 +101,11 @@ class HighlightStore {
       jsonEncode(values.map((HighlightRecord r) => r.toJson()).toList()),
     );
     if (!ok) throw StateError('高亮保存失败');
+    final CoreStore? core = CoreStore.active;
+    if (core != null) {
+      try {
+        await core.replaceHighlights(bookId, values);
+      } catch (_) {}
+    }
   }
 }
