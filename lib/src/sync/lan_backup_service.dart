@@ -1,5 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
+
+import 'package:path_provider/path_provider.dart';
 
 import 'package:flutter/foundation.dart';
 
@@ -32,11 +35,14 @@ class LanBackupService extends ChangeNotifier {
   Directory? _servedDir;
   int _port = 0;
   String _lastError = '';
+  String _accessToken = '';
   bool _disposed = false;
   List<String> _boundAddresses = const <String>[];
 
   bool get isRunning => _server != null;
   int get port => _port;
+  /// Ephemeral capability embedded in the copied share link, not a sync password.
+  String get accessToken => _accessToken;
   String get lastError => _lastError;
   Directory? get servedDirectory => _servedDir;
 
@@ -67,7 +73,7 @@ class LanBackupService extends ChangeNotifier {
           }
         }
       } catch (_) {}
-      targets = found.isEmpty ? <InternetAddress>[InternetAddress.anyIPv4] : found;
+      targets = found; // Never listen on all interfaces when no private LAN address exists.
     }
 
     HttpServer? opened;
@@ -83,25 +89,32 @@ class LanBackupService extends ChangeNotifier {
       if (opened != null) break;
     }
     if (opened == null) {
-      _lastError = '局域网端口被占用，无法开启备份共享';
+      _lastError = targets.isEmpty
+          ? '未找到可用的局域网地址，请连接同一 WiFi 后重试'
+          : '局域网端口被占用，无法开启备份共享';
       notifyListeners();
       return;
     }
     opened.autoCompress = false;
+    final random = Random.secure();
+    _accessToken = List<int>.generate(24, (_) => random.nextInt(256))
+        .map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
     opened.listen(_handle, onError: (Object e) {
       _lastError = e.toString();
     });
     _server = opened;
     _port = opened.port;
     _servedDir = dir;
-    _boundAddresses = targets.map((InternetAddress a) => a.address).toList(growable: false);
+    _boundAddresses = <String>[opened.address.address];
     if (!_disposed) notifyListeners();
   }
 
   Future<Directory> _resolveBackupDir() async {
     final Directory? override = _backupDirOverride;
     if (override != null) return override;
-    final Directory base = Directory.current;
+    // Use the same application documents directory as BackupService._backupDir.
+    // Directory.current differs from this location on Android.
+    final Directory base = await getApplicationDocumentsDirectory();
     return Directory('${base.path}${Platform.pathSeparator}backups');
   }
 
@@ -114,6 +127,7 @@ class LanBackupService extends ChangeNotifier {
       } catch (_) {}
     }
     _port = 0;
+    _accessToken = '';
     _servedDir = null;
     _boundAddresses = const <String>[];
     if (!_disposed) notifyListeners();
@@ -128,6 +142,7 @@ class LanBackupService extends ChangeNotifier {
     _disposed = true;
     _server?.close(force: true);
     _server = null;
+    _accessToken = '';
     super.dispose();
   }
 
@@ -140,6 +155,15 @@ class LanBackupService extends ChangeNotifier {
           (!_isPrivate(remote) && !(_bindLoopback && remote.isLoopback))) {
         response.statusCode = HttpStatus.forbidden;
         response.write('forbidden');
+        await response.close();
+        return;
+      }
+      // A local IP alone is not authorization: other WiFi clients must not
+      // be able to fetch a user's books. The copied link contains a short-lived
+      // random capability; no password entry or account is required.
+      final supplied = request.uri.queryParameters['key'] ?? '';
+      if (_accessToken.isEmpty || !_sameToken(supplied, _accessToken)) {
+        response.statusCode = HttpStatus.unauthorized;
         await response.close();
         return;
       }
@@ -230,6 +254,15 @@ class LanBackupService extends ChangeNotifier {
     final RegExp allowed = RegExp(r'^[A-Za-z0-9._\-]+\.zip$');
     if (!allowed.hasMatch(raw)) return null;
     return raw;
+  }
+
+  static bool _sameToken(String a, String b) {
+    if (a.length != b.length) return false;
+    var mismatch = 0;
+    for (var i = 0; i < a.length; i++) {
+      mismatch |= a.codeUnitAt(i) ^ b.codeUnitAt(i);
+    }
+    return mismatch == 0;
   }
 
   static bool _isPrivate(InternetAddress address) {
