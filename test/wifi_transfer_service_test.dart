@@ -42,11 +42,13 @@ class _Harness {
     String? token,
     List<int>? body,
     int? contentLength,
+    int? port,
   }) async {
     final HttpClient client = HttpClient();
     try {
+      final String host = port == null ? base : 'http://127.0.0.1:$port';
       final HttpClientRequest request =
-          await client.openUrl(method, Uri.parse('$base$path'));
+          await client.openUrl(method, Uri.parse('$host$path'));
       if (token != null) request.headers.set('X-Read-Token', token);
       if (body != null) {
         request.headers.contentLength = contentLength ?? body.length;
@@ -445,7 +447,10 @@ void main() {
     bool connected = false;
     for (int attempt = 0; attempt < 30; attempt++) {
       try {
-        final HttpClientResponse late = await harness.send('GET', '/');
+        // 必须显式指定停止前的端口：服务停止后 port 归零，若走默认端口
+        // 会连到本机 80 端口，造成“端口没关”的假象。
+        final HttpClientResponse late =
+            await harness.send('GET', '/', port: port);
         connected = true;
         await late.drain<void>();
       } on SocketException {
