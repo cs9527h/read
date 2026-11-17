@@ -148,7 +148,7 @@ void main() {
     expect(store.resolve('local-a').fontSize, 30.0);
     expect(store.resolve('local-a').marginLeft, 39.0);
     expect(store.resolve('other-b').fontSize, 18.0);
-    expect(store.resolve('other-b').marginLeft, 20.0);
+    expect(store.resolve('other-b').marginLeft, 14.0);
     expect(store.resolve('other-b').lineHeight, 2.2);
     await store.init();
     expect(store.resolve('other-b').fontSize, 18.0);

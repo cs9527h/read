@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import 'package:read/src/bookshelf/cover_art.dart';
+import 'package:read/src/bookshelf/cover_search_page.dart';
 import 'package:read/src/model/book.dart';
 import 'package:read/src/services/library_store.dart';
 import 'package:read/src/theme.dart';
@@ -582,7 +583,7 @@ class _BookEditPageState extends State<BookEditPage> {
         SheetMenuItem(
           glyph: ReadGlyph.search,
           title: '搜图设置封面',
-          subtitle: '粘贴图片链接，或先复制搜索链接到浏览器',
+          subtitle: '内置浏览器搜索，点选图片自动裁切为封面',
           onTap: () => Navigator.pop(context, 'search'),
         ),
         SheetMenuItem(
@@ -756,15 +757,27 @@ class _BookEditPageState extends State<BookEditPage> {
   }
 
   Future<void> _searchImage() async {
-    final String? url = await promptText(
-      context,
-      title: '搜图设置封面',
-      hint: '粘贴图片直链（https://…）',
-      confirm: '使用',
-      helper: '本应用不内置图片搜索服务。可先在浏览器搜索，复制图片地址后粘贴到这里。',
+    final String query = _title.text.trim().isNotEmpty
+        ? _title.text.trim()
+        : widget.book.title;
+    final File? picked = await Navigator.of(context).push<File>(
+      MaterialPageRoute<File>(
+        builder: (_) => CoverSearchPage(query: query),
+      ),
     );
-    if (url == null || url.trim().isEmpty) return;
-    await _applyNetwork(url.trim());
+    if (picked == null || !picked.existsSync()) return;
+    try {
+      final File saved = await adoptCoverImage(picked, widget.book.id);
+      await deleteCoverFile(_coverPath);
+      setState(() => _coverPath = saved.path);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('设置封面失败：$error')),
+      );
+    } finally {
+      if (picked.existsSync()) await picked.delete();
+    }
   }
 
   Future<void> _networkImage() async {
