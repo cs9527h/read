@@ -25,6 +25,7 @@ import 'package:read/src/services/highlight_store.dart';
 import 'package:read/src/services/manual_chapter_store.dart';
 import 'package:read/src/services/note_exporter.dart';
 import 'package:read/src/services/library_store.dart';
+import 'package:read/src/services/reading_session_tracker.dart';
 import 'package:read/src/services/reading_stats_store.dart';
 import 'package:read/src/services/search_history_store.dart';
 import 'package:read/src/sync/auto_sync_service.dart';
@@ -71,8 +72,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   Timer? _autoTurnTimer;
   Timer? _clockTimer;
   Timer? _statsTimer;
-  int _sessionSeconds = 0;
-  int _sessionChars = 0;
+  /// 真实阅读统计：区分新读内容与回看内容，空闲/后台不计时。
+  final ReadingSessionTracker _tracker = ReadingSessionTracker();
   int _lastSavedOffset = 0;
   bool _isReadingActive = true;
   StreamSubscription<String>? _volumeKeysSubscription;
@@ -125,8 +126,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
       unawaited(_refreshDeviceControls());
     });
     _statsTimer = Timer.periodic(const Duration(seconds: 10), (_) {
-      if (!mounted || _loading || !_isReadingActive) return;
-      _sessionSeconds += 10;
+      if (!mounted || _loading) return;
+      _tracker.tick(active: _isReadingActive && !_menuVisible);
       _flushStats();
     });
     _startAutoTurn();
@@ -668,9 +669,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     if (p == null || p.pages.isEmpty) return;
     final int column = _pageIndex.clamp(0, p.pages.length - 1);
     final int offset = p.pages[column].sourceStart;
-    final int delta = (offset - _lastSavedOffset).abs();
-    if (delta > 0) {
-      _sessionChars += delta;
+    if (offset != _lastSavedOffset) {
+      _trackReading(_chapterBase + offset);
       _lastSavedOffset = offset;
     }
     widget.book.chapterIndex.value = _chapterIndex;
@@ -735,16 +735,25 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   }
 
   void _flushStats() {
-    final int seconds = _sessionSeconds;
-    final int chars = _sessionChars;
-    if (seconds <= 0 && chars <= 0) return;
-    _sessionSeconds = 0;
-    _sessionChars = 0;
+    final ReadingSessionDelta delta = _tracker.drain();
+    if (delta.isEmpty) return;
     ReadingStatsStore.instance.record(
       bookId: widget.book.id,
-      seconds: seconds,
-      chars: chars,
+      seconds: delta.seconds,
+      chars: delta.newChars,
+      reread: delta.rereadChars,
     );
+  }
+
+  /// 当前章在全书中的起始偏移，用于把章内偏移换算成全书绝对位置。
+  int get _chapterBase {
+    if (_chapters.isEmpty) return 0;
+    final int index = _chapterIndex.clamp(0, _chapters.length - 1);
+    return _chapters[index].start;
+  }
+
+  void _trackReading(int absoluteOffset) {
+    _tracker.recordPosition(absoluteOffset);
   }
 
   void _startAutoTurn() {
@@ -766,6 +775,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   bool get _showScroll => _settings.pageTurnMode == 'scroll';
 
   void _turnPage(int direction) {
+    _tracker.markActivity();
     final int d = _settings.reverseDirection ? -direction : direction;
     final PaginatedChapter? p = _pagination;
     if (p == null) return;
@@ -877,6 +887,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     widget.book.charOffset.value =
         pagination.pages[page.clamp(0, pagination.pages.length - 1)].sourceStart;
     _lastSavedOffset = widget.book.charOffset.value;
+    _tracker.recordPosition(_chapterBase + _lastSavedOffset);
     _pageTick.value++;
     _chapterTick.value++;
     // A PageView can still be attached to the previous chapter's virtual
@@ -905,6 +916,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
 
   void _jumpToAbsolute(int absoluteOffset, {bool remember = true}) {
     if (remember) _rememberPosition();
+    // 目录/进度条/搜索跳转不是“读过去的”，只重置统计基线。
+    _tracker.jumpTo(absoluteOffset);
     int chapterIndex = _chapters.length - 1;
     for (int i = 0; i < _chapters.length; i++) {
       if (absoluteOffset < _chapters[i].end) {
@@ -1946,9 +1959,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     final int displayIndex =
         (fraction * p.display.text.length).clamp(0, p.display.text.length).toInt();
     final int source = p.display.sourceOffset(displayIndex);
-    final int delta = (source - _lastSavedOffset).abs();
-    if (delta > 0) {
-      _sessionChars += delta;
+    if (source != _lastSavedOffset) {
+      _trackReading(_chapterBase + source);
       _lastSavedOffset = source;
     }
     widget.book.chapterIndex.value = _chapterIndex;

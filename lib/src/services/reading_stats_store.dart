@@ -50,6 +50,7 @@ class ReadingStatsStore extends ChangeNotifier {
       out[key.toString()] = <String, int>{
         'seconds': (value['seconds'] as num?)?.toInt() ?? 0,
         'chars': (value['chars'] as num?)?.toInt() ?? 0,
+        'reread': (value['reread'] as num?)?.toInt() ?? 0,
       };
     });
     return out;
@@ -60,23 +61,26 @@ class ReadingStatsStore extends ChangeNotifier {
     required String bookId,
     required int seconds,
     required int chars,
+    int reread = 0,
     DateTime? at,
   }) async {
-    if (seconds <= 0 && chars <= 0) return;
+    if (seconds <= 0 && chars <= 0 && reread <= 0) return;
     final DateTime when = at ?? DateTime.now();
     final String day = _dayKey(when);
     final Map<String, int> dayEntry = _days.putIfAbsent(
       day,
-      () => <String, int>{'seconds': 0, 'chars': 0},
+      () => <String, int>{'seconds': 0, 'chars': 0, 'reread': 0},
     );
     dayEntry['seconds'] = dayEntry['seconds']! + seconds;
     dayEntry['chars'] = dayEntry['chars']! + chars;
+    dayEntry['reread'] = (dayEntry['reread'] ?? 0) + reread;
     final Map<String, int> bookEntry = _books.putIfAbsent(
       bookId,
-      () => <String, int>{'seconds': 0, 'chars': 0},
+      () => <String, int>{'seconds': 0, 'chars': 0, 'reread': 0},
     );
     bookEntry['seconds'] = bookEntry['seconds']! + seconds;
     bookEntry['chars'] = bookEntry['chars']! + chars;
+    bookEntry['reread'] = (bookEntry['reread'] ?? 0) + reread;
     await _persist();
     notifyListeners();
   }
@@ -100,10 +104,22 @@ class ReadingStatsStore extends ChangeNotifier {
   int get totalChars =>
       _days.values.fold<int>(0, (int sum, Map<String, int> e) => sum + (e['chars'] ?? 0));
 
+  /// 重复阅读字数，单独统计，不并入阅读字数。
+  int get totalReread =>
+      _days.values.fold<int>(0, (int sum, Map<String, int> e) => sum + (e['reread'] ?? 0));
+
+  int get rereadChars =>
+      _days.values.fold<int>(0, (int sum, Map<String, int> e) => sum + (e['reread'] ?? 0));
+
   /// 全部按天的秒数（YYYY-MM-DD → 秒），供统计页按周期过滤。
   Map<String, int> get daySeconds => <String, int>{
         for (final MapEntry<String, Map<String, int>> e in _days.entries)
           e.key: e.value['seconds'] ?? 0,
+      };
+
+  Map<String, int> get dayReread => <String, int>{
+        for (final MapEntry<String, Map<String, int>> e in _days.entries)
+          e.key: e.value['reread'] ?? 0,
       };
 
   Map<String, int> get dayChars => <String, int>{
@@ -114,6 +130,11 @@ class ReadingStatsStore extends ChangeNotifier {
   int get daysCount => _days.values.where((Map<String, int> e) => (e['seconds'] ?? 0) > 0).length;
 
   int get booksCount => _books.length;
+
+  /// 某本书的累计统计（秒/新字数/重复字数）。
+  Map<String, int> bookTotals(String bookId) =>
+      _books[bookId] ??
+      const <String, int>{'seconds': 0, 'chars': 0, 'reread': 0};
 
   /// 某一天(YYYY-MM-DD)的秒数。
   int secondsOn(String day) => _days[day]?['seconds'] ?? 0;
