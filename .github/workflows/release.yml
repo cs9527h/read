@@ -29,6 +29,8 @@ jobs:
       - name: 安装 Flutter
         uses: subosito/flutter-action@v2
         with:
+          # 固定 Flutter 版本，避免上游 stable 漂移导致构建不可复现。
+          flutter-version: '3.50.0'
           channel: stable
           cache: true
 
@@ -72,18 +74,8 @@ jobs:
       - name: 构建手机版 APK（内含原版/墨水屏双 UI，设置页可切换）
         run: flutter build apk --release --dart-define=EINK=false
 
-      - name: 校验 APK 低版本兼容断言
-        run: |
-          set -e
-          APK=build/app/outputs/flutter-apk/app-release.apk
-          echo "=== APK 内 ABI（应有 32 位 armeabi-v7a 与 64 位 arm64-v8a）==="
-          unzip -l "$APK" | grep -oE 'lib/(armeabi-v7a|arm64-v8a)' | sort -u || true
-          AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort | tail -1)
-          if [ -x "$AAPT" ]; then
-            echo "=== manifest 摘要（minSdk / supportedScreens）==="
-            "$AAPT" dump badging "$APK" | grep -E "sdkVersion|native-code|application-label" | head -10
-          fi
-          test -s "$APK"
+      - name: 校验 APK（包名/minSdk/ABI/versionCode/签名，失败即中止）
+        run: bash tools/android/verify_apk.sh build/app/outputs/flutter-apk/app-release.apk
 
       - name: 收集手机版 APK
         run: |
