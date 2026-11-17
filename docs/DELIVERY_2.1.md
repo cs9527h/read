@@ -1,7 +1,7 @@
 # Read 2.1 批次交付说明（2026-11-17）
 
 > 分支 `work/reeden-v3` → PR [#49](https://github.com/cs9527h/read/pull/49)
-> 基线 `main@a2a6874`；本批 7 个提交；`flutter analyze` 0 error/warning；`flutter test` **206/206**。
+> 基线 `main@a2a6874`；本批 10 个提交；`flutter analyze` 0 error/warning；`flutter test` **209/209**。
 > 只记录有代码与自动化证据的改动；未做的一律列入“未完成/阻塞”。
 
 ## 一、本批完成的需求
@@ -14,6 +14,7 @@
 | P0-3 数据库 | R0011 | 🟡 → ✅ | schema v2 + onUpgrade + 索引 + 唯一约束 + 增量迁移 |
 | P0-4 启动内存 | R0041 | 🟡 → ✅ | 元数据先行、正文按需解析、单书故障隔离、500 本性能测试 |
 | P1 统计纠错 | R0601/R0611/R0640 | 🟡/◐ → ✅ | 新读/回看分离、跳转重置、空闲与后台暂停 |
+| 笔记导出 | R0562–R0564 | ◐ → 🟡 | 新增 TXT/JSON/CSV，CSV 按 RFC 4180 转义（复制到剪贴板，落盘待做） |
 | 第六阶段反馈诊断 | R0032/R0389/R0957/R0958 | ◐/🟡 → ✅ | QQ 链接跳转 + 失败复制；本地诊断脱敏/轮转/导出 |
 | | R0880 | ◐ → 🟡 | 报告可复制；导出为文件未做 |
 | CI 硬校验 | R0851/R0852 相关 | 强化 | Flutter 3.50.0 固定；APK 包名/minSdk/ABI/versionCode/签名断言 |
@@ -68,12 +69,13 @@
 
 ```
 flutter analyze                     → 150 issues, 0 error / 0 warning
-flutter test                        → 206/206 All tests passed
+flutter test                        → 209/209 All tests passed
 wifi_transfer_service_test.dart     → 17 passed（真实 loopback HTTP）
 backup_service_test.dart            → 9 passed（含损坏包/旧版/中断重跑）
 core_store_test.dart                → 5 passed（含 v1→v2 升级）
 library_lazy_content_test.dart      → 4 passed（含 500 本性能）
 reading_session_tracker_test.dart   → 6 passed
+note_exporter_test.dart             → 7 passed（含 TXT/JSON/CSV）
 diagnostics_service_test.dart       → 5 passed
 ```
 
@@ -86,6 +88,8 @@ diagnostics_service_test.dart       → 5 passed
 - `c3b8229` 台账与检查点
 - `0e2ccfa` Manifest queries（Android 11+ 链接跳转）
 - `b8003dd` CI 固定版本 + APK 硬断言
+- `81d3bbe` 上传清理顺序竞态修复（Windows CI）
+- `19517f8` 笔记导出 TXT/JSON/CSV
 - PR：https://github.com/cs9527h/read/pull/49
 
 ## 六、仍未完成 / 客观阻塞

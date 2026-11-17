@@ -57,7 +57,7 @@
 5. 阅读统计（R0601/R0611/R0640）：`reading_session_tracker.dart`，区分新读/回看、空闲与后台暂停；6 条测试。
 6. 反馈与诊断（R0957/R0958/R0032/R0389/R0880）：QQ 链接 + 失败复制；`diagnostics_service.dart` 脱敏/轮转/导出；5 条测试。
 
-**测试基线**：`flutter analyze` 0 error/warning；`flutter test` **206/206**。
+**测试基线**：`flutter analyze` 0 error/warning；`flutter test` **209/209**。
 **台账**：V 64 / I 251 / P 291 / B 52 / N 342。
 
 ## 下一轮恢复命令

@@ -57,7 +57,7 @@
 ## 自动化结果
 
 - `flutter analyze --no-fatal-infos`：0 error，0 warning（146 info 为 Flutter 3.50 `material.dart` deprecated 等风格提示，CI 不视为失败）。
-- `flutter test`：206/206 通过。
+- `flutter test`：209/209 通过。
 - 覆盖：分页与偏移映射、三层设置、章节识别（含跨行吞正文回归）、EPUB spine 正文、同步文档往返/墓碑/条件写冲突、设备原生通道契约、书籍元数据往返、书架/设置服务、书内搜索历史。
 - CI（`build-android` + `build-windows-experimental`）：analyze、单测、**单一手机版 APK** 全部通过；构建后校验 APK 的 ABI（armeabi-v7a + arm64-v8a）与 minSdk。产物级结论以 CI 为准——本机开发环境无 Android SDK，`flutter build bundle` 在本机失败不具参考价值。
 

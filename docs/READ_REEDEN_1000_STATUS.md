@@ -2,7 +2,7 @@
 
 > 对应《READ 阅读器：全面对标 Reeden 的 1000 条详细开发与验收要求》R0001–R1000。
 > **本台账基于真实源码审计 + 本地基线测试，状态如实标注，不以界面存在或口头保证代替验收。**
-> 基线 main@a2a6874；v2.1 批次：WiFi 传书安全、备份完整性、SQLite 核心存储、启动按需解析、阅读统计纠错、QQ 反馈与本地诊断；analyze 0 error/warning；flutter test 206/206。
+> 基线 main@a2a6874；v2.1 批次：WiFi 传书安全、备份完整性、SQLite 核心存储、启动按需解析、阅读统计纠错、QQ 反馈与本地诊断；analyze 0 error/warning；flutter test 209/209。
 
 ## 判定标准（严格，不虚报）
 
