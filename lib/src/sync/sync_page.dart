@@ -919,9 +919,40 @@ class _BackupTabState extends State<_BackupTab> {
     try {
       final info = await _service.createBackup();
       await _refresh();
-      if (mounted) {
-        _toast(context, '备份完成：${info.bytes ~/ 1024}KB');
-        setState(() {});
+      if (!mounted) return;
+      if (info.complete) {
+        _toast(context,
+            '备份完成：${info.books} 本（含原文件），${info.bytes ~/ 1024}KB');
+      } else {
+        // 有书只备份了元数据：绝不能显示“完整备份成功”。
+        await showDialog<void>(
+          context: context,
+          builder: (BuildContext ctx) => AlertDialog(
+            title: const Text('部分备份完成'),
+            content: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Text('${info.booksComplete} 本包含原文件，'
+                      '${info.booksMetadataOnly} 本仅备份元数据（书签、笔记、进度仍在）。'),
+                  const SizedBox(height: 10),
+                  for (final String issue in info.issues)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Text('· $issue',
+                          style: const TextStyle(fontSize: 12)),
+                    ),
+                ],
+              ),
+            ),
+            actions: <Widget>[
+              FilledButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('知道了')),
+            ],
+          ),
+        );
       }
     } catch (error) {
       if (mounted) _toast(context, '备份失败：$error');
@@ -931,25 +962,59 @@ class _BackupTabState extends State<_BackupTab> {
   }
 
   Future<void> _restore(BackupInfo info) async {
-    final confirmed = await showDialog<bool>(
+    BackupPreview preview;
+    try {
+      preview = await _service.previewRestore(info.path);
+    } catch (error) {
+      if (mounted) _toast(context, '备份无法读取：$error');
+      return;
+    }
+    if (!mounted) return;
+    final RestoreSelection? selection =
+        await showDialog<RestoreSelection>(
       context: context,
-      builder: (BuildContext ctx) => AlertDialog(
-        title: const Text('恢复此备份？'),
-        content: const Text('恢复前会自动创建“恢复前快照”。现有书籍不会被删除，只补充缺失内容并合并书签/设置。'),
-        actions: <Widget>[
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('恢复')),
-        ],
-      ),
+      builder: (BuildContext ctx) => _RestoreOptionsDialog(preview: preview),
     );
-    if (confirmed != true) return;
+    if (selection == null) return;
     widget.onBusyChanged(true);
     try {
-      final report = await _service.restore(info.path);
+      final report = await _service.restore(info.path, selection: selection);
       await LibraryStore.instance.init();
-      if (mounted) {
+      if (!mounted) return;
+      if (report.complete) {
         _toast(context,
             '恢复完成：新增 ${report.booksRestored} 本，已有 ${report.booksSkipped} 本，书签 ${report.bookmarks} 条');
+      } else {
+        final String detail = report.issues
+            .take(3)
+            .map((RestoreIssue i) => '${i.title}：${i.reason}')
+            .join('\n');
+        await showDialog<void>(
+          context: context,
+          builder: (BuildContext ctx) => AlertDialog(
+            title: const Text('部分恢复'),
+            content: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Text('成功导入 ${report.booksRestored} 本，失败 ${report.booksFailed} 本，'
+                      '已有 ${report.booksSkipped} 本。原数据未被删除，'
+                      '恢复前快照：${report.preRestoreBackup.split('/').last}'),
+                  if (detail.isNotEmpty) ...<Widget>[
+                    const SizedBox(height: 8),
+                    Text(detail, style: const TextStyle(fontSize: 12)),
+                  ],
+                ],
+              ),
+            ),
+            actions: <Widget>[
+              FilledButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('知道了')),
+            ],
+          ),
+        );
       }
     } catch (error) {
       if (mounted) _toast(context, '恢复失败：$error');
@@ -1337,5 +1402,167 @@ Future<void> _restoreCloudPoint(
     }
   } catch (error) {
     if (context.mounted) _toast(context, '恢复失败：$error');
+  }
+}
+
+/// 恢复前的可选项：逐本勾选 + 元数据/书签/设置/统计范围。
+/// 默认全选，用户必须看到数量与影响后才执行恢复。
+class _RestoreOptionsDialog extends StatefulWidget {
+  const _RestoreOptionsDialog({required this.preview});
+
+  final BackupPreview preview;
+
+  @override
+  State<_RestoreOptionsDialog> createState() => _RestoreOptionsDialogState();
+}
+
+class _RestoreOptionsDialogState extends State<_RestoreOptionsDialog> {
+  late final Set<String> _selected;
+  bool _metadataOnly = false;
+  bool _bookmarks = true;
+  bool _settings = true;
+  bool _stats = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _selected = widget.preview.manifest.books
+        .map((BackupBookEntry b) => b.hash)
+        .where((String h) => h.isNotEmpty)
+        .toSet();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final BackupManifest manifest = widget.preview.manifest;
+    final List<BackupBookEntry> books = manifest.books;
+    final bool allSelected =
+        _selected.length == books.where((BackupBookEntry b) => b.hash.isNotEmpty).length;
+    return AlertDialog(
+      title: const Text('恢复备份'),
+      content: SizedBox(
+        width: 420,
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Text(
+                '备份共 ${books.length} 本：新增 ${widget.preview.booksNew} 本，'
+                '已存在 ${widget.preview.booksExisting} 本；书签 ${manifest.bookmarkCount} 条。',
+                style: const TextStyle(fontSize: 12.5, height: 1.6),
+              ),
+              if (widget.preview.legacy)
+                const Padding(
+                  padding: EdgeInsets.only(top: 4),
+                  child: Text('这是旧版本备份，将按兼容模式恢复。',
+                      style: TextStyle(fontSize: 11.5)),
+                ),
+              const SizedBox(height: 8),
+              CheckboxListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                value: allSelected,
+                onChanged: (bool? value) {
+                  setState(() {
+                    if (value == true) {
+                      _selected
+                        ..clear()
+                        ..addAll(books
+                            .map((BackupBookEntry b) => b.hash)
+                            .where((String h) => h.isNotEmpty));
+                    } else {
+                      _selected.clear();
+                    }
+                  });
+                },
+                title: const Text('全选', style: TextStyle(fontSize: 13)),
+              ),
+              for (final BackupBookEntry book in books)
+                CheckboxListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  value: _selected.contains(book.hash),
+                  onChanged: book.hash.isEmpty
+                      ? null
+                      : (bool? value) {
+                          setState(() {
+                            if (value == true) {
+                              _selected.add(book.hash);
+                            } else {
+                              _selected.remove(book.hash);
+                            }
+                          });
+                        },
+                  title: Text(book.title.isEmpty ? '（无标题）' : book.title,
+                      style: const TextStyle(fontSize: 12.5)),
+                  subtitle: book.complete
+                      ? null
+                      : Text(book.reason,
+                          style: const TextStyle(fontSize: 11)),
+                ),
+              const Divider(height: 18),
+              SwitchListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                value: _metadataOnly,
+                onChanged: (bool value) => setState(() => _metadataOnly = value),
+                title: const Text('只恢复元数据（不导入文件）',
+                    style: TextStyle(fontSize: 12.5)),
+              ),
+              if (manifest.bookmarkCount > 0)
+                SwitchListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  value: _bookmarks,
+                  onChanged: (bool value) => setState(() => _bookmarks = value),
+                  title: const Text('恢复书签与笔记',
+                      style: TextStyle(fontSize: 12.5)),
+                ),
+              if (manifest.hasSettings)
+                SwitchListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  value: _settings,
+                  onChanged: (bool value) => setState(() => _settings = value),
+                  title: const Text('恢复阅读设置',
+                      style: TextStyle(fontSize: 12.5)),
+                ),
+              if (manifest.hasStats)
+                SwitchListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  value: _stats,
+                  onChanged: (bool value) => setState(() => _stats = value),
+                  title: const Text('恢复阅读统计',
+                      style: TextStyle(fontSize: 12.5)),
+                ),
+              const SizedBox(height: 6),
+              const Text('恢复前会自动创建保护性快照；现有书籍不会被删除。',
+                  style: TextStyle(fontSize: 11)),
+            ],
+          ),
+        ),
+      ),
+      actions: <Widget>[
+        TextButton(
+            onPressed: () => Navigator.pop(context), child: const Text('取消')),
+        FilledButton(
+          onPressed: _selected.isEmpty && !_metadataOnly
+              ? null
+              : () => Navigator.pop(
+                    context,
+                    RestoreSelection(
+                      hashes: _selected.isEmpty ? null : _selected,
+                      metadataOnly: _metadataOnly,
+                      bookmarks: _bookmarks,
+                      settings: _settings,
+                      stats: _stats,
+                    ),
+                  ),
+          child: Text('恢复 ${_selected.length} 本'),
+        ),
+      ],
+    );
   }
 }
