@@ -167,8 +167,11 @@ class ReaderEngine {
       textDirection: TextDirection.ltr,
       textAlign: textAlignOf(s.titleAlign),
     )..layout(maxWidth: width);
-    final double height = painter.height;
+    double height = painter.height;
     painter.dispose();
+    // divider 模板在标题下方额外绘制 6px 间距 + 0.6px 细线；分页高度预算
+    // 必须包含它，否则章首 Column 会溢出（文字被裁掉）。
+    if (s.titleTemplate == 'divider') height += 7;
     return height + s.titleGapTop + s.titleGapBottom + s.chapterStartBlank;
   }
 

@@ -64,14 +64,14 @@ const Map<String, Object?> kReaderDefaults = <String, Object?>{
   'footerFontFamily': null,
   'footerColor': null,
   'footerOpacity': 0.55,
-  'footerProgressBar': false,
+  'footerProgressBar': true,
   // 章节标题
   'titleFontSize': 20.0,
   'titleFontFamily': null,
   'titleWeight': 600,
   'titleColor': null,
   'titleAlign': 'left',
-  'titleTemplate': 'plain', // plain | centered | divider | none
+  'titleTemplate': 'divider', // plain | centered | divider | none
   'titleGapTop': 4.0,
   'titleGapBottom': 18.0,
   'titleNumberNewLine': false,

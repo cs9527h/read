@@ -62,11 +62,11 @@ class ReaderTheme {
 const List<ReaderTheme> kBuiltInThemes = <ReaderTheme>[
   ReaderTheme(
     id: 'paper',
-    name: '白色',
+    name: '纸白',
     isDark: false,
-    background: 0xFFFDFDFC,
-    foreground: 0xFF1A1A1A,
-    secondary: 0xFF7A7A7A,
+    background: 0xFFFBF8F1,
+    foreground: 0xFF26231E,
+    secondary: 0xFF7C756A,
     builtIn: true,
   ),
   ReaderTheme(
