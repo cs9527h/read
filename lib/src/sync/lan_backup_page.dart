@@ -143,8 +143,8 @@ class _ShareTabState extends State<_ShareTab> {
       padding: const EdgeInsets.all(16),
       children: <Widget>[
         Text(
-          '开启后，同一 WiFi 下的另一台设备可在「从对端恢复」里输入下面的地址，'
-          '直接下载你的备份。无需密码，仅局域网内可访问，退回后台自动停止。',
+          '在另一台设备粘贴共享链接，即可选择备份并恢复。'
+          '无需设置密码，停止共享或退出后台后链接失效。不要将链接发给陌生人。',
           style: TextStyle(color: palette.muted, fontSize: 13, height: 1.6),
         ),
         const SizedBox(height: 16),
@@ -159,12 +159,12 @@ class _ShareTabState extends State<_ShareTab> {
         ],
         if (running) ...<Widget>[
           const SizedBox(height: 20),
-          _SectionTitle(palette, '在对端输入这些地址'),
+          _SectionTitle(palette, '复制共享链接到另一台设备'),
           for (final address in widget.service.addresses)
-            _AddressRow(palette: palette, address: 'http://$address:${widget.service.port}'),
+            _AddressRow(palette: palette, address: 'http://$address:${widget.service.port}/?key=${widget.service.accessToken}'),
           const SizedBox(height: 8),
           Text(
-            '若列表为空，请确认两台设备连的是同一个 WiFi；也可在对端直接输入本机局域网 IP。',
+            '两台设备需连接同一 WiFi。只填写 IP 无法访问，请复制完整链接。',
             style: TextStyle(color: palette.muted, fontSize: 11, height: 1.5),
           ),
         ],
@@ -257,7 +257,7 @@ class _RestoreTabState extends State<_RestoreTab> {
   Future<void> _connect() async {
     final Uri? base = LanBackupClient.normalizeBase(_address.text);
     if (base == null) {
-      setState(() => _error = '地址格式不正确，例如 192.168.1.5:8769');
+      setState(() => _error = '共享链接格式不正确，请从另一台设备复制完整链接');
       return;
     }
     setState(() {
