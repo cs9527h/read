@@ -22,7 +22,7 @@ void main() {
       backupDir: dir,
     );
     await service.start();
-    base = Uri.parse('http://127.0.0.1:${service.port}');
+    base = Uri.parse('http://127.0.0.1:${service.port}/?key=${service.accessToken}');
   });
 
   tearDown(() async {
@@ -35,8 +35,16 @@ void main() {
     expect(LanBackupClient.normalizeBase('192.168.1.5:8769')?.host, '192.168.1.5');
     expect(LanBackupClient.normalizeBase('192.168.1.5:8769')?.port, 8769);
     expect(LanBackupClient.normalizeBase('http://10.0.0.2:9000/api/info')?.port, 9000);
+    expect(LanBackupClient.normalizeBase(base.toString())?.queryParameters['key'], service.accessToken);
     expect(LanBackupClient.normalizeBase('  '), isNull);
     expect(LanBackupClient.normalizeBase('ftp://10.0.0.2'), isNull);
+  });
+
+  test('无共享链接令牌不能读取备份', () async {
+    final client = LanBackupClient();
+    final noKey = Uri.parse('http://127.0.0.1:${service.port}');
+    await expectLater(client.listBackups(noKey), throwsFormatException);
+    await expectLater(client.downloadBackup(noKey, 'backup-A.zip'), throwsFormatException);
   });
 
   test('客户端能读取对端设备信息与备份列表', () async {
