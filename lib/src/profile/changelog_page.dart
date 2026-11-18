@@ -34,6 +34,12 @@ const List<ReadReleaseNote> readReleaseNotes = <ReadReleaseNote>[
     '优化阅读工具栏和跨章阅读体验。',
     '修复分章、高亮及部分同步问题。',
   ]),
+  ReadReleaseNote('1.0.0', '2026-11-16', <String>[
+    '进一步简化应用图标并增加屏幕预设。',
+  ]),
+  ReadReleaseNote('0.9.0', '2026-11-16', <String>[
+    '调整应用图标并优化墨水屏主题。',
+  ]),
 ];
 
 class ChangelogPage extends StatelessWidget {
