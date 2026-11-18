@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:read/src/version.dart';
 
 /// A concise offline history of *published* releases. Append a verified entry
 /// on every release; unreleased work should not appear in the installed log.
@@ -64,7 +65,8 @@ class ChangelogPage extends StatelessWidget {
         separatorBuilder: (_, __) => const SizedBox(height: 12),
         itemBuilder: (BuildContext context, int index) {
           final ReadReleaseNote note = readReleaseNotes[index];
-          return DecoratedBox(
+          return RepaintBoundary(
+            child: DecoratedBox(
             decoration: BoxDecoration(
               color: surface,
               borderRadius: BorderRadius.circular(16),
@@ -74,10 +76,27 @@ class ChangelogPage extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  Text('Read ${note.version}',
-                      style: const TextStyle(
-                          color: ink, fontSize: 16,
-                          fontWeight: FontWeight.w600)),
+                  Row(
+                    children: <Widget>[
+                      Expanded(child: Text('Read ${note.version}',
+                          style: const TextStyle(
+                              color: ink, fontSize: 16,
+                              fontWeight: FontWeight.w600))),
+                      if (note.version == appVersion)
+                        DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF242C28),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                            child: Text('当前版本',
+                                style: TextStyle(
+                                    color: Color(0xFFD4E7DA), fontSize: 11)),
+                          ),
+                        ),
+                    ],
+                  ),
                   const SizedBox(height: 4),
                   Text(note.date,
                       style: const TextStyle(color: muted, fontSize: 12)),
@@ -92,6 +111,7 @@ class ChangelogPage extends StatelessWidget {
                 ],
               ),
             ),
+          ),
           );
         },
       ),
