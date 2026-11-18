@@ -61,7 +61,12 @@ class AboutPage extends StatelessWidget {
               style: const TextStyle(color: dim, fontSize: 13),
             ),
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 8),
+          Center(
+            child: SelectableText('构建：$buildCommitShort',
+                style: const TextStyle(color: dim, fontSize: 11)),
+          ),
+          const SizedBox(height: 24),
           _AboutRow(
             label: '联系作者',
             value: '通过 QQ 联系',
