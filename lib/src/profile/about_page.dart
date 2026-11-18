@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'package:read/src/services/diagnostics_service.dart';
 import 'package:read/src/version.dart';
+import 'package:read/src/profile/changelog_page.dart';
 import 'package:read/src/ui/read_icon.dart';
 
 /// 关于：黑底白 logo，版本号与开源信息。
@@ -89,15 +90,10 @@ class AboutPage extends StatelessWidget {
           ),
           _AboutRow(
             label: '更新日志',
-            value: '见 GitHub Releases',
-            onTap: () async {
-              const String url = '$repoUrl/releases';
-              await Clipboard.setData(const ClipboardData(text: url));
-              if (!context.mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('已复制 Releases 地址')),
-              );
-            },
+            value: '查看每次更新内容',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const ChangelogPage()),
+            ),
           ),
           _AboutRow(
             label: '检查更新',
