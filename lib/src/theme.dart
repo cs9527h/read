@@ -309,20 +309,27 @@ ThemeData buildTheme(Brightness brightness, {double fontScale = 1.0}) {
         color: palette.ink,
       );
 
+  // 强调色用温润的墨绿，而非近黑的正文色：开关、滑块、进度条、选中
+  // chip 等交互态因此带上书卷气质，正文与标题仍保持近黑，可读性不变。
+  // 深色模式下换成更亮的浅墨绿，保证暗背景上的对比度。
+  final Color accent = brightness == Brightness.dark
+      ? const Color(0xFF8FBF9F)
+      : ReadColors.accent;
   return ThemeData(
     useMaterial3: true,
     brightness: brightness,
     scaffoldBackgroundColor: palette.background,
     canvasColor: palette.background,
     colorScheme: ColorScheme.fromSeed(
-      seedColor: palette.ink,
+      seedColor: accent,
       brightness: brightness,
       surface: palette.surface,
     ).copyWith(
-      primary: palette.ink,
-      onPrimary: brightness == Brightness.dark ? Colors.black : Colors.white,
+      primary: accent,
+      onPrimary: Colors.white,
       onSurface: palette.ink,
       outline: palette.outline,
+      secondary: accent,
     ),
     appBarTheme: AppBarTheme(
       backgroundColor: palette.background,

@@ -68,7 +68,10 @@ void main() {
       author: '佚名',
       content: _body,
     );
-    await tester.pumpWidget(MaterialApp(home: ReaderPage(book: book)));
+    await tester.pumpWidget(MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: ReaderPage(book: book),
+    ));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
 

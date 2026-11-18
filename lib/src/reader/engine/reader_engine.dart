@@ -169,9 +169,9 @@ class ReaderEngine {
     )..layout(maxWidth: width);
     double height = painter.height;
     painter.dispose();
-    // divider 模板在标题下方额外绘制 6px 间距 + 0.6px 细线；分页高度预算
+    // divider 模板在标题下方额外绘制 8px 间距 + 1px 分隔线；分页高度预算
     // 必须包含它，否则章首 Column 会溢出（文字被裁掉）。
-    if (s.titleTemplate == 'divider') height += 7;
+    if (s.titleTemplate == 'divider') height += 9;
     return height + s.titleGapTop + s.titleGapBottom + s.chapterStartBlank;
   }
 

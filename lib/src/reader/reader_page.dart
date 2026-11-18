@@ -1164,10 +1164,10 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
               padding: const EdgeInsets.only(top: 4),
               child: LinearProgressIndicator(
                 value: _overallProgress,
-                minHeight: 2,
-                backgroundColor: secondary.withValues(alpha: 0.12),
+                minHeight: 2.5,
+                backgroundColor: secondary.withValues(alpha: 0.16),
                 valueColor: AlwaysStoppedAnimation<Color>(
-                  secondary.withValues(alpha: 0.5),
+                  secondary.withValues(alpha: 0.85),
                 ),
               ),
             ),
@@ -1949,8 +1949,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           inner,
-          const SizedBox(height: 6),
-          Container(height: 0.6, color: color.withValues(alpha: 0.25)),
+          const SizedBox(height: 8),
+          Container(height: 1.0, color: color.withValues(alpha: 0.45)),
         ],
       );
     }

@@ -1253,22 +1253,22 @@ class _BookshelfPageState extends State<BookshelfPage> {
     required bool selected,
     required VoidCallback onTap,
   }) {
+    final ThemeData theme = Theme.of(context);
+    final Color accent = theme.colorScheme.primary;
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
         decoration: BoxDecoration(
-          color: selected ? palette.ink : Colors.transparent,
-          border: Border.all(color: selected ? palette.ink : palette.outline),
+          color: selected ? accent : Colors.transparent,
+          border: Border.all(color: selected ? accent : palette.outline),
           borderRadius: BorderRadius.circular(ReadUi.instance.isEink ? 0 : 14),
         ),
         child: Text(
           label,
           style: TextStyle(
             fontSize: 11.5,
-            color: selected
-                ? (palette.brightness == Brightness.dark ? Colors.black : Colors.white)
-                : palette.muted,
+            color: selected ? theme.colorScheme.onPrimary : palette.muted,
           ),
         ),
       ),
