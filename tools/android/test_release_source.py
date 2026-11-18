@@ -17,6 +17,12 @@ class ReadReleaseSourceTests(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         self.root = pathlib.Path(tmp.name)
         (self.root / "pubspec.yaml").write_text("name: read\nversion: 2.3.1+18\n", encoding="utf-8")
+        baseline_dir = self.root / "tools/android"
+        baseline_dir.mkdir(parents=True)
+        (baseline_dir / "read_release_baseline.json").write_text(
+            '{"released_version":"2.3.0","released_build_number":17}',
+            encoding="utf-8",
+        )
         p = self.root / "lib/src/profile"
         p.mkdir(parents=True)
         (self.root / "lib/src/version.dart").write_text("const String appVersion = '2.3.1';\n", encoding="utf-8")
@@ -47,6 +53,10 @@ class ReadReleaseSourceTests(unittest.TestCase):
 
     def test_version_mismatch_is_rejected(self):
         self.assertEqual(self.check(tag="v2.4.0-preview"), 1)
+
+    def test_reused_published_build_number_is_rejected(self):
+        (self.root / "pubspec.yaml").write_text("version: 2.3.1+17\n", encoding="utf-8")
+        self.assertEqual(self.check(), 1)
 
     def test_missing_latest_changelog_is_rejected(self):
         p = self.root / "lib/src/profile/changelog_page.dart"
