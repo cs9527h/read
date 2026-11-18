@@ -1,5 +1,5 @@
 /// 应用版本号（与 pubspec.yaml 的 version 前缀保持一致，发布时同步修改）。
-const String appVersion = '2.3.0';
+const String appVersion = '2.3.1';
 const String appChannel = 'preview';
 /// Immutable source commit embedded by the release workflow.
 const String buildCommitSha = String.fromEnvironment('BUILD_GIT_SHA', defaultValue: 'local');
