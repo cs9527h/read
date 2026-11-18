@@ -70,7 +70,7 @@ jobs:
         run: flutter test
 
       - name: 构建手机版 APK（内含原版/墨水屏双 UI，设置页可切换）
-        run: flutter build apk --release --dart-define=EINK=false
+        run: flutter build apk --release --dart-define=EINK=false --dart-define=BUILD_GIT_SHA=$GITHUB_SHA
 
       - name: 校验 APK（包名/minSdk/ABI/versionCode/签名，失败即中止）
         run: bash tools/android/verify_apk.sh build/app/outputs/flutter-apk/app-release.apk
