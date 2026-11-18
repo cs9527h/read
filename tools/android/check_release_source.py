@@ -24,6 +24,11 @@ def main() -> int:
     if not version_match:
         raise SystemExit("pubspec.yaml version not found")
     version = version_match.group(1)
+    baseline = __import__("json").loads((ROOT / "tools/android/read_release_baseline.json").read_text(encoding="utf-8"))
+    if tuple(int(x) for x in version.split(".")) <= tuple(int(x) for x in baseline["released_version"].split(".")):
+        errors.append("versionName must be newer than the last published Read preview")
+    if int(version_match.group(2)) <= int(baseline["released_build_number"]):
+        errors.append("Android versionCode must be greater than the published build number")
     expected = "v" + version + "-preview"
     if args.tag != expected:
         errors.append(f"release tag {args.tag!r} != expected {expected!r}")
