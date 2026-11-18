@@ -13,6 +13,10 @@ class ReadReleaseNote {
 }
 
 const List<ReadReleaseNote> readReleaseNotes = <ReadReleaseNote>[
+  ReadReleaseNote('2.3.1', '2026-11-18', <String>[
+    '新增应用内更新日志，并支持查看构建来源。',
+    '优化阅读页绘制、书架首屏加载及设置细节。',
+  ]),
   ReadReleaseNote('2.3.0', '2026-11-18', <String>[
     '改善 S3 上传兼容性和跨设备密钥迁移。',
     '完善同步分页及数据一致性检查。',
