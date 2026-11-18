@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:read/src/version.dart';
+import 'package:read/src/theme.dart';
 
 /// A concise offline history of *published* releases. Append a verified entry
 /// on every release; unreleased work should not appear in the installed log.
@@ -48,10 +49,11 @@ class ChangelogPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const Color background = Color(0xFF0C0C0C);
-    const Color surface = Color(0xFF171717);
-    const Color ink = Color(0xFFF2F2F2);
-    const Color muted = Color(0xFF989898);
+    final ReadPalette palette = ReadPalette.of(context);
+    final Color background = palette.background;
+    final Color surface = palette.surface;
+    final Color ink = palette.ink;
+    final Color muted = palette.muted;
     return Scaffold(
       backgroundColor: background,
       appBar: AppBar(
@@ -70,6 +72,7 @@ class ChangelogPage extends StatelessWidget {
             decoration: BoxDecoration(
               color: surface,
               borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: palette.outline, width: 0.7),
             ),
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -85,14 +88,15 @@ class ChangelogPage extends StatelessWidget {
                       if (note.version == appVersion)
                         DecoratedBox(
                           decoration: BoxDecoration(
-                            color: const Color(0xFF242C28),
+                            color: palette.background,
                             borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: palette.accent, width: 1),
                           ),
-                          child: const Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
                             child: Text('当前版本',
                                 style: TextStyle(
-                                    color: Color(0xFFD4E7DA), fontSize: 11)),
+                                    color: palette.accent, fontSize: 11)),
                           ),
                         ),
                     ],
