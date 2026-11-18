@@ -22,8 +22,14 @@ def main() -> int:
     first = re.search(r"ReadReleaseNote\('([0-9.]+)'", notes)
     if not first or first.group(1) != version:
         errors.append("first in-app changelog entry does not match installed version")
-    if int(code) <= 17:
-        errors.append("Read Preview must increment versionCode beyond 17")
+    baseline = __import__("json").loads(
+        (ROOT / "tools/android/read_release_baseline.json").read_text(encoding="utf-8")
+    )
+    previous = tuple(map(int, baseline["released_version"].split(".")))
+    if tuple(map(int, version.split("."))) <= previous:
+        errors.append("Read versionName must advance beyond the published Preview")
+    if int(code) <= int(baseline["released_build_number"]):
+        errors.append("Read versionCode must advance beyond the published Preview")
     for error in errors:
         print("::error::" + error, file=sys.stderr)
     if errors:
