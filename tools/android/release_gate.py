@@ -35,8 +35,9 @@ def guard():
     if new_version <= old_version or int(pubversion.group(2)) <= int(baseline["released_build_number"]):
         raise SystemExit("RELEASE BLOCKED: version and Android build number must both increase")
     changelog = (ROOT / "lib/src/profile/changelog_page.dart").read_text()
-    if f"ReadReleaseNote('{version_match.group(1)}'" not in changelog:
-        raise SystemExit("RELEASE BLOCKED: in-app changelog is missing this version")
+    first_note = re.search(r"ReadReleaseNote\('([0-9.]+)'", changelog)
+    if not first_note or first_note.group(1) != version_match.group(1):
+        raise SystemExit("RELEASE BLOCKED: latest in-app changelog must match the release version")
     current = git("rev-parse", "HEAD")
     if git("rev-parse", f"refs/tags/{tag}^{{commit}}") != current:
         raise SystemExit("RELEASE BLOCKED: checkout differs from target tag")

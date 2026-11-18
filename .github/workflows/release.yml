@@ -26,9 +26,15 @@ jobs:
       - name: Release 来源、版本、更新日志门禁
         env:
           RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           git fetch origin main --tags --force
           python3 tools/android/release_gate.py
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::This Read version is already released. Do not overwrite an installed APK."
+            exit 1
+          fi
           echo "READ_SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
       - name: 验证发布来源门禁的拒绝用例
