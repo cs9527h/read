@@ -82,7 +82,7 @@ class ChangelogPage extends StatelessWidget {
                   Row(
                     children: <Widget>[
                       Expanded(child: Text('Read ${note.version}',
-                          style: const TextStyle(
+                          style: TextStyle(
                               color: ink, fontSize: 16,
                               fontWeight: FontWeight.w600))),
                       if (note.version == appVersion)
@@ -103,13 +103,13 @@ class ChangelogPage extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(note.date,
-                      style: const TextStyle(color: muted, fontSize: 12)),
+                      style: TextStyle(color: muted, fontSize: 12)),
                   const SizedBox(height: 12),
                   for (final String change in note.changes)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 6),
                       child: Text('· $change',
-                          style: const TextStyle(
+                          style: TextStyle(
                               color: ink, fontSize: 13.5, height: 1.5)),
                     ),
                 ],
