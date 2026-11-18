@@ -29,6 +29,11 @@ def guard():
     pubversion = re.search(r"(?m)^version:\s*(\d+\.\d+\.\d+)\+([0-9]+)$", pubspec)
     if not pubversion or pubversion.group(1) != version_match.group(1):
         raise SystemExit("RELEASE BLOCKED: tag and pubspec.yaml version differ")
+    baseline = json.loads((ROOT / "tools/android/read_release_baseline.json").read_text())
+    old_version = tuple(int(x) for x in baseline["released_version"].split("."))
+    new_version = tuple(int(x) for x in pubversion.group(1).split("."))
+    if new_version <= old_version or int(pubversion.group(2)) <= int(baseline["released_build_number"]):
+        raise SystemExit("RELEASE BLOCKED: version and Android build number must both increase")
     changelog = (ROOT / "lib/src/profile/changelog_page.dart").read_text()
     if f"ReadReleaseNote('{version_match.group(1)}'" not in changelog:
         raise SystemExit("RELEASE BLOCKED: in-app changelog is missing this version")
