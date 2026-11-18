@@ -17,6 +17,9 @@ jobs:
       - name: 取出代码
         uses: actions/checkout@v4
 
+      - name: 验证发布来源门禁的拒绝用例
+        run: python3 -m unittest discover -s tools/android -p 'test_release_gate.py' -v
+
       - name: 安装 JDK 17
         uses: actions/setup-java@v4
         with:
