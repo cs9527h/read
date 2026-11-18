@@ -1,0 +1,5 @@
+{
+  "released_version": "2.3.0",
+  "released_build_number": 17,
+  "note": "已发布 Preview 的单调递增基线。每次验证发布成功后再更新，不得因 PR 测试自行提高。"
+}
