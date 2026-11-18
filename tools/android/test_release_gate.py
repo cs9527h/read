@@ -20,6 +20,10 @@ class ReleaseGateTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.root = pathlib.Path(self.tmp.name)
         (self.root / "pubspec.yaml").write_text("name: read\nversion: 2.4.0+18\n")
+        (self.root / "tools/android").mkdir(parents=True)
+        (self.root / "tools/android/read_release_baseline.json").write_text(
+            '{"released_version":"2.3.0","released_build_number":17}'
+        )
         d = self.root / "lib/src/profile"
         d.mkdir(parents=True)
         (d / "changelog_page.dart").write_text("ReadReleaseNote('2.4.0', '2026-11-18', []),")
@@ -53,6 +57,11 @@ class ReleaseGateTests(unittest.TestCase):
 
     def test_missing_current_changelog_fails(self):
         (self.root / "lib/src/profile/changelog_page.dart").write_text("no current version")
+        with self.assertRaises(SystemExit):
+            self.run_gate()
+
+    def test_equal_build_number_fails(self):
+        (self.root / "pubspec.yaml").write_text("name: read\nversion: 2.4.0+17\n")
         with self.assertRaises(SystemExit):
             self.run_gate()
 
