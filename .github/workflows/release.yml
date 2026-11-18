@@ -19,6 +19,21 @@ jobs:
     steps:
       - name: 取出代码
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify release is tagged at current main HEAD
+        env:
+          RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git fetch origin main --tags
+          python3 tools/android/check_release_source.py --tag "$RELEASE_TAG"
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::This release already exists. Create a new version/tag instead of replacing an existing APK."
+            exit 1
+          fi
 
       - name: 安装 JDK 17
         uses: actions/setup-java@v4
@@ -72,7 +87,7 @@ jobs:
         run: flutter test
 
       - name: 构建手机版 APK（内含原版/墨水屏双 UI，设置页可切换）
-        run: flutter build apk --release --dart-define=EINK=false
+        run: flutter build apk --release --dart-define=EINK=false --dart-define=BUILD_GIT_SHA=$GITHUB_SHA
 
       - name: 校验 APK（包名/minSdk/ABI/versionCode/签名，失败即中止）
         run: bash tools/android/verify_apk.sh build/app/outputs/flutter-apk/app-release.apk
@@ -83,10 +98,12 @@ jobs:
           cp build/app/outputs/flutter-apk/app-release.apk out/read-android.apk
           ls -lh out
 
-      - name: 生成校验值
+      - name: 生成校验值与构建来源
         run: |
+          set -euo pipefail
           cd out
           sha256sum read-android.apk | tee APK_SHA256.txt
+          printf '{"source_commit":"%s","workflow_run":"%s","source_branch":"main","tag":"%s"}\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" "${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}" > BUILD_METADATA.json
 
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
@@ -110,9 +127,11 @@ jobs:
             - 低版本适配：minSdk 24（Android 7.0，Flutter 3.50 官方下限）；含 32/64 位 ABI；
               WebDAV http 明文同步已放行（Android 9+）；补齐 INTERNET / 通知权限
             - `APK_SHA256.txt`：校验值
+            - `BUILD_METADATA.json`：与手机关于页对应的源代码 SHA
 
             当前使用 CI 内部测试签名，**不是正式发布签名**；后续覆盖升级需要换成正式 keystore。
             功能状态以仓库 README / docs 台账为准，未在真机验证的项不会标注为已完成。
           files: |
             out/read-android.apk
             out/APK_SHA256.txt
+            out/BUILD_METADATA.json
