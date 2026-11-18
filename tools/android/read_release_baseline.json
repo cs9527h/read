@@ -1,0 +1,5 @@
+{
+  "released_version": "2.3.0",
+  "released_build_number": 17,
+  "note": "Update after each verified published Read preview release; new releases must increase both the semantic version and Android build number."
+}

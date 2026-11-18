@@ -17,6 +17,9 @@ jobs:
       - name: 取出代码
         uses: actions/checkout@v4
 
+      - name: 验证发布来源门禁的拒绝用例
+        run: python3 -m unittest discover -s tools/android -p 'test_release_gate.py' -v
+
       - name: 安装 JDK 17
         uses: actions/setup-java@v4
         with:
@@ -70,7 +73,7 @@ jobs:
         run: flutter test
 
       - name: 构建手机版 APK（内含原版/墨水屏双 UI，设置页可切换）
-        run: flutter build apk --release --dart-define=EINK=false
+        run: flutter build apk --release --dart-define=EINK=false --dart-define=READ_SOURCE_SHA=${{ github.sha }}
 
       - name: 校验 APK（包名/minSdk/ABI/versionCode/签名，失败即中止）
         run: bash tools/android/verify_apk.sh build/app/outputs/flutter-apk/app-release.apk
@@ -81,9 +84,24 @@ jobs:
           cp build/app/outputs/flutter-apk/app-release.apk out/read-android.apk
           ls -lh out
 
+      - name: 生成可追溯构建信息
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib, hashlib, re
+          apk=pathlib.Path("out/read-android.apk")
+          version=re.search(r"(?m)^version:\s*(\S+)",pathlib.Path("pubspec.yaml").read_text()).group(1)
+          pathlib.Path("out/READ_BUILD_PROVENANCE.json").write_text(json.dumps({
+              "source_commit": os.environ["GITHUB_SHA"],"version":version,
+              "apk_sha256":hashlib.sha256(apk.read_bytes()).hexdigest(),
+              "workflow_run":os.environ["GITHUB_RUN_ID"],
+              "build_type":"test-artifact-not-a-release"
+          },indent=2)+"\n")
+          PY
       - name: 上传产物
         uses: actions/upload-artifact@v4
         with:
           name: read-apk
-          path: out/*.apk
+          path: |
+            out/*.apk
+            out/READ_BUILD_PROVENANCE.json
           if-no-files-found: error
