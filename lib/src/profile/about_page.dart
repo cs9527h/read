@@ -57,7 +57,7 @@ class AboutPage extends StatelessWidget {
           const SizedBox(height: 6),
           Center(
             child: Text(
-              appVersionLabel,
+              '$appVersionLabel · 构建 ${appBuildSha.length >= 7 ? appBuildSha.substring(0, 7) : appBuildSha}',
               style: const TextStyle(color: dim, fontSize: 13),
             ),
           ),
@@ -105,7 +105,7 @@ class AboutPage extends StatelessWidget {
                 title: const Text('检查更新', style: TextStyle(color: fg)),
                 content: Text(
                   '当前为 $appVersionLabel（CI 测试签名）。'
-                  '新版 APK 发布在 GitHub Releases，安装前请先卸载或确认签名一致。',
+                  '新版 APK 发布在 GitHub Releases，请优先验证签名后覆盖安装，勿直接卸载旧版以免丢失数据。',
                   style: const TextStyle(color: dim, fontSize: 13, height: 1.5),
                 ),
                 actions: <Widget>[
