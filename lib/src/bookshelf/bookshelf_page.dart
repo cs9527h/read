@@ -50,10 +50,12 @@ class _BookshelfPageState extends State<BookshelfPage> {
   @override
   void initState() {
     super.initState();
-    // 云端状态只用于显示云朵，失败也不影响书架本身。
-    if (LibraryStore.instance.books.isNotEmpty) {
+    // 首帧只绘制本地书架；云端标记等首帧之后刷新，
+    // 避免启动时的网络/同步争抢首帧布局与绘制资源。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || LibraryStore.instance.books.isEmpty) return;
       CloudPresence.instance.refresh();
-    }
+    });
   }
 
   @override

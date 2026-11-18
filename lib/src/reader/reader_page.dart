@@ -993,7 +993,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                           ),
                           Expanded(
                             child: _buildTapLayer(
-                              _buildPageArea(foreground, secondary),
+                              RepaintBoundary(child: _buildPageArea(foreground, secondary)),
                             ),
                           ),
                           ValueListenableBuilder<int>(

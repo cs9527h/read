@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:read/src/version.dart';
+import 'package:read/src/theme.dart';
 
 /// A concise offline history of *published* releases. Append a verified entry
 /// on every release; unreleased work should not appear in the installed log.
@@ -47,10 +49,11 @@ class ChangelogPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const Color background = Color(0xFF0C0C0C);
-    const Color surface = Color(0xFF171717);
-    const Color ink = Color(0xFFF2F2F2);
-    const Color muted = Color(0xFF989898);
+    final ReadPalette palette = ReadPalette.of(context);
+    final Color background = palette.background;
+    final Color surface = palette.surface;
+    final Color ink = palette.ink;
+    final Color muted = palette.muted;
     return Scaffold(
       backgroundColor: background,
       appBar: AppBar(
@@ -64,34 +67,55 @@ class ChangelogPage extends StatelessWidget {
         separatorBuilder: (_, __) => const SizedBox(height: 12),
         itemBuilder: (BuildContext context, int index) {
           final ReadReleaseNote note = readReleaseNotes[index];
-          return DecoratedBox(
+          return RepaintBoundary(
+            child: DecoratedBox(
             decoration: BoxDecoration(
               color: surface,
               borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: palette.outline, width: 0.7),
             ),
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  Text('Read ${note.version}',
-                      style: const TextStyle(
-                          color: ink, fontSize: 16,
-                          fontWeight: FontWeight.w600)),
+                  Row(
+                    children: <Widget>[
+                      Expanded(child: Text('Read ${note.version}',
+                          style: TextStyle(
+                              color: ink, fontSize: 16,
+                              fontWeight: FontWeight.w600))),
+                      if (note.version == appVersion)
+                        DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: palette.background,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: palette.accent, width: 1),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                            child: Text('当前版本',
+                                style: TextStyle(
+                                    color: palette.accent, fontSize: 11)),
+                          ),
+                        ),
+                    ],
+                  ),
                   const SizedBox(height: 4),
                   Text(note.date,
-                      style: const TextStyle(color: muted, fontSize: 12)),
+                      style: TextStyle(color: muted, fontSize: 12)),
                   const SizedBox(height: 12),
                   for (final String change in note.changes)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 6),
                       child: Text('· $change',
-                          style: const TextStyle(
+                          style: TextStyle(
                               color: ink, fontSize: 13.5, height: 1.5)),
                     ),
                 ],
               ),
             ),
+          ),
           );
         },
       ),
