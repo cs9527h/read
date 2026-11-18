@@ -60,6 +60,9 @@ jobs:
       - name: Verify source version matches in-app release notes
         run: python3 tools/android/check_version_consistency.py
 
+      - name: Unit-test release source gate
+        run: python3 -m unittest discover -s tools/android -p 'test_release_source.py' -v
+
       - name: 拉取依赖
         run: flutter pub get
 
